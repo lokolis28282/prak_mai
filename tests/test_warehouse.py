@@ -118,10 +118,10 @@ class WarehouseServiceTest(unittest.TestCase):
             archive_path = build_windows_package(Path(directory) / "ODE_windows_ready.zip")
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
-            self.assertIn("README_WINDOWS.md", names)
-            self.assertIn("start_windows.bat", names)
-            self.assertIn("data/warehouse.db", names)
-            self.assertTrue(any(name.startswith("data/backups/") for name in names))
+            self.assertIn("ODE/WINDOWS_RELEASE.md", names)
+            self.assertIn("ODE/start_windows.bat", names)
+            self.assertIn("ODE/data/warehouse.db", names)
+            self.assertFalse(any("backups" in name.casefold() for name in names))
             self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
 
     def test_current_receipt_export_contains_only_last_preview_file(self) -> None:
@@ -998,6 +998,70 @@ class WarehouseServiceTest(unittest.TestCase):
         report = self.service.weekly_report(today, today)
         self.assertEqual(report["summary"]["loaded_deliveries"], 1)
         self.assertEqual(report["summary"]["accepted_delivery_items"], 1)
+
+    def test_receipt_category_maps_to_legacy_type_fields(self) -> None:
+        cases = (
+            ("Оборудование", "Сервер", "equipment_type"),
+            ("Компоненты", "RAM", "component_type"),
+            ("Кабели", "Оптика", "cable_type"),
+        )
+        for index, (category, item_type, expected_field) in enumerate(cases, start=1):
+            row = self.new_receipt(
+                category=category, item_type=item_type,
+                serial_number="" if category == "Кабели" else f"SN-CATEGORY-{index}",
+                inventory_number="", equipment_type="старое", component_type="старое",
+                cable_type="старое", quantity="2",
+            )
+            self.service.add_stock_receipt(**row)
+            saved = self.service.stock_receipts()[0]
+            self.assertEqual(saved[expected_field], item_type)
+            self.assertEqual(
+                sum(bool(saved[field]) for field in
+                    ("equipment_type", "component_type", "cable_type")), 1
+            )
+            if category != "Кабели":
+                self.assertEqual(saved["quantity"], 1)
+
+    def test_cable_receipt_does_not_require_serial_number(self) -> None:
+        self.service.add_stock_receipt(**self.new_receipt(
+            category="Кабели", item_type="DAC", serial_number="",
+            inventory_number="", quantity="5",
+        ))
+        self.assertEqual(self.service.stock_receipts()[0]["quantity"], 5)
+
+    def test_equipment_and_component_receipts_still_require_serial_number(self) -> None:
+        for category, item_type in (("Оборудование", "Сервер"), ("Компоненты", "RAM")):
+            with self.assertRaisesRegex(WarehouseError, "S/N обязателен"):
+                self.service.add_stock_receipt(**self.new_receipt(
+                    category=category, item_type=item_type,
+                    serial_number="", inventory_number="",
+                ))
+
+    def test_balance_exposes_supplier_type_and_category(self) -> None:
+        self.service.add_stock_receipt(**self.new_receipt(
+            supplier="ООО Поставка", category="Компоненты", item_type="NIC",
+        ))
+        row = next(x for x in self.service.stock_balance() if x["serial_number"] == "SN-STAGE2-001")
+        self.assertEqual(row["supplier"], "ООО Поставка")
+        self.assertEqual(row["item_type"], "NIC")
+        self.assertEqual(row["category"], "Компоненты")
+        self.assertEqual(self.service.stock_balance(category="Компоненты", item_type="NIC"), [row])
+
+    def test_daily_report_saves_multiple_work_log_rows_atomically(self) -> None:
+        today = date.today().isoformat()
+        saved = self.service.add_work_logs([
+            {"work_date": today, "task_source": "Rooms", "task_type": "ЗНР",
+             "task_number": "1", "description": "Работа 1", "status": "Выполнено"},
+            {"work_date": today, "task_source": "Склад", "task_type": "ПНР",
+             "task_number": "2", "description": "Работа 2", "status": "Ожидание"},
+        ])
+        self.assertEqual(saved, 2)
+        self.assertEqual(len(self.service.work_logs(today, today)), 2)
+
+    def test_ready_report_import_is_not_in_report_navigation(self) -> None:
+        self.assertNotIn("['uploaded','Загруженные отчеты']", HTML)
+        self.assertIn("Сохранить отчет", HTML)
+        self.assertIn("+ Добавить задачу", HTML)
 
 
 if __name__ == "__main__":
