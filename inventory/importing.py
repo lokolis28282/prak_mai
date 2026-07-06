@@ -131,3 +131,18 @@ def parse_csv_bytes(body: bytes, kind: str) -> list[dict[str, str]]:
             if len(rows) > MAX_IMPORT_ROWS:
                 raise ValueError(f"CSV содержит больше {MAX_IMPORT_ROWS:,} строк")
     return rows
+
+
+def unknown_csv_headers(body: bytes) -> list[str]:
+    """Вернуть исходные заголовки, которые не удалось сопоставить со схемой ODE."""
+    try:
+        text = body.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = body.decode("cp1251")
+    try:
+        delimiter = csv.Sniffer().sniff(text[:8192], delimiters=";,\t").delimiter
+    except csv.Error:
+        delimiter = ","
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    headers = next(reader, [])
+    return [str(name).strip() for name in headers if str(name).strip() and _key(name) not in ALIAS_TO_FIELD]

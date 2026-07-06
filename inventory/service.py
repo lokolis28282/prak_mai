@@ -257,6 +257,30 @@ class WarehouseService:
                 )
             ]
 
+    def warehouse_history(self, limit: int = 300) -> list[dict[str, Any]]:
+        """Человекочитаемая история склада без раскрытия внутренних имён таблиц."""
+        labels = {
+            "RECEIPT_CREATE": "Ручной приход", "RECEIPT_IMPORT": "Приход из файла",
+            "ISSUE_CREATE": "Ручной расход", "ISSUE_IMPORT": "Расход из файла",
+            "DELIVERY_UPLOAD": "Загружена поставка", "DELIVERY_ACCEPT": "Принято из поставки",
+            "DELIVERY_LINE_UPDATE": "Изменены данные поставки", "DELIVERY_CLOSE": "Закрыта поставка",
+        }
+        rows: list[dict[str, Any]] = []
+        with connect(self.db_path) as db:
+            for row in db.execute("SELECT created_at event_date,responsible engineer,'Приход' action,serial_number,item_name,quantity,'' comment FROM stock_receipts ORDER BY id DESC LIMIT ?", (limit,)):
+                rows.append(dict(row))
+            for row in db.execute("SELECT created_at event_date,responsible engineer,'Расход' action,source_serial_number serial_number,source_item_name item_name,quantity,comment FROM stock_issues ORDER BY id DESC LIMIT ?", (limit,)):
+                rows.append(dict(row))
+            for row in db.execute("SELECT event_date,author engineer,action,details,entity_id FROM audit_log WHERE action LIKE 'DELIVERY_%' OR action IN ('RECEIPT_IMPORT','ISSUE_IMPORT') ORDER BY id DESC LIMIT ?", (limit,)):
+                details = json.loads(row["details"] or "{}") if str(row["details"] or "").startswith("{") else {}
+                rows.append({"event_date": row["event_date"], "engineer": row["engineer"],
+                    "action": labels.get(row["action"], "Изменение склада"),
+                    "serial_number": details.get("serial_number", ""),
+                    "item_name": details.get("item_name", ""), "quantity": details.get("quantity", ""),
+                    "comment": details.get("filename", "") or details.get("reason", "")})
+        rows.sort(key=lambda x: str(x.get("event_date", "")), reverse=True)
+        return rows[:limit]
+
     @property
     def backup_dir(self) -> Path:
         return self.db_path.parent / "backups"
@@ -1347,7 +1371,8 @@ class WarehouseService:
             parts = re.split(r"\s+", text)
         return [part.strip() for part in parts if part.strip()]
 
-    def preview_delivery_rows(self, rows: Iterable[dict[str, Any]], filename: str) -> dict[str, Any]:
+    def preview_delivery_rows(self, rows: Iterable[dict[str, Any]], filename: str,
+                              unknown_columns: Iterable[str] = (), *, auto_apply: bool = False) -> dict[str, Any]:
         self._require_write()
         expanded: list[dict[str, Any]] = []
         seen: set[str] = set()
@@ -1379,10 +1404,15 @@ class WarehouseService:
         preview_id = secrets.token_urlsafe(18)
         self._import_previews[preview_id] = {
             "kind": "delivery", "rows": expanded, "filename": filename,
+            "auto_apply": auto_apply,
             "author": self._actor_email.get() or "lokolis",
             "created_at": datetime.now().isoformat(timespec="seconds"),
         }
-        return {"preview_id": preview_id, "total": len(expanded), "counts": counts, "rows": expanded[:PREVIEW_ROW_LIMIT], "can_confirm": counts["Ожидается"] > 0}
+        return {"preview_id": preview_id, "total": len(expanded), "counts": counts,
+                "new": counts["Ожидается"], "updated": counts["Уже на складе"],
+                "duplicates": counts["Дубль в файле"], "errors": counts["Ошибка"],
+                "unknown_columns": list(unknown_columns), "rows": expanded[:PREVIEW_ROW_LIMIT],
+                "can_confirm": counts["Ожидается"] > 0 or counts["Уже на складе"] > 0}
 
     def confirm_delivery_preview(self, preview_id: str) -> int:
         self._require_write()
@@ -1391,6 +1421,7 @@ class WarehouseService:
         first = rows[0]
         actor = str(self.current_user()["email"])
         with connect(self.db_path) as db:
+            references = self._reference_sets(db)
             cursor = db.execute(
                 "INSERT INTO deliveries(source_filename, delivery_number, supplier, uploaded_by) VALUES (?,?,?,?)",
                 (preview["filename"], str(first.get("delivery_number", "")), str(first.get("supplier", "")), actor),
@@ -1404,6 +1435,36 @@ class WarehouseService:
                 except ValueError:
                     quantity = 1
                     row["state"], row["error_text"] = "Ошибка", "Некорректное количество"
+                receipt_id = None
+                if preview.get("auto_apply") and row["state"] == "Ожидается":
+                    item_type = row.get("equipment_type") or row.get("component_type") or row.get("cable_type") or row.get("equipment_unit") or "Прочее"
+                    candidate = {
+                        "receipt_date": row.get("receipt_date") or row.get("work_date") or date.today().isoformat(),
+                        "responsible": actor, "order_date": row.get("order_date", ""),
+                        "request_number": row.get("request_number", ""), "order_number": row.get("order_number", ""),
+                        "plu": row.get("plu", ""), "item_name": row.get("item_name") or " ".join(filter(None, (item_type, row.get("vendor"), row.get("model")))),
+                        "project": row.get("project", ""), "serial_number": row.get("serial_number", ""),
+                        "inventory_number": row.get("inventory_number") or row.get("asset_number", ""),
+                        "supplier": row.get("supplier") or "Не указан", "vendor": row.get("vendor") or "Не указан",
+                        "model": row.get("model", ""), "shelf": row.get("shelf", ""),
+                        "object_name": row.get("object_name") or "Склад", "datacenter": row.get("datacenter") or "Ixcellerate",
+                        "equipment_type": row.get("equipment_type") or item_type, "component_type": row.get("component_type", ""),
+                        "cable_type": row.get("cable_type", ""), "unit": row.get("unit") or "шт", "quantity": quantity,
+                    }
+                    prepared = self._prepare_receipt(self._soft_receipt_source(candidate), references)
+                    self._collect_references(db, prepared, self.RECEIPT_REFERENCE_FIELDS)
+                    receipt_id = int(db.execute("""INSERT INTO stock_receipts(receipt_date,responsible,order_date,request_number,order_number,plu,item_name,project,serial_number,inventory_number,supplier,vendor,model,shelf,object_name,datacenter,equipment_type,component_type,cable_type,unit,quantity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", self._receipt_values(prepared)).lastrowid)
+                    row["state"] = "Принято"
+                elif preview.get("auto_apply") and row["state"] == "Уже на складе":
+                    existing = db.execute("SELECT * FROM stock_receipts WHERE serial_number=? COLLATE NOCASE", (row.get("serial_number", ""),)).fetchone()
+                    if existing:
+                        receipt_id = int(existing["id"])
+                        mapping = {"inventory_number":"inventory_number", "supplier":"supplier", "order_number":"order_number", "request_number":"request_number", "plu":"plu", "project":"project", "model":"model", "vendor":"vendor", "shelf":"shelf", "datacenter":"datacenter", "item_name":"item_name", "equipment_type":"equipment_type"}
+                        updates = {target: row.get(source, "") for source,target in mapping.items() if row.get(source) and not str(existing[target] or "").strip()}
+                        if updates:
+                            db.execute("UPDATE stock_receipts SET "+",".join(f"{key}=?" for key in updates)+" WHERE id=?", (*updates.values(), receipt_id))
+                            self._audit(db, "DELIVERY_RECEIPT_UPDATE", "stock_receipt", receipt_id, {"fields": list(updates)})
+                        row["state"] = "Принято"
                 values = (
                     delivery_id, number, row.get("receipt_statement", ""), row.get("order_date", ""),
                     row.get("request_number", ""), row.get("order_number", ""), row.get("serial_number", ""),
@@ -1421,7 +1482,12 @@ class WarehouseService:
                        asset_number,equipment_unit,item_name,vendor,object_name,unit,state,error_text,updated_by)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", values,
                 )
-            db.execute("UPDATE deliveries SET status='Ожидается' WHERE id=?", (delivery_id,))
+                if receipt_id:
+                    db.execute("UPDATE delivery_lines SET receipt_id=? WHERE delivery_id=? AND row_number=?", (receipt_id, delivery_id, number))
+            if preview.get("auto_apply"):
+                db.execute("UPDATE deliveries SET status=CASE WHEN EXISTS(SELECT 1 FROM delivery_lines WHERE delivery_id=? AND state='Ожидается') THEN 'Частично принята' ELSE 'Принята' END WHERE id=?", (delivery_id, delivery_id))
+            else:
+                db.execute("UPDATE deliveries SET status='Ожидается' WHERE id=?", (delivery_id,))
             self._audit(db, "DELIVERY_UPLOAD", "delivery", delivery_id, {"filename": preview["filename"], "rows": len(rows)})
         self._import_previews.pop(preview_id, None)
         return delivery_id

@@ -1,0 +1,9 @@
+﻿id;category;model;serial_number;inventory_number;status;location;quantity
+4;Коммутаторы;SW-24F;SN-NET-260002;INV-DC-2002;IN_STOCK;C-01;1
+3;Коммутаторы;SW-48T;SN-NET-260001;INV-DC-2001;IN_STOCK;B-01;4
+8;Комплектующие;PSU 800W;SN-PSU-260001;INV-DC-4003;ISSUED;Q-01;0
+7;Комплектующие;RAM 32GB;SN-RAM-260001;INV-DC-4002;IN_STOCK;A-01;20
+6;Комплектующие;SSD 2TB;SN-SSD-260001;INV-DC-4001;IN_STOCK;B-01;10
+1;Серверы;SRV-R220;SN-SRV-260001;INV-DC-1001;IN_STOCK;B-01;3
+2;Серверы;SRV-R240;SN-SRV-260002;INV-DC-1002;IN_STOCK;C-01;2
+5;Системы хранения данных;STG-S12;SN-STG-260001;INV-DC-3001;IN_STOCK;B-01;2

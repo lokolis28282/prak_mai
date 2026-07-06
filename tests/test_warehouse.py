@@ -957,6 +957,27 @@ class WarehouseServiceTest(unittest.TestCase):
         self.assertEqual(card["delivery"]["source_filename"], "supply.csv")
         self.assertEqual(len(card["lines"]), 4)
 
+    def test_delivery_web_confirm_adds_new_and_fills_only_empty_existing_fields(self) -> None:
+        existing = self.new_receipt(serial_number="DEL-EXIST", vendor="Сохранить", model="")
+        self.service.add_stock_receipt(**existing)
+        preview = self.service.preview_delivery_rows([
+            {"serial_number": "DEL-NEW", "supplier": "Новый", "vendor": "Dell", "model": "R760", "equipment_type": "Сервер"},
+            {"serial_number": "DEL-EXIST", "supplier": "Дополнить", "vendor": "Не перетирать", "model": "M2", "equipment_type": "Сервер"},
+        ], "delivery.csv", unknown_columns=["Лишняя колонка"], auto_apply=True)
+        self.assertEqual((preview["new"], preview["updated"]), (1, 1))
+        self.assertEqual(preview["unknown_columns"], ["Лишняя колонка"])
+        self.service.confirm_delivery_preview(preview["preview_id"])
+        receipts = {x["serial_number"]: x for x in self.service.stock_receipts()}
+        self.assertIn("DEL-NEW", receipts)
+        self.assertEqual(receipts["DEL-EXIST"]["vendor"], "Сохранить")
+        self.assertEqual(receipts["DEL-EXIST"]["model"], "M2")
+
+    def test_warehouse_history_uses_human_labels(self) -> None:
+        self.service.add_stock_receipt(**self.new_receipt(serial_number="HISTORY-1"))
+        history = self.service.warehouse_history()
+        self.assertTrue(any(row["action"] == "Приход" for row in history))
+        self.assertFalse(any("stock_" in row["action"] or "audit" in row["action"] for row in history))
+
     def test_delivery_acceptance_creates_receipt_blocks_repeat_and_updates_status(self) -> None:
         preview = self.service.preview_delivery_rows([
             {"serial_number": "DEL-A", "delivery_number": "П-80", "supplier": "Поставщик", "quantity": "1", "equipment_unit": "Сервер"},
