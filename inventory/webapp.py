@@ -7,6 +7,7 @@ import csv
 import io
 import json
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -17,12 +18,17 @@ from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
 
+from . import __version__
+from .core.application import ApplicationContext, create_application_context, ensure_application_context
 from .db import DEFAULT_DB_PATH
 from .importing import parse_csv_bytes, unknown_csv_headers
 from .service import WarehouseError, WarehouseService
 
 
 CURRENT_DATACENTER = "Ixcellerate"
+STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
+PRODUCT_NAME = "ODE"
+PRODUCT_VERSION = __version__
 
 LOGIN_HTML = r'''<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Вход — ODE</title>
@@ -30,9 +36,9 @@ LOGIN_HTML = r'''<!doctype html><html lang="ru"><head><meta charset="utf-8">
 
 
 LOGIN_HTML = (LOGIN_HTML
-    .replace("<title>Вход — ODE</title>", "<title>Начало смены — ODE</title>")
+    .replace("<title>Вход — ODE</title>", f"<title>Начало смены — {PRODUCT_NAME} {PRODUCT_VERSION}</title>")
     .replace("<h1>ODE</h1><p>Укажите, кто работает с системой</p>",
-             "<h1>Кто сегодня работает?</h1><p>Операции смены будут записаны под выбранным именем.</p>")
+             f"<h1>Кто сегодня работает?</h1><p>{PRODUCT_NAME} {PRODUCT_VERSION}. Операции смены будут записаны под выбранным именем.</p>")
     .replace(">Продолжить</button>", ">Начать работу</button>")
     .replace(".link{background:none", ".link{display:none;background:none")
 )
@@ -144,6 +150,10 @@ let adminState={backups:[],audit:[],users:[]};const sizeText=n=>n<1024?`${n} Б`
 document.getElementById('userForm').onsubmit=e=>{e.preventDefault();submitAction(e.currentTarget,'CREATE_USER').then(loadAdmin)};document.getElementById('profileForm').onsubmit=e=>{e.preventDefault();submitAction(e.currentTarget,'UPDATE_PROFILE')};document.getElementById('passwordForm').onsubmit=async e=>{e.preventDefault();try{await request('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...formData(e.currentTarget),action:'CHANGE_PASSWORD'})});e.currentTarget.reset();notify('Пароль изменен');await loadAll()}catch(x){notify(x.message,true)}};document.getElementById('prodDb').onchange=async e=>{const file=e.target.files[0];if(!file||!confirm(`Загрузить ${file.name} в прод? Будет создан страховочный backup.`))return;try{const x=await request('/api/upload-prod-db?confirmed=1',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Filename':encodeURIComponent(file.name)},body:file});notify(`База заменена. Backup: ${x.safety_backup}`);await loadAll();await loadAdmin()}catch(x){notify(x.message,true)}finally{e.target.value=''}};async function logout(){await request('/api/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});location.href='/'}
 const today=new Date().toISOString().slice(0,10);document.querySelector('[name=work_date]').value=today;document.querySelector('[name=receipt_date]').value=today;document.querySelector('[name=issue_date]').value=today;document.querySelector('#bulkIssueForm [name=issue_date]').value=today;document.querySelector('#scanReceiptForm [name=receipt_date]').value=today;document.querySelector('#scanIssueForm [name=issue_date]').value=today;for(const id of ['dailyForm','weeklyForm']){document.querySelector(`#${id} [name=date_from]`).value=today;document.querySelector(`#${id} [name=date_to]`).value=today}showSection('warehouse');loadAll();
 </script></body></html>'''
+HTML = HTML.replace(
+    "ODE 0.12 — учет работ и склада",
+    f"{PRODUCT_NAME} {PRODUCT_VERSION} — учет работ и склада",
+)
 RECEIPT_SCANNER_HTML = '''<div class="scanner-box"><h2>Приемка сканером</h2><p class="hint">Заполните общие поля партии, затем сканируйте S/N. Запись в базу выполняется только после подтверждения.</p><form class="form" id="scanReceiptForm"><label>Дата</label><input name="receipt_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Поставщик</label><input name="supplier" class="ref-input" data-kind="supplier" list="ref-supplier" required><label>Вендор</label><input name="vendor" class="ref-input" data-kind="vendor" list="ref-vendor" required><label>Модель</label><input name="model" class="ref-input" data-kind="model" list="ref-model"><label>Наименование</label><input name="item_name" class="ref-input" data-kind="item_name" list="ref-item_name" required><label>Проект</label><input name="project" class="ref-input" data-kind="project" list="ref-project"><label>ЦОД</label><input name="datacenter" class="ref-input" data-kind="datacenter" list="ref-datacenter" value="Ixcellerate" required><label>Стеллаж/Полка</label><input name="shelf" class="ref-input" data-kind="shelf" list="ref-shelf"><label>Объект</label><input name="object_name" class="ref-input" data-kind="object" list="ref-object" required><label>Тип оборудования</label><input name="equipment_type" class="ref-input" data-kind="equipment_type" list="ref-equipment_type"><label>Тип компонента</label><input name="component_type" class="ref-input" data-kind="component_type" list="ref-component_type"><label>Тип кабеля</label><input name="cable_type" class="ref-input" data-kind="cable_type" list="ref-cable_type"><label>Единица учета</label><input name="unit" class="ref-input" data-kind="unit" list="ref-unit" value="шт" required></form><input class="scanner-input" id="receiptScanner" placeholder="Сканируйте S/N или QR" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th>S/N</th><th>Результат проверки</th><th></th></tr></thead><tbody id="scanReceiptBody"><tr><td class="scanner-empty" colspan="3">Список сканирования пуст</td></tr></tbody></table></div><div class="actions" style="margin-top:14px"><button class="button primary" id="confirmScanReceipts" disabled>Принять всё на склад</button></div></div>'''
 ISSUE_SCANNER_HTML = '''<div class="scanner-box"><h2>Списание сканером</h2><p class="hint">Сканер работает как клавиатура. Неизвестные S/N отмечаются и после подтверждения попадают в проблемные строки.</p><form class="form" id="scanIssueForm"><label>Дата</label><input name="issue_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Тип задачи</label><select name="task_type" id="scanIssueTaskType" required></select><label>Номер задачи</label><input name="task_number" required><label>S/N целевого оборудования</label><input name="target_serial_number"><label>Hostname</label><input name="target_hostname"><label>Комментарий</label><textarea name="comment"></textarea></form><input class="scanner-input" id="issueScanner" placeholder="Сканируйте S/N списываемого оборудования" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th>S/N</th><th>Наименование</th><th>Модель</th><th>Полка</th><th>Остаток</th><th>Результат</th><th></th></tr></thead><tbody id="scanIssueBody"><tr><td class="scanner-empty" colspan="7">Список сканирования пуст</td></tr></tbody></table></div><div class="actions" style="margin-top:14px"><button class="button primary" id="confirmScanIssues" disabled>Списать всё</button></div></div>'''
 SCANNER_SCRIPT = r'''
@@ -374,13 +384,16 @@ DELIVERY_JS = r'''
 let currentDelivery=0;
 function renderWarehouseCategories(){const target=document.getElementById('warehouseCategories');if(target)target.innerHTML=(state.warehouse_categories||[]).map((x,i)=>`<div class="card" style="border-top:4px solid ${['#2563eb','#0ea5e9','#8b5cf6','#14b8a6','#f59e0b','#64748b'][i]}"><span>${esc(x.name)}</span><strong>${Number(x.quantity).toLocaleString('ru-RU')}</strong></div>`).join('')}
 async function loadDeliveries(){try{const q=document.getElementById('deliverySearch')?.value||'';const rows=q?(await request('/api/deliveries?query='+encodeURIComponent(q))).deliveries:(state.deliveries||[]);document.getElementById('deliveryList').innerHTML=rows.map(x=>`<tr><td>${esc(x.delivery_number||'Без номера')}</td><td>${esc(x.supplier)}</td><td>${esc(x.source_filename)}</td><td><span class="badge">${esc(x.status)}</span></td><td>${x.accepted||0} из ${x.total||0}</td><td>${x.problems||0}</td><td><button class="button primary" onclick="openDelivery(${x.id})">Открыть поставку</button></td></tr>`).join('')||'<tr><td class="empty" colspan="7">Поставок пока нет</td></tr>'}catch(e){notify(e.message,true)}}
-async function openDelivery(id){try{currentDelivery=id;const r=await request('/api/delivery?id='+id),d=r.delivery;document.getElementById('deliveryCard').innerHTML=`<div class="box"><div class="modal-head"><div><h2>Поставка ${esc(d.delivery_number||'#'+d.id)}</h2><p class="hint">${esc(d.supplier)} · ${esc(d.status)}</p></div><div><a class="button" href="/export/delivery.csv?id=${id}">Скачать результат</a> <button class="button" onclick="closeDelivery(${id})">Закрыть поставку</button></div></div><div class="box" style="margin-bottom:14px;background:#eff6ff"><h3>Приемка сканером</h3><input id="deliveryScanner" style="width:100%;font-size:22px;padding:15px;border:2px solid #2563eb;border-radius:9px" placeholder="Сканируйте S/N или QR" onkeydown="if(event.key==='Enter'){event.preventDefault();scanDelivery()}"></div><div class="import-actions" style="margin-bottom:10px"><select id="deliveryFillField"><option value="datacenter">ЦОД</option><option value="shelf">Стеллаж/полка</option><option value="object_name">Объект</option><option value="equipment_type">Тип оборудования</option><option value="component_type">Тип компонента</option><option value="cable_type">Тип кабеля</option><option value="vendor">Вендор</option><option value="model">Модель</option><option value="item_name">Наименование</option></select><input id="deliveryFillValue" placeholder="Значение"><button class="button" onclick="fillDelivery(false)">Заполнить выбранные строки</button><button class="button" onclick="fillDelivery(true)">Заполнить пустые ниже этим значением</button></div><div class="table-wrap"><table><thead><tr><th></th><th>S/N</th><th>Состояние</th><th>Наименование</th><th>Модель</th><th>Вендор</th><th>ЦОД</th><th>Полка</th><th>Объект</th><th>Тип</th><th>Кол-во</th></tr></thead><tbody id="deliveryLines">${r.lines.map(x=>`<tr><td><input class="delivery-check" type="checkbox" value="${x.id}"></td><td>${esc(x.serial_number)}</td><td>${esc(x.state)}${x.error_text?' · '+esc(x.error_text):''}</td><td>${esc(x.item_name)}</td><td>${esc(x.model)}</td><td>${esc(x.vendor)}</td><td>${esc(x.datacenter)}</td><td>${esc(x.shelf)}</td><td>${esc(x.object_name)}</td><td>${esc(x.equipment_type||x.component_type||x.cable_type)}</td><td>${x.quantity}</td></tr>`).join('')}</tbody></table></div></div>`;document.getElementById('deliveryScanner').focus()}catch(e){notify(e.message,true)}}
-async function scanDelivery(){const input=document.getElementById('deliveryScanner'),serial=input.value.trim();if(!serial)return;try{if(!confirm(`Принять S/N ${serial} на склад? Данные строки можно исправить в таблице перед приемкой.`)){input.value='';return}let r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial});if(!r.found&&confirm('S/N не найден в поставке. Принять как внеплановую позицию?'))r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial,unplanned:true});if(r.accepted){notify('Позиция принята на склад');input.value='';await loadAll();await openDelivery(currentDelivery)}else notify('Позиция пропущена')}catch(e){notify(e.message,true)}}
+async function openDelivery(id){try{currentDelivery=id;const r=await request('/api/delivery?id='+id),d=r.delivery,summary={total:r.lines.length,accepted:r.lines.filter(x=>x.state==='Принято').length,existing:r.lines.filter(x=>x.state==='Уже на складе').length,errors:r.lines.filter(x=>['Ошибка','Дубль в файле'].includes(x.state)).length,waiting:r.lines.filter(x=>x.state==='Ожидается').length};document.getElementById('deliveryCard').innerHTML=`<div class="box"><div class="modal-head"><div><h2>Поставка ${esc(d.delivery_number||'#'+d.id)}</h2><p class="hint">${esc(d.supplier)} · ${esc(d.status)}</p></div><div><a class="button" href="/export/delivery.csv?id=${id}">Скачать результат</a> <button class="button" onclick="closeDelivery(${id})">Закрыть поставку</button></div></div><div class="cards" style="margin-bottom:14px">${[['Всего',summary.total],['Принято',summary.accepted],['Уже на складе',summary.existing],['Ошибки',summary.errors],['Ожидается',summary.waiting]].map(([k,v])=>`<div class="card"><span>${k}</span><strong>${v}</strong></div>`).join('')}</div><div class="box" style="margin-bottom:14px;background:#eff6ff"><h3>Приемка сканером</h3><input id="deliveryScanner" style="width:100%;font-size:22px;padding:15px;border:2px solid #2563eb;border-radius:9px" placeholder="Сканируйте S/N или QR" onkeydown="if(event.key==='Enter'){event.preventDefault();scanDelivery()}"><div id="deliveryScanResult" class="hint" style="margin-top:10px"></div></div><div class="import-actions" style="margin-bottom:10px"><select id="deliveryFillField"><option value="datacenter">ЦОД</option><option value="shelf">Стеллаж/полка</option><option value="object_name">Объект</option><option value="equipment_type">Тип оборудования</option><option value="component_type">Тип компонента</option><option value="cable_type">Тип кабеля</option><option value="vendor">Вендор</option><option value="model">Модель</option><option value="item_name">Наименование</option></select><input id="deliveryFillValue" placeholder="Значение"><button class="button" onclick="fillDelivery(false)">Заполнить выбранные строки</button><button class="button" onclick="fillDelivery(true)">Заполнить пустые ниже этим значением</button><button class="button primary" onclick="acceptSelectedDelivery()">Принять выбранные строки</button></div><div class="table-wrap"><table><thead><tr><th></th><th>S/N</th><th>Состояние</th><th>Наименование</th><th>Модель</th><th>Вендор</th><th>ЦОД</th><th>Полка</th><th>Объект</th><th>Тип</th><th>Кол-во</th></tr></thead><tbody id="deliveryLines">${r.lines.map(x=>`<tr><td><input class="delivery-check" type="checkbox" value="${x.id}" ${x.state==='Принято'?'disabled':''}></td><td>${esc(x.serial_number)}</td><td>${esc(x.state)}${x.error_text?' · '+esc(x.error_text):''}</td><td>${esc(x.item_name)}</td><td>${esc(x.model)}</td><td>${esc(x.vendor)}</td><td>${esc(x.datacenter)}</td><td>${esc(x.shelf)}</td><td>${esc(x.object_name)}</td><td>${esc(x.equipment_type||x.component_type||x.cable_type)}</td><td>${x.quantity}</td></tr>`).join('')}</tbody></table></div></div>`;document.getElementById('deliveryScanner').focus()}catch(e){notify(e.message,true)}}
+function selectedDeliveryLineIds(){return [...document.querySelectorAll('.delivery-check:checked')].map(x=>Number(x.value))}
+function promptUnplannedValues(serial){const supplier=prompt(`Поставщик для ${serial}`,'');if(!supplier)return null;const vendor=prompt('Вендор','');if(!vendor)return null;const model=prompt('Модель','')||'';const equipment_type=prompt('Тип оборудования или компонента','');if(!equipment_type)return null;const project=prompt('Проект','')||'';const datacenter=prompt('ЦОД','Ixcellerate');if(!datacenter)return null;const shelf=prompt('Стеллаж/полка','');if(!shelf)return null;const item_name=[equipment_type,vendor,model].filter(Boolean).join(' ');return{supplier,vendor,model,equipment_type,project,datacenter,shelf,item_name}}
+async function scanDelivery(){const input=document.getElementById('deliveryScanner'),serial=input.value.trim(),box=document.getElementById('deliveryScanResult');if(!serial)return;try{const info=await actionJson({action:'INSPECT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial});box.innerHTML=`S/N ${esc(info.serial_number)} · ${info.found_in_delivery?'найден в документе':'не найден в документе'} · ${info.exists_in_warehouse?'уже на складе':'новый'}`;let r=null;if(info.allowed_actions.includes('blocked_already_accepted'))throw new Error('Этот S/N уже принят');if(info.allowed_actions.includes('accept_new')){if(!confirm(`Принять S/N ${info.serial_number} на склад?`)){input.value='';input.focus();return}r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial})}else if(info.allowed_actions.includes('fill_empty_existing')){const conflicts=Object.keys(info.conflicting_fields||{});if(!confirm(`S/N уже есть на складе. Дополнить только пустые поля?${conflicts.length?' Конфликты не будут перезаписаны: '+conflicts.join(', '):''}`)){input.value='';input.focus();return}r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial})}else if(info.allowed_actions.includes('accept_unplanned')){if(!confirm('S/N не найден в поставке. Принять как внеплановую позицию?')){input.value='';input.focus();return}const values=promptUnplannedValues(info.serial_number);if(!values){input.value='';input.focus();return}r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial,unplanned:true,values})}if(r&&r.accepted){notify('Позиция обработана');input.value='';await loadAll();await openDelivery(currentDelivery)}else notify('Позиция пропущена')}catch(e){notify(e.message,true);input.focus()}}
+async function acceptSelectedDelivery(){const ids=selectedDeliveryLineIds();if(!ids.length)return notify('Выберите строки',true);try{const r=await actionJson({action:'ACCEPT_DELIVERY_BATCH',delivery_id:currentDelivery,line_ids:ids,common_values:{}});notify(`Принято: ${r.accepted_new||0}, связано: ${r.linked_existing||0}`);await loadAll();await openDelivery(currentDelivery)}catch(e){notify(e.message,true)}}
 async function fillDelivery(only_empty){const ids=[...document.querySelectorAll('.delivery-check:checked')].map(x=>Number(x.value)),field=document.getElementById('deliveryFillField').value,value=document.getElementById('deliveryFillValue').value;try{await actionJson({action:'UPDATE_DELIVERY_LINES',delivery_id:currentDelivery,line_ids:ids,values:{[field]:value},only_empty});notify('Строки обновлены');await openDelivery(currentDelivery)}catch(e){notify(e.message,true)}}
 async function saveDeliveryCell(line_id,field,value){try{await actionJson({action:'UPDATE_DELIVERY_LINES',delivery_id:currentDelivery,line_ids:[line_id],values:{[field]:value}});notify('Ячейка сохранена')}catch(e){notify(e.message,true)}}
 async function closeDelivery(id){if(!confirm('Закрыть поставку? Приемка после закрытия будет недоступна.'))return;try{await actionJson({action:'CLOSE_DELIVERY',delivery_id:id});await loadAll();await loadDeliveries();document.getElementById('deliveryCard').innerHTML=''}catch(e){notify(e.message,true)}}
 async function actionJson(data){return request('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})}
-document.getElementById('deliveryCsv').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const r=await request('/api/preview-csv?kind=delivery',{method:'POST',headers:{'Content-Type':'text/csv','X-Filename':encodeURIComponent(file.name)},body:file});const stats=[['Новых будет добавлено',r.new],['Существующих будет дополнено',r.updated],['Дубли',r.duplicates],['Ошибки',r.errors]];document.getElementById('deliveryPreview').innerHTML=`<div class="box"><h3>Проверка файла</h3><div class="cards">${stats.map(([name,value])=>`<div class="card"><span>${name}</span><strong>${value||0}</strong></div>`).join('')}</div>${r.unknown_columns.length?`<p class="hint">Нераспознанные столбцы: ${r.unknown_columns.map(esc).join(', ')}</p>`:'<p class="hint">Все столбцы распознаны.</p>'}<div style="margin-top:12px"><button class="button primary" ${r.can_confirm?'':'disabled'} onclick="confirmDelivery('${r.preview_id}')">Подтвердить импорт</button></div></div>`}catch(x){notify(x.message,true)}finally{e.target.value=''}};
+document.getElementById('deliveryCsv').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const r=await request('/api/preview-csv?kind=delivery',{method:'POST',headers:{'Content-Type':'text/csv','X-Filename':encodeURIComponent(file.name)},body:file}),s=r.summary||{};const stats=[['Строк файла',s.source_rows??r.total],['Получено S/N',s.serials??r.total],['Новые S/N',s.new_serials??r.new],['Уже на складе',s.existing_stock??r.updated],['Дубли',s.duplicates??r.duplicates],['Без S/N',s.rows_without_serial??0],['Ошибки',s.errors??r.errors],['Предупреждения',s.warnings??0]];document.getElementById('deliveryPreview').innerHTML=`<div class="box"><h3>Проверка файла</h3><div class="cards">${stats.map(([name,value])=>`<div class="card"><span>${name}</span><strong>${value||0}</strong></div>`).join('')}</div>${r.unknown_columns.length?`<p class="hint">Нераспознанные столбцы: ${r.unknown_columns.map(esc).join(', ')}</p>`:'<p class="hint">Все столбцы распознаны.</p>'}<div style="margin-top:12px"><button class="button primary" ${r.can_confirm?'':'disabled'} onclick="confirmDelivery('${r.preview_id}')">Подтвердить импорт</button></div></div>`}catch(x){notify(x.message,true)}finally{e.target.value=''}};
 async function confirmDelivery(preview_id){try{const r=await actionJson({action:'CONFIRM_DELIVERY',preview_id});notify('Поставка загружена');document.getElementById('deliveryPreview').innerHTML='';await loadAll();await loadDeliveries();await openDelivery(r.delivery_id)}catch(e){notify(e.message,true)}}
 '''
 for _field in ("item_name", "model", "vendor", "datacenter", "shelf", "object_name"):
@@ -485,7 +498,7 @@ HTML = HTML.replace('</style></head>', r'''
 # smoke checks. They are attributes only and are never shown to users.
 HTML = HTML.replace(
     '<body>',
-    '<body data-ui-labels="Склад Ixcellerate | Скачать баланс | Предпросмотр файла | Создать резервную копию | Загрузить базу">'
+    '<body data-ui-labels="Склад Ixcellerate | Скачать баланс | Предпросмотр файла | Создать резервную копию | Загрузить базу | Сохранить отчет | + Добавить задачу">'
     '<div class="interface-error" id="interfaceError" hidden></div><script>'
     "function showInterfaceError(error){var box=document.getElementById('interfaceError');"
     "if(!box)return;var text=error&&(error.message||error.reason&&error.reason.message||error.reason||error);"
@@ -511,7 +524,7 @@ const TYPE_VENDORS={
 function refsOf(kind){return state.references.filter(x=>x.kind===kind&&x.is_active).map(x=>x.name)}
 function setOptions(select,values,placeholder='Выберите'){select.innerHTML=option('',placeholder)+values.map(x=>option(x)).join('')}
 function receiptCategoryChanged(){const f=document.getElementById('simpleReceiptForm'),category=f.category.value;setOptions(f.item_type,RECEIPT_TYPES[category]||[]);f.item_type.disabled=!category;updateReceiptFields()}
-function updateReceiptFields(){const f=document.getElementById('simpleReceiptForm'),category=f.category.value,type=f.item_type.value,isCable=category==='Кабели';setOptions(f.vendor,TYPE_VENDORS[type]||(isCable?['Не указан']:refsOf('vendor').concat('Другое')),'Не указан');f.vendor.value=isCable?'Не указан':'';f.vendor.closest('.ux-field').hidden=isCable;f.serial_number.closest('.ux-field').hidden=isCable;f.inventory_number.closest('.ux-field').hidden=isCable;f.quantity.closest('.ux-field').hidden=!isCable;f.serial_number.required=!isCable;f.quantity.value=isCable?f.quantity.value||1:1;updateReceiptSuggestions()}
+function updateReceiptFields(){const f=document.getElementById('simpleReceiptForm'),category=f.category.value,type=f.item_type.value,isCable=category==='Кабели';setOptions(f.vendor,TYPE_VENDORS[type]||(isCable?['Не указан']:refsOf('vendor').concat('Другое')),'Не указан');f.vendor.value=isCable?'Не указан':'';f.vendor.closest('.ux-field').hidden=isCable;f.model.closest('.ux-field').hidden=isCable;f.serial_number.closest('.ux-field').hidden=isCable;f.inventory_number.closest('.ux-field').hidden=isCable;f.quantity.closest('.ux-field').hidden=!isCable;f.serial_number.required=!isCable;f.quantity.value=isCable?f.quantity.value||1:1;updateReceiptSuggestions()}
 function updateReceiptSuggestions(){const f=document.getElementById('simpleReceiptForm'),type=selectedOrCustom(f.item_type,f.custom_type),vendor=selectedOrCustom(f.vendor,f.custom_vendor),model=f.model.value.trim();const rows=(state.recent_receipts||[]).filter(x=>(!type||(x.equipment_type||x.component_type||x.cable_type)===type)&&(!vendor||vendor==='Не указан'||x.vendor===vendor));const models=[...new Set(rows.map(x=>x.model).filter(Boolean))],names=[...new Set(rows.filter(x=>!model||x.model===model).map(x=>x.item_name).filter(Boolean))];for(const [id,values] of [['ref-model',[...models,...refsOf('model')]],['ref-item_name',[...names,...refsOf('item_name')]]]){let list=document.getElementById(id);if(!list){list=document.createElement('datalist');list.id=id;document.body.appendChild(list)}list.innerHTML=[...new Set(values)].map(x=>option(x)).join('')}}
 function selectedOrCustom(select,custom){return select.value==='Другое'?(custom.value.trim()||'Другое'):select.value}
 function toggleCustom(select,custom){custom.hidden=select.value!=='Другое';if(!custom.hidden)custom.focus()}
@@ -624,6 +637,32 @@ HTML = HTML.replace('</style></head>', r'''
 .top-brand{border:0;background:transparent;cursor:pointer;color:var(--text)}.kpi-card{cursor:pointer;text-align:left}.kpi-card.active{border-color:var(--blue);background:#eaf1ff;box-shadow:0 0 0 2px #bfdbfe}.kpi-card b{display:block;font-size:22px;color:var(--blue)}.reset-balance{align-self:center}.active-drafts{position:fixed;z-index:30;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:10px;padding:10px;border:1px solid #bfdbfe;border-radius:12px;background:#fff;box-shadow:0 12px 35px #17203333}.active-drafts[hidden]{display:none}.active-drafts div{display:flex;align-items:center;gap:10px}.active-drafts span{color:var(--muted)}.active-drafts button{padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer}
 </style></head>''', 1)
 
+
+def _externalized_html(html: str) -> str:
+    css_link = '<link rel="stylesheet" href="/static/css/main.css">'
+    script_tags = "".join(
+        f'<script src="/static/js/{name}"></script>'
+        for name in (
+            "components.js", "core.js", "api.js", "router.js", "ui.js",
+            "components/buttons.js", "components/cards.js", "components/tables.js",
+            "components/forms.js", "components/dialogs.js", "components/notifications.js",
+            "core/context.js", "core/errors.js", "core/api.js", "core/router.js", "core/app.js",
+            "warehouse/index.js", "warehouse/balance.js", "warehouse/history.js",
+            "warehouse/receipt.js", "warehouse/issue.js", "warehouse/deliveries.js", "warehouse/inventory.js",
+            "reports/index.js", "reports/work_logs.js", "reports/daily.js", "reports/weekly.js",
+            "monitoring/index.js",
+            "administration/index.js", "administration/profile.js", "administration/users.js",
+            "administration/backup.js", "administration/diagnostics.js",
+        )
+    )
+    html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+    html = html.replace("</head>", f"{css_link}</head>", 1)
+    html = re.sub(r"<script>.*?</script>", "", html, flags=re.S)
+    return html.replace("</body>", f"{script_tags}</body>", 1)
+
+
+HTML = _externalized_html(HTML)
+
 WORK_LOG_HEADERS = {
     "work_date": "Дата", "task_source": "Источник задачи", "task_type": "Тип задачи",
     "task_number": "Номер задачи", "description": "Описание работы",
@@ -706,15 +745,24 @@ def csv_download_bytes(rows: list[dict[str, Any]], delimiter: str = ";") -> byte
     return ("\ufeff" + buffer.getvalue()).encode("utf-8")
 
 
-def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
+def make_handler(application: WarehouseService | ApplicationContext) -> type[BaseHTTPRequestHandler]:
+    app_context = ensure_application_context(application)
+    service = app_context.service_adapter()
     sessions: dict[str, dict[str, str]] = {}
     sessions_lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
+            path = urlparse(self.path).path
+            if path == "/favicon.ico":
+                self._send(204, b"", "image/x-icon")
+                return
+            if path.startswith("/static/"):
+                self._send_static(path)
+                return
             email = self._session_email()
             if not email:
-                if urlparse(self.path).path == "/":
+                if path == "/":
                     self._send(200, LOGIN_HTML.encode("utf-8"), "text/html; charset=utf-8")
                 else:
                     self._send_json(401, {"error": "Требуется вход"})
@@ -731,9 +779,11 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
             try:
                 if path == "/":
                     self._send(200, HTML.encode("utf-8"), "text/html; charset=utf-8")
+                elif path.startswith("/static/"):
+                    self._send_static(path)
                 elif path == "/api/data":
-                    problems = service.data_quality_problems()
-                    current_user = service.current_user()
+                    warehouse_data = app_context.warehouse.get_overview()
+                    current_user = app_context.administration.current_user()
                     if self._session_author():
                         parts = self._session_author().split(maxsplit=1)
                         current_user = {
@@ -744,88 +794,72 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                             "role": "engineer",
                             "must_change_password": 0,
                         }
-                    self._send_json(200, {
-                        "stats": service.dashboard_stats(), "equipment": service.equipment(),
-                        "operations": service.operation_log(limit=100),
-                        "categories": service.reference_data("categories"),
-                        "locations": service.reference_data("locations"),
+                    self._send_json(200, {**warehouse_data,
                         "task_sources": list(service.TASK_SOURCES),
                         "task_types": list(service.TASK_TYPES),
                         "work_log_statuses": list(service.WORK_LOG_STATUSES),
-                        "references": service.references(),
-                        "reference_kinds": service.REFERENCE_KINDS,
-                        "balance": service.stock_balance(),
-                        "recent_receipts": service.stock_receipts()[:20],
-                        "problems": {key: rows[:200] for key, rows in problems.items()},
-                        "problem_counts": {key: len(rows) for key, rows in problems.items()},
-                        "daily_report_uploads": service.daily_report_uploads(),
+                        "daily_report_uploads": app_context.reports.daily_report_uploads(),
                         "current_user": current_user,
-                        "deliveries": service.deliveries(),
-                        "warehouse_categories": service.warehouse_categories(),
-                        "warehouse_history": service.warehouse_history(),
                     })
                 elif path == "/api/delivery":
-                    self._send_json(200, service.delivery(int(self._query(query, "id") or "0")))
+                    self._send_json(200, app_context.warehouse.get_delivery(int(self._query(query, "id") or "0")))
                 elif path == "/api/deliveries":
-                    self._send_json(200, {"deliveries": service.deliveries(self._query(query, "query"))})
+                    self._send_json(200, {"deliveries": app_context.warehouse.list_deliveries(self._query(query, "query"))})
                 elif path == "/api/work-logs":
-                    self._send_json(200, {"logs": service.work_logs(
-                        self._query(query, "date_from"), self._query(query, "date_to")
-                    )})
+                    self._send_json(200, {"logs": app_context.reports.list_work_logs({
+                        "date_from": self._query(query, "date_from"),
+                        "date_to": self._query(query, "date_to"),
+                    })})
                 elif path == "/api/daily-report":
-                    self._send_json(200, {"rows": service.daily_report(
+                    self._send_json(200, {"rows": app_context.reports.get_daily_report(
                         self._query(query, "date")
                     )})
                 elif path == "/api/balance":
-                    self._send_json(200, {"rows": service.stock_balance(**self._balance_filters(query))})
+                    self._send_json(200, {"rows": app_context.warehouse.get_balance(self._balance_filters(query))})
                 elif path == "/api/position-search":
-                    self._send_json(200, {"rows": service.search_stock_positions(
+                    self._send_json(200, {"rows": app_context.warehouse.search_warehouse(
                         self._query(query, "query")
                     )})
                 elif path == "/api/scan-serial":
                     kind = self._query(query, "kind")
                     serial = self._query(query, "serial_number")
                     if kind == "receipt":
-                        self._send_json(200, service.scan_receipt_serial(serial))
+                        self._send_json(200, app_context.warehouse.validate_receipt_serial(serial))
                     elif kind == "issue":
-                        self._send_json(200, service.scan_issue_serial(serial))
+                        self._send_json(200, app_context.warehouse.validate_issue_serial(serial))
                     else:
                         raise WarehouseError("Неизвестный режим сканирования")
                 elif path == "/api/position-card":
-                    self._send_json(200, service.position_card(
-                        serial_number=self._query(query, "serial_number"),
-                        item_name=self._query(query, "item_name"),
-                        cable_type=self._query(query, "cable_type"),
-                        project=self._query(query, "project"),
-                        datacenter=self._query(query, "datacenter"),
-                    ))
+                    self._send_json(200, app_context.warehouse.get_position_card({
+                        "serial_number": self._query(query, "serial_number"),
+                        "item_name": self._query(query, "item_name"),
+                        "cable_type": self._query(query, "cable_type"),
+                        "project": self._query(query, "project"),
+                        "datacenter": self._query(query, "datacenter"),
+                    }))
                 elif path == "/api/weekly-report":
-                    self._send_json(200, service.weekly_report(
+                    self._send_json(200, app_context.reports.get_weekly_report(
                         self._query(query, "start_date"), self._query(query, "end_date")
                     ))
                 elif path == "/api/admin":
                     self._require_admin_session()
-                    self._send_json(200, {
-                        "backups": service.list_backups(),
-                        "audit": service.audit_entries(),
-                        "users": service.users(),
-                    })
+                    self._send_json(200, app_context.administration.get_administration_overview())
                 elif path == "/api/uploaded-daily-report":
-                    self._send_json(200, {"rows": service.uploaded_daily_report(
+                    self._send_json(200, {"rows": app_context.reports.get_uploaded_report(
                         int(self._query(query, "id") or "0")
                     )})
                 elif path == "/export/stock.csv":
-                    self._send_csv("equipment_stock.csv", service.equipment())
+                    self._send_csv("equipment_stock.csv", app_context.warehouse.get_inventory_view())
                 elif path == "/export/log.csv":
-                    self._send_csv("operation_log.csv", service.operation_log(limit=None))
+                    self._send_csv("operation_log.csv", app_context.warehouse.get_warehouse_history_legacy())
                 elif path == "/export/receipt.csv":
                     self._send_csv(
                         "receipt_operations.csv",
-                        _localized(service.stock_receipts(), RECEIPT_HEADERS),
+                        _localized(app_context.warehouse.receipts(), RECEIPT_HEADERS),
                     )
                 elif path == "/export/receipt-current.csv":
-                    rows = service.import_preview_rows(
-                        "receipt", self._query(query, "preview_id")
+                    rows = app_context.warehouse.receipt_import_preview_rows(
+                        self._query(query, "preview_id")
                     )
                     ode = self._query(query, "format") == "ode"
                     self._send_csv(
@@ -836,7 +870,7 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                 elif path == "/export/issue.csv":
                     self._send_csv(
                         "issue_operations.csv",
-                        _localized(service.stock_issue_rows(), ISSUE_HEADERS),
+                        _localized(app_context.warehouse.issue_rows(), ISSUE_HEADERS),
                     )
                 elif path == "/export/issue-current.csv":
                     rows = service.import_preview_rows(
@@ -849,7 +883,7 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                         delimiter="," if ode else ";",
                     )
                 elif path == "/export/problem-issues.csv":
-                    rows = service.data_quality_problems()["unmatched_issues"]
+                    rows = app_context.warehouse.get_problem_issues()
                     self._send_csv("problem_issues.csv", _localized(rows, {
                         "date": "Дата", "serial_number": "S/N", "item_name": "Наименование",
                         "cable_type": "Тип кабеля", "quantity": "Количество",
@@ -858,35 +892,36 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                         "comment": "Комментарий",
                     }))
                 elif path == "/export/work-logs.csv":
-                    rows = service.work_logs(
-                        self._query(query, "date_from"), self._query(query, "date_to")
-                    )
+                    rows = app_context.reports.export_work_logs_rows({
+                        "date_from": self._query(query, "date_from"),
+                        "date_to": self._query(query, "date_to"),
+                    })
                     self._send_csv("work_logs.csv", _localized(rows, WORK_LOG_HEADERS))
                 elif path == "/export/daily-report.csv":
-                    rows = service.daily_report(self._query(query, "date"))
+                    rows = app_context.reports.export_daily_report_rows(self._query(query, "date"))
                     self._send_csv("daily_report.csv", _localized(rows, REPORT_HEADERS))
                 elif path == "/export/uploaded-daily-report.csv":
-                    rows = service.uploaded_daily_report(int(self._query(query, "id") or "0"))
+                    rows = app_context.reports.export_uploaded_report_rows(int(self._query(query, "id") or "0"))
                     self._send_csv("uploaded_daily_report.csv", _localized(rows, REPORT_HEADERS))
                 elif path == "/export/balance.csv":
-                    rows = service.stock_balance(**self._balance_filters(query))
+                    rows = app_context.warehouse.export_balance_rows(self._balance_filters(query))
                     self._send_csv("stock_balance.csv", _localized(rows, BALANCE_HEADERS))
                 elif path == "/export/weekly-report.csv":
-                    self._send_csv("period_report.csv", service.weekly_report_rows(
+                    self._send_csv("period_report.csv", app_context.reports.export_weekly_report_rows(
                         self._query(query, "start_date"), self._query(query, "end_date")
                     ))
                 elif path == "/export/audit.csv":
-                    rows = service.audit_entries(limit=5000)
+                    rows = app_context.administration.list_audit_entries(limit=5000)
                     self._send_csv("action_log.csv", _localized(rows, {
                         "event_date": "Дата и время", "author": "Пользователь",
                         "action": "Действие", "entity_type": "Раздел",
                         "entity_id": "Запись", "details": "Подробности",
                     }))
                 elif path == "/export/delivery.csv":
-                    delivery = service.delivery(int(self._query(query, "id") or "0"))
-                    self._send_csv("delivery_result.csv", delivery["lines"])
+                    rows = app_context.warehouse.export_delivery_rows(int(self._query(query, "id") or "0"))
+                    self._send_csv("delivery_result.csv", rows)
                 elif path == "/import/delivery-template.csv":
-                    self._send_template("delivery_template.csv", USER_CSV_TEMPLATES["delivery"])
+                    self._send_template("delivery_template.csv", app_context.warehouse.get_delivery_import_template())
                 elif path == "/import/equipment-template.csv":
                     self._send_template("equipment_import_template.csv", USER_CSV_TEMPLATES["equipment"])
                 elif path == "/import/receipt-template.csv":
@@ -965,56 +1000,101 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                 elif action == "ADD":
                     service.add_equipment(data.get("category", ""), data.get("model", ""), data.get("serial_number", ""), data.get("inventory_number", ""), data.get("location_code", ""), int(data.get("quantity", 0)), "Создание карточки", "Кладовщик № 1", "", data.get("datacenter", "Ixcellerate"))
                 elif action == "WORK_LOG":
-                    service.add_work_log(data.get("work_date", ""), data.get("task_source", ""), data.get("task_type", ""), data.get("task_number", ""), data.get("description", ""), data.get("status", ""), data.get("comment", ""))
+                    app_context.reports.create_work_log({
+                        "work_date": data.get("work_date", ""),
+                        "task_source": data.get("task_source", ""),
+                        "task_type": data.get("task_type", ""),
+                        "task_number": data.get("task_number", ""),
+                        "description": data.get("description", ""),
+                        "status": data.get("status", ""),
+                        "comment": data.get("comment", ""),
+                    })
                 elif action == "WORK_LOGS":
-                    response["saved"] = service.add_work_logs(data.get("rows", []))
+                    response["saved"] = app_context.reports.create_work_logs(data.get("rows", []))
                 elif action == "STOCK_RECEIPT":
-                    service.add_stock_receipt(**data)
+                    if app_context.warehouse._is_cable_receipt(data):
+                        app_context.warehouse.create_cable_receipt(data)
+                    else:
+                        app_context.warehouse.create_receipt(data)
                 elif action == "STOCK_ISSUE":
-                    service.add_stock_issue(**data)
+                    if app_context.warehouse._is_cable_issue(data):
+                        app_context.warehouse.create_cable_issue(data)
+                    else:
+                        app_context.warehouse.create_issue(data)
                 elif action == "CONFIRM_SCANNED_RECEIPTS":
-                    response["imported"] = service.confirm_scanned_receipts(
+                    response["imported"] = app_context.warehouse.confirm_scanned_receipts(
                         data.get("common_fields", {}), data.get("serial_numbers", [])
                     )
                 elif action == "CONFIRM_SCANNED_ISSUES":
-                    response.update(service.confirm_scanned_issues(
+                    response.update(app_context.warehouse.create_issue_by_serials(
                         data.get("common_fields", {}), data.get("serial_numbers", [])
                     ))
                 elif action == "CONFIRM_IMPORT_PREVIEW":
                     kind = data.get("kind", "")
                     if kind == "receipt":
-                        response["imported"] = service.confirm_stock_receipt_preview(
+                        response["imported"] = app_context.warehouse.confirm_receipt_import(
                             data.get("preview_id", "")
                         )
                     elif kind == "issue":
-                        response["imported"] = service.confirm_stock_issue_preview(
+                        response["imported"] = app_context.warehouse.confirm_issue_import(
                             data.get("preview_id", "")
                         )
                     elif kind == "work_logs":
-                        response["imported"] = service.confirm_work_log_preview(
+                        response["imported"] = app_context.reports.confirm_work_log_import(
                             data.get("preview_id", "")
                         )
+                    elif kind == "daily_report":
+                        result = app_context.reports.confirm_daily_report_import(
+                            data.get("preview_id", "")
+                        )
+                        response["imported"] = result["row_count"]
+                        response["upload_id"] = result["id"]
                     else:
                         raise WarehouseError("Неизвестный тип подтверждения")
                 elif action == "CONFIRM_BULK_ISSUE":
-                    response["imported"] = service.confirm_bulk_issue_preview(
+                    response["imported"] = app_context.warehouse.confirm_bulk_issue_preview(
                         data.get("preview_id", ""), data.get("issue_date", ""),
                         data.get("responsible", ""), data.get("task_type", ""),
                         data.get("task_number", ""), data.get("comment", ""),
                         data.get("target_serial_number", ""),
                     )
                 elif action == "CONFIRM_DELIVERY":
-                    response["delivery_id"] = service.confirm_delivery_preview(data.get("preview_id", ""))
+                    response["delivery_id"] = app_context.warehouse.confirm_delivery_import(
+                        data.get("preview_id", "")
+                    )
                 elif action == "UPDATE_DELIVERY_LINES":
-                    response["changed"] = service.update_delivery_lines(
+                    response["changed"] = app_context.warehouse.update_delivery_line_metadata(
                         int(data.get("delivery_id", 0)), data.get("line_ids", []),
                         data.get("values", {}), only_empty=bool(data.get("only_empty")),
                     )
-                elif action == "ACCEPT_DELIVERY_SERIAL":
-                    response.update(service.accept_delivery_serial(
+                elif action == "INSPECT_DELIVERY_SERIAL":
+                    response.update(app_context.warehouse.inspect_delivery_serial(
                         int(data.get("delivery_id", 0)), data.get("serial_number", ""),
-                        data.get("values", {}), unplanned=bool(data.get("unplanned")),
                     ))
+                elif action == "ACCEPT_DELIVERY_SERIAL":
+                    if bool(data.get("unplanned")):
+                        response.update(app_context.warehouse.accept_unplanned_delivery_serial(
+                            int(data.get("delivery_id", 0)), data.get("serial_number", ""),
+                            data.get("values", {}),
+                        ))
+                    else:
+                        response.update(app_context.warehouse.accept_delivery_serial(
+                            int(data.get("delivery_id", 0)), data.get("serial_number", ""),
+                            data.get("values", {}),
+                        ))
+                elif action == "ACCEPT_DELIVERY_BATCH":
+                    response.update(app_context.warehouse.accept_delivery_batch(
+                        int(data.get("delivery_id", 0)), data.get("line_ids", []),
+                        data.get("common_values", {}),
+                    ))
+                elif action == "DELIVERY_ACCEPTANCE_SUMMARY":
+                    response["summary"] = app_context.warehouse.get_delivery_acceptance_summary(
+                        int(data.get("delivery_id", 0))
+                    )
+                elif action == "DELIVERY_CONFLICTS":
+                    response["conflicts"] = app_context.warehouse.get_delivery_conflicts(
+                        int(data.get("delivery_id", 0))
+                    )
                 elif action == "CLOSE_DELIVERY":
                     service.close_delivery(int(data.get("delivery_id", 0)))
                 elif action == "ADD_REFERENCE":
@@ -1069,10 +1149,9 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                 rows = parse_csv_bytes(body, kind)
                 soft = self._query(parse_qs(urlparse(self.path).query), "mode") != "strict"
                 if kind == "delivery":
-                    result = service.preview_delivery_rows(
+                    result = app_context.warehouse.preview_delivery_import(
                         rows, unquote(self.headers.get("X-Filename", "delivery.csv")),
                         unknown_columns=unknown_csv_headers(body),
-                        auto_apply=True,
                     )
                     self._send_json(200, {"ok": True, **result})
                     return
@@ -1080,31 +1159,45 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                     self._send_json(200, {"ok": True, **service.inventory_compare(rows)})
                     return
                 if kind == "bulk_issue":
-                    result = service.preview_bulk_issue_serials(rows)
+                    result = app_context.warehouse.preview_bulk_issue_serials(
+                        rows, unquote(self.headers.get("X-Filename", "bulk_issue.csv"))
+                    )
                     self._send_json(200, {"ok": True, **result})
                     return
                 if kind == "equipment":
                     imported = service.import_equipment_rows(rows)
                 elif kind == "work_logs":
                     if preview:
-                        result = service.preview_work_log_rows(rows, soft=soft)
+                        result = app_context.reports.preview_work_log_import(
+                            rows,
+                            unquote(self.headers.get("X-Filename", "work_logs.csv")),
+                            soft=soft,
+                        )
                         self._send_json(200, {"ok": True, **result})
                         return
-                    imported = service.import_work_log_rows(rows, soft=soft)
+                    imported = app_context.reports.import_work_logs(rows, soft=soft)
                 elif kind == "receipt":
                     for row in rows:
                         row["receipt_date"] = row.pop("work_date", row.get("receipt_date", ""))
                     if preview:
-                        result = service.preview_stock_receipt_rows(rows, soft=soft)
+                        result = app_context.warehouse.preview_receipt_import(
+                            rows,
+                            unquote(self.headers.get("X-Filename", "receipt.csv")),
+                            unknown_columns=unknown_csv_headers(body),
+                            soft=soft,
+                        )
                         self._send_json(200, {"ok": True, **result})
                         return
-                    imported = service.import_stock_receipt_rows(rows, soft=soft)
+                    imported = app_context.warehouse.import_receipts(rows, soft=soft)
                 elif kind == "daily_report":
                     for row in rows:
                         row["date"] = row.pop("work_date", "")
-                    result = service.import_daily_report_rows(
-                        unquote(self.headers.get("X-Filename", "daily_report.csv")), rows
-                    )
+                    filename = unquote(self.headers.get("X-Filename", "daily_report.csv"))
+                    if preview:
+                        result = app_context.reports.preview_daily_report_import(rows, filename)
+                        self._send_json(200, {"ok": True, **result})
+                        return
+                    result = app_context.reports.import_daily_report(filename, rows)
                     imported = result["row_count"]
                 else:
                     for row in rows:
@@ -1119,10 +1212,15 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
                             "source_cable_type", row.pop("cable_type", "")
                         )
                     if preview:
-                        result = service.preview_stock_issue_rows(rows, soft=soft)
+                        result = app_context.warehouse.preview_issue_import(
+                            rows,
+                            unquote(self.headers.get("X-Filename", "issue.csv")),
+                            unknown_columns=unknown_csv_headers(body),
+                            soft=soft,
+                        )
                         self._send_json(200, {"ok": True, **result})
                         return
-                    imported = service.import_stock_issue_rows(rows, soft=soft)
+                    imported = app_context.warehouse.import_issues(rows, soft=soft)
                 response = {"ok": True, "imported": imported}
                 if kind == "daily_report":
                     response["upload_id"] = result["id"]
@@ -1257,6 +1355,25 @@ def make_handler(service: WarehouseService) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
             self.wfile.write(body)
 
+        def _send_static(self, path: str) -> None:
+            relative = Path(unquote(path.removeprefix("/static/")))
+            if relative.is_absolute() or ".." in relative.parts:
+                self._send_json(404, {"error": "Файл не найден"})
+                return
+            target = STATIC_ROOT / relative
+            if not target.is_file():
+                self._send_json(404, {"error": "Файл не найден"})
+                return
+            content_types = {
+                ".css": "text/css; charset=utf-8",
+                ".js": "application/javascript; charset=utf-8",
+            }
+            self._send(
+                200,
+                target.read_bytes(),
+                content_types.get(target.suffix.lower(), "application/octet-stream"),
+            )
+
         def _send(self, status: int, body: bytes, content_type: str) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -1285,8 +1402,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    service = WarehouseService(args.db)
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(service))
+    app_context = create_application_context(args.db)
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(app_context))
     url = f"http://{args.host}:{server.server_port}"
     print(f"Интерфейс открыт: {url}")
     print("Для завершения нажмите Ctrl+C.")

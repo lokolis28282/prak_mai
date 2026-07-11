@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import re
 import zipfile
+from contextlib import closing
 from datetime import date
 from pathlib import Path
 
@@ -289,7 +290,7 @@ class WarehouseServiceTest(unittest.TestCase):
         self.service.add_work_log(
             report_date, "Zabbix", "ИНЦ", "901", "В границах дня", "Выполнено"
         )
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db, db:
             db.execute(
                 "UPDATE work_logs SET work_date = ? WHERE task_number = ?",
                 ("2026-07-01 23:59:59", "901"),
@@ -500,7 +501,7 @@ class WarehouseServiceTest(unittest.TestCase):
     def test_balance_and_overview_do_not_read_legacy_tables(self) -> None:
         before_balance = self.service.stock_balance()
         before_stats = self.service.dashboard_stats()
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db, db:
             db.execute("UPDATE equipment SET quantity = 0")
             db.execute("DELETE FROM operations")
         self.assertEqual(self.service.stock_balance(), before_balance)
@@ -526,13 +527,13 @@ class WarehouseServiceTest(unittest.TestCase):
 
         incomplete = self.service.backup_dir / "incomplete.db"
         incomplete.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(incomplete) as db:
+        with closing(sqlite3.connect(incomplete)) as db, db:
             db.execute("CREATE TABLE example(id INTEGER)")
         invalid = self.service._database_check(incomplete, self.service.KEY_TABLES)
         self.assertFalse(invalid["ok"])
         self.assertIn("stock_receipts", invalid["missing_tables"])
 
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db, db:
             db.execute("DROP TABLE audit_log")
         missing_audit = self.service.check_integrity()
         self.assertFalse(missing_audit["ok"])
@@ -589,7 +590,7 @@ class WarehouseServiceTest(unittest.TestCase):
         self.assertEqual(receipt["available"], 1)
 
     def test_default_admin_is_created_once_with_hashed_password(self) -> None:
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db:
             db.row_factory = sqlite3.Row
             user = db.execute("SELECT * FROM users WHERE email = 'lokolis'").fetchone()
             self.assertIsNotNone(user)
@@ -708,7 +709,7 @@ class WarehouseServiceTest(unittest.TestCase):
         with self.assertRaisesRegex(WarehouseError, "Строка 3"):
             self.service.import_daily_report_rows("broken.csv", [valid, invalid])
         self.assertEqual(self.service.daily_report_uploads(), [])
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM daily_report_rows").fetchone()[0], 0)
 
     def test_uploaded_daily_report_does_not_mix_with_work_logs(self) -> None:

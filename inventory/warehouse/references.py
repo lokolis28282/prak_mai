@@ -1,0 +1,1 @@
+"""Warehouse reference boundary placeholder."""

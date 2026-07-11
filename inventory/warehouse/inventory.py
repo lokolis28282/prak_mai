@@ -1,0 +1,1 @@
+"""Inventory analysis boundary placeholder."""

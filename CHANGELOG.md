@@ -1,5 +1,258 @@
 # Changelog ODE
 
+## ODE 0.12.16 RC1 — Release Candidate
+
+Дата: 2026-07-11
+
+- зафиксирована проверенная версия после Stage 0.12.16A acceptance поставок;
+- полный сценарий поставок пройден в headless Chrome: preview, confirm,
+  карточка, scanner acceptance, existing S/N, conflicts, unplanned acceptance,
+  batch acceptance, balance, history and reports;
+- 158 тестов проходят, UI smoke проходит, JS/runtime/resource/API500 ошибок
+  нет;
+- рабочая БД и схема не менялись; `integrity_check = ok`,
+  `foreign_key_check` пуст;
+- close delivery остается compatibility/legacy;
+- destructive override конфликтующих данных не реализован;
+- версия предназначена для тестовой эксплуатации, не для production.
+
+## Stage 0.12.16 — Delivery Acceptance Migration
+
+Дата: 2026-07-11
+
+- planned and unplanned delivery acceptance migrated to
+  `ApplicationContext -> WarehouseFacade`;
+- added inspect before accept, acceptance summary, conflict read, batch accept
+  and safe delivery line metadata update facade methods;
+- new planned S/N creates a receipt through the Warehouse receipt repository
+  transaction contract and links `delivery_lines.receipt_id`;
+- existing S/N does not create a receipt; only empty allowed fields are filled,
+  and filled-field conflicts are reported without overwrite;
+- unplanned acceptance requires explicit metadata, creates an unplanned
+  delivery line and then creates a receipt;
+- delivery status refresh moved behind WarehouseFacade; close delivery remains
+  legacy;
+- balance/history/reports continue to read source warehouse rows through current
+  contracts;
+- no DB migration; release ZIP not rebuilt.
+
+## Stage 0.12.15 — Delivery Document Import and Matching
+
+Дата: 2026-07-11
+
+- документ поставки отделён от фактического складского прихода;
+- delivery CSV preview, column mapping, S/N parsing, duplicate matching,
+  stock matching, confirm document, list/card/search/export/template routes
+  переведены на `ApplicationContext -> WarehouseFacade`;
+- добавлен Warehouse-owned delivery import layer:
+  `delivery_imports`, `delivery_repository`, `delivery_mapping`,
+  `delivery_validators`, `delivery_previews`, `delivery_models`;
+- confirm создаёт только `deliveries`, `delivery_lines` и audit
+  `DELIVERY_UPLOAD`; `DELIVERY_IMPORTED` остаётся warehouse event contract;
+- `stock_receipts`, `stock_issues`, allocations and balance не меняются при
+  delivery import;
+- acceptance scanner, planned/unplanned accept, close delivery and receipt
+  creation from delivery remain legacy for Stage 0.12.16;
+- новый пользовательский шаблон поставки зафиксирован без legacy-only колонок;
+- БД и схема не менялись; release ZIP не пересобирался.
+
+## Stage 0.12.14 — Warehouse Equipment and Component Issue Migration
+
+Дата: 2026-07-11
+
+- serialized equipment/component issue write/import routes migrated to
+  `ApplicationContext -> WarehouseFacade`;
+- migrated manual issue, issue scanner validation, scanned S/N confirm, generic
+  issue CSV preview/confirm/import, and strict bulk S/N issue preview/confirm;
+- issue allocations and computed balance contracts preserved;
+- soft problem-row behavior preserved for scanned/CSV issue flows;
+- Warehouse-owned issue preview storage is used for issue and bulk issue
+  previews;
+- cable issue remains separate in the cable module;
+- deliveries, inventory write, Administration write, backup/restore, auth,
+  Monitoring and legacy equipment/operations remain compatibility-backed;
+- БД и схема не менялись; release ZIP не пересобирался.
+
+## Stage 0.12.13 — Cable Warehouse Module
+
+Дата: 2026-07-11
+
+- кабели отделены от S/N-оборудования и компонентов на уровне
+  `WarehouseFacade`;
+- manual cable receipt and manual cable issue routes now go through
+  `ApplicationContext -> WarehouseFacade -> inventory/warehouse/cables.py`;
+- добавлены cable validators, repository and models;
+- кабели не требуют S/N, учитываются положительным целым количеством and do not
+  use scanner/S/N receipt validation;
+- cable balance/history/Reports contracts сохранены через текущие
+  `stock_receipts`, `stock_issues`, `stock_issue_allocations` and
+  `WarehouseEventReader`;
+- audit actions для новых cable writes: `CABLE_RECEIPT_CREATE`,
+  `CABLE_ISSUE_CREATE`, `CABLE_RECEIPT_BATCH`;
+- общий issue оборудования/компонентов, поставки, inventory write,
+  Administration write, backup/restore and Monitoring remain compatibility;
+- БД и схема не менялись; release ZIP не пересобирался.
+
+## Stage 0.12.12 — Warehouse Receipt Write Facade Migration
+
+Дата: 2026-07-11
+
+- equipment/component receipt write/import routes переведены на
+  `ApplicationContext -> WarehouseFacade`;
+- мигрированы manual receipt, scanned S/N batch confirm, receipt serial
+  validation, receipt CSV preview/confirm and direct receipt CSV import;
+- добавлена Warehouse-owned receipt preview storage;
+- добавлено системное наименование через `build_item_name(...)`;
+- batch/import операции валидируют все строки до записи и пишутся атомарно;
+- balance/history/Reports event contracts сохранены: receipt rows видны в
+  balance, WarehouseEventReader and daily/weekly reports;
+- добавлены receipt write contract/API tests, включая rollback, duplicate S/N,
+  actor/audit, preview/confirm, 100-row batch and delivery regression;
+- issue, cable receipt, deliveries, inventory write, Administration write,
+  backup/restore and Monitoring remain compatibility-backed;
+- БД и схема не менялись; release ZIP не пересобирался.
+
+## Stage 0.12.11 — Reports Write and Import Facade Migration
+
+Дата: 2026-07-11
+
+- Reports write/import routes переведены на `ApplicationContext -> ReportsFacade`;
+- мигрированы single work log, batch work logs, work-log CSV import,
+  work-log CSV preview/confirm and uploaded daily report import;
+- preview для Reports хранится отдельно от warehouse previews в Reports-owned
+  in-memory storage;
+- массовые операции валидируют все строки до записи и сохраняются атомарно;
+- audit сохраняется через shared audit adapter с автором, count, filename/id;
+- добавлены Reports write contract/API tests, включая rollback, роли, preview,
+  кириллицу, даты, audit и проверку складских таблиц;
+- architecture audit запрещает legacy Reports write calls из webapp и доступ
+  Reports к warehouse-owned tables;
+- API/CSV URL, action names, response keys and headers сохранены;
+- БД, схема, Warehouse writes, Administration writes, Monitoring, frontend
+  component migration и release ZIP не менялись.
+
+## Stage 0.12.10 — Warehouse EventReader Contract
+
+Дата: 2026-07-11
+
+- создан публичный контракт `WarehouseEvent` и `WarehouseEventReader`;
+- `ReportsFacade` получает складские события через `ApplicationContext`;
+- daily report, weekly report, weekly rows and report CSV exports построены через WarehouseEventReader;
+- work logs остаются собственными данными Reports;
+- результаты отчетов и CSV byte/text contract сохранены относительно legacy;
+- добавлены EventReader и Reports event contract tests, включая 1000 warehouse events на временной БД;
+- architecture audit запрещает SQL по warehouse-owned таблицам внутри `inventory/reports`;
+- БД, схема, write/import flows, Monitoring, frontend и release ZIP не менялись;
+- EventReader пока compatibility-backed внутри Warehouse и может читать текущую SQLite-схему.
+
+## Stage 0.12.9 — Administration Read API Facade Migration
+
+Дата: 2026-07-11
+
+- read-only Administration API routes переведены на `AdministrationFacade`;
+- `/api/data` продолжает отдавать текущего пользователя без раскрытия секретов;
+- `/api/admin` собирает `backups`, `audit` и `users` через AdministrationFacade;
+- `/export/audit.csv` читает audit через AdministrationFacade;
+- URL, JSON/CSV контракты, роли и существующие ограничения доступа сохранены;
+- добавлены Administration API contract/security tests;
+- `password_hash`, session token и пароли не возвращаются в read API;
+- write/admin actions, login/logout и auth flow пока legacy;
+- БД, Monitoring, frontend Administration components и release ZIP не менялись.
+
+## Stage 0.12.8 — Reports Read API Facade Migration
+
+Дата: 2026-07-11
+
+- read-only Reports API routes переведены на `ReportsFacade`;
+- `/api/data` продолжает отдавать тот же JSON, но reports-owned поля читаются через ReportsFacade;
+- внешние JSON/CSV контракты, URL, имена файлов, BOM, разделители и заголовки сохранены;
+- добавлены Reports API contract tests и semantic comparison old service vs facade;
+- module boundary audit теперь запрещает прямые read-only reports `service.*` вызовы из `_do_GET`;
+- Warehouse events остаются read-only входом для отчетов через публичный контракт/compatibility layer;
+- write/import логов работ и готовых отчетов пока legacy;
+- БД, SQL, Monitoring, frontend Reports components и release ZIP не менялись.
+
+## Stage 0.12.7 — Warehouse Read API Facade Migration
+
+Дата: 2026-07-11
+
+- read-only Warehouse API routes переведены на `WarehouseFacade`;
+- `/api/data` внутри разделен: складские данные идут через WarehouseFacade, отчеты через ReportsFacade, пользователь через AdministrationFacade;
+- внешние JSON/CSV контракты, URL и имена файлов сохранены;
+- добавлены API contract tests и semantic comparison old service vs facade;
+- module boundary audit теперь запрещает прямые read-only warehouse `service.*` вызовы из `_do_GET`;
+- write API, импорты, confirm-flow, scanner validation и WarehouseCore остаются legacy;
+- БД, SQL, бизнес-логика и release ZIP не менялись.
+
+## Stage 0.12.6 — Product Module Boundaries
+
+Дата: 2026-07-11
+
+- создан переходный каркас модулей `core`, `warehouse`, `reports`, `monitoring`, `administration`;
+- добавлены публичные фасады `WarehouseFacade`, `ReportsFacade`, `MonitoringFacade`, `AdministrationFacade`;
+- добавлен `ApplicationContext` с централизованными feature flags;
+- Monitoring изолирован как заглушка без зависимостей от Warehouse и Reports;
+- добавлены frontend entrypoints для Core/Warehouse/Reports/Monitoring/Administration и компонентных подпакетов;
+- добавлен `EventReader`/`EventPublisher` контракт, временно читающий складские события из существующей истории;
+- добавлены документы по модульной архитектуре, владельцам таблиц, Reports, Monitoring и миграции;
+- добавлен архитектурный аудит `scripts/audit_module_boundaries.py`;
+- БД, бизнес-логика, реальные складские операции и release ZIP не менялись.
+
+## Stage 0.12.5 — History Components
+
+Дата: 2026-07-11
+
+- рабочий экран `История` перенесен на компонентный DOM-рендер;
+- старый `renderOperations()` оставлен только как compatibility alias к `renderWarehouseHistory()`;
+- действия истории получают человекочитаемые названия через единый словарь;
+- `details` и комментарии разбираются безопасно, ошибочный JSON не ломает экран;
+- фильтры периода, инженера, действия и поиска работают на клиенте без изменения API;
+- таблица истории ограничена первыми 200 строками текущей выборки;
+- БД, API, сервисный слой, бизнес-логика и release ZIP не менялись.
+
+## Stage 0.12.4 — Balance Components
+
+Дата: 2026-07-10
+
+- рабочий экран `Баланс` перенесен на `components.js`;
+- KPI-карточки баланса `Серверы`, `Диски`, `Память`, `Сеть`, `Кабели`, `Прочее` строятся DOM-компонентами;
+- фильтр по KPI-карточкам, активная подсветка и `Сбросить фильтр` работают без inline `onclick`;
+- таблица баланса и кнопки строк `Открыть карточку` / `Списать` строятся DOM-узлами без `innerHTML`;
+- поиск и select-фильтры баланса применяются вместе с KPI-фильтром;
+- legacy `renderBalance()` оставлен только как fallback раннего render-прохода;
+- бизнес-логика, сервисный слой, БД, приход, расход, поставки, отчеты и release ZIP не менялись.
+
+## Stage 0.12.3 — Home and Navigation Components
+
+Дата: 2026-07-10
+
+- экран «Добро пожаловать в ODE» перенесен на `components.js`;
+- карточки Главной `Склад`, `Отчеты`, `Мониторинг`, `Профиль` теперь строятся DOM-компонентами без `innerHTML`;
+- клик по ODE в верхней панели переведен на component-кнопку и `goHome`;
+- базовая навигация разделов строится в `router.js` через `renderButton`;
+- legacy-экраны склада, отчетов, поставок и профиля не переписывались;
+- бизнес-логика, сервисный слой и БД не менялись;
+- release ZIP не пересобирался.
+
+## Stage 0.12.2 — Architecture Stabilization
+
+Дата: 2026-07-10
+
+- зафиксирован backend facade: `inventory.service.WarehouseService` остается публичной точкой входа;
+- `WarehouseCore` явно признан временным compatibility core;
+- создан и задокументирован слой `inventory/services/*`;
+- новые сервисы пока являются делегатами, перенос бизнес-методов будет идти постепенно;
+- добавлен документ `docs/SERVICE_MIGRATION_PLAN.md`;
+- добавлен UI component layer `static/js/components.js`;
+- `static/js/ui.js` зафиксирован как legacy UI на переходный период;
+- добавлены документы `docs/UI_COMPONENTS.md` и `docs/FRONTEND_MIGRATION_PLAN.md`;
+- добавлен frontend contract audit `scripts/audit_frontend_contracts.py`;
+- добавлен документ `docs/FRONTEND_CONTRACTS.md`;
+- smoke UI теперь явно отчитывается об отсутствии console/runtime/window errors и прохождении ключевых разделов;
+- миграция БД не выполнялась;
+- бизнес-логика не менялась;
+- release ZIP не пересобирался.
+
 ## ODE 0.12 — стабилизационный патч
 
 - исправлен переход из параметров партии к временному списку S/N;

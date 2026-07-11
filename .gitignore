@@ -4,3 +4,11 @@ __pycache__/
 .idea/
 .vscode/
 data/backups/
+backups/
+acceptance_backups/
+release_backups/
+release/
+exports/
+screenshots/
+ODE_windows_*.zip
+ode_qa_reports.zip

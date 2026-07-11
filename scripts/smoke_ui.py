@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import shutil
 import socket
+import sqlite3
 import subprocess
 import tempfile
 import threading
 import time
 import sys
+from contextlib import closing
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+from inventory.db import hash_password
 from inventory.service import WarehouseService
 from inventory.webapp import make_handler
 CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
@@ -31,6 +34,13 @@ def main() -> int:
         work = Path(directory)
         database = work / "warehouse.db"
         shutil.copy2(ROOT / "data" / "warehouse.db", database)
+        with closing(sqlite3.connect(database)) as db, db:
+            db.execute(
+                """UPDATE users
+                   SET password_hash = ?, must_change_password = 0, is_active = 1
+                   WHERE email = 'lokolis'""",
+                (hash_password("lokolis"),),
+            )
         server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(WarehouseService(database)))
         server.daemon_threads = True
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -58,7 +68,7 @@ def main() -> int:
             print("smoke: devtools ready", flush=True)
             result = subprocess.run(
                 ["node", str(ROOT / "tests" / "headless_smoke.js"), app_url, str(debug_port)],
-                cwd=ROOT, text=True, capture_output=True, timeout=35,
+                cwd=ROOT, text=True, capture_output=True, timeout=50,
             )
             print(result.stdout.strip(), flush=True)
             if result.returncode:
