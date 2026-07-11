@@ -1,5 +1,23 @@
 # Changelog ODE
 
+## ODE 0.12.17 RC1 — Product Hardening
+
+Дата: 2026-07-11
+
+- добавлены Dashboard, быстрые действия, постоянная навигация и глобальный поиск;
+- расширена карточка оборудования и единая хронология связанных операций;
+- `Проблемы` и `События` перенесены в `Склад`, Monitoring оставлен заглушкой;
+- ограничены bootstrap, баланс, поставки, inventory DOM, история и preview storage;
+- ускорены exact S/N/inventory paths, batch uniqueness и агрегирование категорий/проблем;
+- добавлены delivery pagination и серверный поиск усеченного баланса;
+- закрыты повторное связывание receipt с поставками и неконтролируемые JSON 500;
+- добавлены session TTL/limits, admin login rate limit, Host/Origin checks и security headers;
+- инженерный HTTP-контекст принудительно работает с service-role `engineer`;
+- обязательная смена начального admin-пароля блокирует остальные admin operations;
+- server/client CSV exports защищены от spreadsheet formulas, wizard DOM — от найденного XSS sink;
+- UI smoke расширен глобальным поиском, Back/reload, mobile 390 px и реальной проверкой `/api/admin`;
+- полный набор содержит 185 тестов; схема таблиц и существующие HTTP actions сохранены.
+
 ## ODE 0.12.16 RC1 — Release Candidate
 
 Дата: 2026-07-11

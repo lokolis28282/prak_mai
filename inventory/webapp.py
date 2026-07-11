@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import ipaddress
 import json
 import os
 import re
 import secrets
 import tempfile
 import threading
+import time
 import webbrowser
 from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -40,7 +42,7 @@ LOGIN_HTML = (LOGIN_HTML
     .replace("<h1>ODE</h1><p>Укажите, кто работает с системой</p>",
              f"<h1>Кто сегодня работает?</h1><p>{PRODUCT_NAME} {PRODUCT_VERSION}. Операции смены будут записаны под выбранным именем.</p>")
     .replace(">Продолжить</button>", ">Начать работу</button>")
-    .replace(".link{background:none", ".link{display:none;background:none")
+    .replace(">Режим администратора</button>", ">Вход администратора</button>")
 )
 
 HTML = r'''<!doctype html>
@@ -653,6 +655,7 @@ def _externalized_html(html: str) -> str:
             "monitoring/index.js",
             "administration/index.js", "administration/profile.js", "administration/users.js",
             "administration/backup.js", "administration/diagnostics.js",
+            "product.js",
         )
     )
     html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
@@ -737,11 +740,18 @@ def _localized(rows: list[dict[str, Any]], headers: dict[str, str]) -> list[dict
 
 def csv_download_bytes(rows: list[dict[str, Any]], delimiter: str = ";") -> bytes:
     """Сформировать Excel-friendly CSV с BOM; машинный CSV может передать `,`."""
+    def safe_cell(value: Any) -> Any:
+        if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
+            return "'" + value
+        return value
+
     buffer = io.StringIO(newline="")
     if rows:
         writer = csv.DictWriter(buffer, fieldnames=list(rows[0]), delimiter=delimiter)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(
+            {key: safe_cell(value) for key, value in row.items()} for row in rows
+        )
     return ("\ufeff" + buffer.getvalue()).encode("utf-8")
 
 
@@ -750,6 +760,14 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
     service = app_context.service_adapter()
     sessions: dict[str, dict[str, str]] = {}
     sessions_lock = threading.Lock()
+    session_ttl_seconds = 12 * 60 * 60
+    max_sessions = 500
+    login_attempts: dict[tuple[str, str], dict[str, Any]] = {}
+    login_attempts_lock = threading.Lock()
+    login_attempt_window_seconds = 5 * 60
+    login_block_seconds = 15 * 60
+    max_login_failures = 5
+    max_login_attempt_keys = 2_000
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802
@@ -768,7 +786,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_json(401, {"error": "Требуется вход"})
                 return
             try:
-                with service.user_context(email, author_name=self._session_author()), service.lock:
+                with service.user_context(
+                    email,
+                    author_name=self._session_author(),
+                    role_override=self._session_role_override(),
+                ):
                     self._do_GET()
             except WarehouseError as error:
                 self._send_json(403, {"error": str(error)})
@@ -802,7 +824,19 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         "current_user": current_user,
                     })
                 elif path == "/api/delivery":
-                    self._send_json(200, app_context.warehouse.get_delivery(int(self._query(query, "id") or "0")))
+                    self._send_json(200, app_context.warehouse.get_delivery(
+                        self._query_int(query, "id", minimum=1),
+                        {
+                            "query": self._query(query, "query"),
+                            "state": self._query(query, "state"),
+                            "limit": self._query_int(
+                                query, "limit", default=500, minimum=1, maximum=5_000
+                            ),
+                            "offset": self._query_int(
+                                query, "offset", default=0, minimum=0
+                            ),
+                        },
+                    ))
                 elif path == "/api/deliveries":
                     self._send_json(200, {"deliveries": app_context.warehouse.list_deliveries(self._query(query, "query"))})
                 elif path == "/api/work-logs":
@@ -815,10 +849,25 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         self._query(query, "date")
                     )})
                 elif path == "/api/balance":
-                    self._send_json(200, {"rows": app_context.warehouse.get_balance(self._balance_filters(query))})
+                    balance_limit = self._query_int(
+                        query, "limit", default=500, minimum=1, maximum=5_000
+                    )
+                    balance_rows = app_context.warehouse.get_balance(
+                        self._balance_filters(query), limit=balance_limit + 1
+                    )
+                    self._send_json(200, {
+                        "rows": balance_rows[:balance_limit],
+                        "limit": balance_limit,
+                        "truncated": len(balance_rows) > balance_limit,
+                    })
                 elif path == "/api/position-search":
                     self._send_json(200, {"rows": app_context.warehouse.search_warehouse(
                         self._query(query, "query")
+                    )})
+                elif path == "/api/global-search":
+                    self._send_json(200, {"results": app_context.warehouse.global_search(
+                        self._query(query, "query"),
+                        self._query_int(query, "limit", default=30, minimum=1, maximum=50),
                     )})
                 elif path == "/api/scan-serial":
                     kind = self._query(query, "kind")
@@ -846,7 +895,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_json(200, app_context.administration.get_administration_overview())
                 elif path == "/api/uploaded-daily-report":
                     self._send_json(200, {"rows": app_context.reports.get_uploaded_report(
-                        int(self._query(query, "id") or "0")
+                        self._query_int(query, "id", minimum=1)
                     )})
                 elif path == "/export/stock.csv":
                     self._send_csv("equipment_stock.csv", app_context.warehouse.get_inventory_view())
@@ -901,7 +950,9 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     rows = app_context.reports.export_daily_report_rows(self._query(query, "date"))
                     self._send_csv("daily_report.csv", _localized(rows, REPORT_HEADERS))
                 elif path == "/export/uploaded-daily-report.csv":
-                    rows = app_context.reports.export_uploaded_report_rows(int(self._query(query, "id") or "0"))
+                    rows = app_context.reports.export_uploaded_report_rows(
+                        self._query_int(query, "id", minimum=1)
+                    )
                     self._send_csv("uploaded_daily_report.csv", _localized(rows, REPORT_HEADERS))
                 elif path == "/export/balance.csv":
                     rows = app_context.warehouse.export_balance_rows(self._balance_filters(query))
@@ -911,6 +962,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         self._query(query, "start_date"), self._query(query, "end_date")
                     ))
                 elif path == "/export/audit.csv":
+                    self._require_admin_session()
                     rows = app_context.administration.list_audit_entries(limit=5000)
                     self._send_csv("action_log.csv", _localized(rows, {
                         "event_date": "Дата и время", "author": "Пользователь",
@@ -918,7 +970,9 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         "entity_id": "Запись", "details": "Подробности",
                     }))
                 elif path == "/export/delivery.csv":
-                    rows = app_context.warehouse.export_delivery_rows(int(self._query(query, "id") or "0"))
+                    rows = app_context.warehouse.export_delivery_rows(
+                        self._query_int(query, "id", minimum=1)
+                    )
                     self._send_csv("delivery_result.csv", rows)
                 elif path == "/import/delivery-template.csv":
                     self._send_template("delivery_template.csv", app_context.warehouse.get_delivery_import_template())
@@ -940,11 +994,18 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_json(404, {"error": "Страница не найдена"})
             except WarehouseError as error:
                 self._send_json(400, {"error": str(error)})
-            except Exception as error:
-                self._send_json(500, {"error": str(error)})
+            except Exception:
+                self._send_json(500, {"error": "Внутренняя ошибка сервера"})
 
         def do_POST(self) -> None:  # noqa: N802
             path = urlparse(self.path).path
+            origin = self.headers.get("Origin", "")
+            host = self.headers.get("Host", "")
+            if origin and (
+                urlparse(origin).netloc != host or not self._host_allowed(host)
+            ):
+                self._send_json(403, {"error": "Источник запроса не разрешен"})
+                return
             if path == "/api/login":
                 self._login()
                 return
@@ -953,7 +1014,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(401, {"error": "Требуется вход"})
                 return
             try:
-                with service.user_context(email, author_name=self._session_author()), service.lock:
+                with service.user_context(
+                    email,
+                    author_name=self._session_author(),
+                    role_override=self._session_role_override(),
+                ), service.lock:
                     if path == "/api/logout":
                         self._logout()
                     else:
@@ -972,6 +1037,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._import_csv(self._query(parse_qs(parsed.query), "kind") or "equipment")
                 return
             if parsed.path == "/api/upload-prod-db":
+                self._require_admin_session()
                 self._upload_prod_database(
                     self._query(parse_qs(parsed.query), "confirmed") == "1"
                 )
@@ -980,17 +1046,15 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(404, {"error": "Страница не найдена"})
                 return
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if length <= 0 or length > 1_000_000:
-                    raise WarehouseError("Некорректный размер запроса")
-                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                data = self._read_json_object(1_000_000)
+                self._validate_action_payload(data)
                 action = data.get("action")
                 if action in {
                     "CREATE_BACKUP", "CHECK_DATABASE", "RESTORE_BACKUP",
                     "CREATE_USER", "CHANGE_PASSWORD", "UPDATE_PROFILE",
                     "ADD_REFERENCE", "TOGGLE_REFERENCE",
                 }:
-                    self._require_admin_session()
+                    self._require_admin_session(allow_password_change=action == "CHANGE_PASSWORD")
                 response: dict[str, Any] = {"ok": True}
                 if action in {"RECEIPT", "ISSUE"}:
                     method = service.receipt if action == "RECEIPT" else service.issue
@@ -1060,19 +1124,20 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     )
                 elif action == "CONFIRM_DELIVERY":
                     response["delivery_id"] = app_context.warehouse.confirm_delivery_import(
-                        data.get("preview_id", "")
+                        data.get("preview_id", ""), {"session": self._session_token()}
                     )
                 elif action == "UPDATE_DELIVERY_LINES":
                     response["changed"] = app_context.warehouse.update_delivery_line_metadata(
                         int(data.get("delivery_id", 0)), data.get("line_ids", []),
-                        data.get("values", {}), only_empty=bool(data.get("only_empty")),
+                        data.get("values", {}),
+                        only_empty=self._json_boolean(data.get("only_empty", False), "only_empty"),
                     )
                 elif action == "INSPECT_DELIVERY_SERIAL":
                     response.update(app_context.warehouse.inspect_delivery_serial(
                         int(data.get("delivery_id", 0)), data.get("serial_number", ""),
                     ))
                 elif action == "ACCEPT_DELIVERY_SERIAL":
-                    if bool(data.get("unplanned")):
+                    if self._json_boolean(data.get("unplanned", False), "unplanned"):
                         response.update(app_context.warehouse.accept_unplanned_delivery_serial(
                             int(data.get("delivery_id", 0)), data.get("serial_number", ""),
                             data.get("values", {}),
@@ -1100,14 +1165,18 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 elif action == "ADD_REFERENCE":
                     service.add_reference(data.get("kind", ""), data.get("name", ""))
                 elif action == "TOGGLE_REFERENCE":
-                    service.set_reference_active(int(data.get("reference_id", 0)), bool(data.get("is_active")))
+                    service.set_reference_active(
+                        int(data.get("reference_id", 0)),
+                        self._json_boolean(data.get("is_active", False), "is_active"),
+                    )
                 elif action == "CREATE_BACKUP":
                     response["backup"] = service.create_backup()
                 elif action == "CHECK_DATABASE":
                     response["integrity"] = service.check_integrity()
                 elif action == "RESTORE_BACKUP":
                     response["restore"] = service.restore_backup(
-                        data.get("filename", ""), bool(data.get("confirmed"))
+                        data.get("filename", ""),
+                        self._json_boolean(data.get("confirmed", False), "confirmed"),
                     )
                 elif action == "CREATE_USER":
                     response["user_id"] = service.create_user(
@@ -1129,8 +1198,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(200, response)
             except (WarehouseError, ValueError, KeyError, json.JSONDecodeError) as error:
                 self._send_json(400, {"error": str(error)})
-            except Exception as error:
-                self._send_json(500, {"error": str(error)})
+            except Exception:
+                self._send_json(500, {"error": "Внутренняя ошибка сервера"})
 
         def _import_csv(self, kind: str, preview: bool = False) -> None:
             try:
@@ -1151,6 +1220,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 if kind == "delivery":
                     result = app_context.warehouse.preview_delivery_import(
                         rows, unquote(self.headers.get("X-Filename", "delivery.csv")),
+                        {"session": self._session_token()},
                         unknown_columns=unknown_csv_headers(body),
                     )
                     self._send_json(200, {"ok": True, **result})
@@ -1227,17 +1297,33 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(200, response)
             except (WarehouseError, ValueError, csv.Error, UnicodeError) as error:
                 self._send_json(400, {"error": str(error)})
-            except Exception as error:
-                self._send_json(500, {"error": str(error)})
+            except Exception:
+                self._send_json(500, {"error": "Внутренняя ошибка сервера"})
 
         def _login(self) -> None:
             try:
-                length = int(self.headers.get("Content-Length", "0"))
-                if length <= 0 or length > 100_000:
-                    raise WarehouseError("Некорректный размер запроса")
-                data = json.loads(self.rfile.read(length).decode("utf-8"))
+                data = self._read_json_object(100_000)
+                for field in ("mode", "email", "password", "full_name"):
+                    if field in data and not isinstance(data[field], str):
+                        raise WarehouseError(f"Поле {field} должно быть строкой")
                 if data.get("mode") == "admin":
-                    user = service.authenticate(data.get("email", ""), data.get("password", ""))
+                    email = data.get("email", "")
+                    rate_key = self._login_rate_key(email)
+                    if self._login_rate_limited(rate_key):
+                        self._send_json(429, {
+                            "error": "Слишком много неудачных попыток входа. Повторите позже."
+                        })
+                        return
+                    try:
+                        user = service.authenticate(email, data.get("password", ""))
+                    except WarehouseError:
+                        if self._record_login_failure(rate_key):
+                            self._send_json(429, {
+                                "error": "Слишком много неудачных попыток входа. Повторите позже."
+                            })
+                            return
+                        raise
+                    self._clear_login_failures(rate_key)
                     session = {"email": str(user["email"]), "author": "", "mode": "admin"}
                 else:
                     full_name = " ".join(str(data.get("full_name", "")).split())
@@ -1246,7 +1332,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     user = service.user_by_email("lokolis")
                     session = {"email": "lokolis", "author": full_name, "mode": "engineer"}
                 token = secrets.token_urlsafe(32)
+                session["last_seen"] = str(time.monotonic())
                 with sessions_lock:
+                    self._purge_sessions_locked()
+                    while len(sessions) >= max_sessions:
+                        sessions.pop(next(iter(sessions)), None)
                     sessions[token] = session
                 self._pending_cookie = (
                     f"ode_session={token}; Path=/; HttpOnly; SameSite=Strict"
@@ -1307,24 +1397,228 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 return ""
 
         def _session_email(self) -> str:
-            token = self._session_token()
-            with sessions_lock:
-                return sessions.get(token, {}).get("email", "")
+            return self._session_data().get("email", "")
 
         def _session_author(self) -> str:
-            token = self._session_token()
-            with sessions_lock:
-                return sessions.get(token, {}).get("author", "")
+            return self._session_data().get("author", "")
 
-        def _require_admin_session(self) -> None:
+        def _session_role_override(self) -> str | None:
+            return "engineer" if self._session_data().get("mode") == "engineer" else None
+
+        def _require_admin_session(self, *, allow_password_change: bool = False) -> None:
+            if self._session_data().get("mode") != "admin":
+                raise WarehouseError("Откройте отдельный режим администратора")
+            user = service.current_user()
+            if user.get("must_change_password") and not allow_password_change:
+                raise WarehouseError("Сначала смените начальный пароль администратора")
+
+        def _session_data(self) -> dict[str, str]:
             token = self._session_token()
+            if not token:
+                return {}
             with sessions_lock:
-                if sessions.get(token, {}).get("mode") != "admin":
-                    raise WarehouseError("Откройте отдельный режим администратора")
+                self._purge_sessions_locked()
+                session = sessions.get(token)
+                if session is None:
+                    return {}
+                session["last_seen"] = str(time.monotonic())
+                return dict(session)
+
+        @staticmethod
+        def _purge_sessions_locked() -> None:
+            cutoff = time.monotonic() - session_ttl_seconds
+            expired = [
+                token for token, session in sessions.items()
+                if float(session.get("last_seen", "0") or 0) < cutoff
+            ]
+            for token in expired:
+                sessions.pop(token, None)
+
+        def _login_rate_key(self, email: str) -> tuple[str, str]:
+            address = getattr(self, "client_address", ("", 0))
+            client = str(address[0]) if isinstance(address, tuple) and address else ""
+            return client or "unknown", email.strip().casefold()
+
+        @staticmethod
+        def _login_rate_limited(key: tuple[str, str]) -> bool:
+            now = time.monotonic()
+            with login_attempts_lock:
+                Handler._purge_login_attempts_locked(now)
+                attempt = login_attempts.get(key)
+                return bool(attempt and float(attempt.get("blocked_until", 0)) > now)
+
+        @staticmethod
+        def _record_login_failure(key: tuple[str, str]) -> bool:
+            now = time.monotonic()
+            with login_attempts_lock:
+                Handler._purge_login_attempts_locked(now)
+                previous = login_attempts.get(key, {})
+                cutoff = now - login_attempt_window_seconds
+                failures = [
+                    float(value) for value in previous.get("failures", [])
+                    if float(value) >= cutoff
+                ]
+                failures.append(now)
+                blocked_until = float(previous.get("blocked_until", 0) or 0)
+                if len(failures) >= max_login_failures:
+                    blocked_until = max(blocked_until, now + login_block_seconds)
+                login_attempts.pop(key, None)
+                login_attempts[key] = {
+                    "failures": failures,
+                    "blocked_until": blocked_until,
+                    "last_seen": now,
+                }
+                while len(login_attempts) > max_login_attempt_keys:
+                    login_attempts.pop(next(iter(login_attempts)), None)
+                return blocked_until > now
+
+        @staticmethod
+        def _clear_login_failures(key: tuple[str, str]) -> None:
+            with login_attempts_lock:
+                login_attempts.pop(key, None)
+
+        @staticmethod
+        def _purge_login_attempts_locked(now: float) -> None:
+            cutoff = now - login_attempt_window_seconds
+            stale = [
+                key for key, attempt in login_attempts.items()
+                if float(attempt.get("blocked_until", 0) or 0) <= now
+                and float(attempt.get("last_seen", 0) or 0) < cutoff
+            ]
+            for key in stale:
+                login_attempts.pop(key, None)
+
+        @staticmethod
+        def _host_allowed(host: str) -> bool:
+            configured = {
+                value.strip().casefold()
+                for value in os.environ.get("ODE_ALLOWED_HOSTS", "").split(",")
+                if value.strip()
+            }
+            hostname = urlparse("//" + host).hostname or ""
+            if hostname.casefold() in {"localhost", *configured}:
+                return True
+            try:
+                address = ipaddress.ip_address(hostname)
+            except ValueError:
+                return False
+            return address.is_loopback or address.is_private
 
         @staticmethod
         def _query(query: dict[str, list[str]], name: str) -> str:
             return query.get(name, [""])[0]
+
+        @classmethod
+        def _query_int(
+            cls,
+            query: dict[str, list[str]],
+            name: str,
+            *,
+            default: int | None = None,
+            minimum: int | None = None,
+            maximum: int | None = None,
+        ) -> int:
+            raw = cls._query(query, name)
+            if not raw:
+                if default is None:
+                    raise WarehouseError(f"Укажите параметр {name}")
+                value = default
+            else:
+                try:
+                    value = int(raw)
+                except ValueError as error:
+                    raise WarehouseError(f"Параметр {name} должен быть целым числом") from error
+            if minimum is not None and value < minimum:
+                raise WarehouseError(f"Параметр {name} должен быть не меньше {minimum}")
+            if maximum is not None and value > maximum:
+                raise WarehouseError(f"Параметр {name} должен быть не больше {maximum}")
+            return value
+
+        def _read_json_object(self, maximum_size: int) -> dict[str, Any]:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError as error:
+                raise WarehouseError("Некорректный размер запроса") from error
+            if length <= 0 or length > maximum_size:
+                raise WarehouseError("Некорректный размер запроса")
+            try:
+                data = json.loads(self.rfile.read(length).decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeError) as error:
+                raise WarehouseError("Тело запроса должно содержать корректный JSON") from error
+            if not isinstance(data, dict):
+                raise WarehouseError("JSON-запрос должен быть объектом")
+            return data
+
+        @staticmethod
+        def _validate_action_payload(data: dict[str, Any]) -> None:
+            action = data.get("action")
+            if not isinstance(action, str) or not action:
+                raise WarehouseError("Поле action должно быть непустой строкой")
+            collection_fields: dict[str, dict[str, type]] = {
+                "WORK_LOGS": {"rows": list},
+                "CONFIRM_SCANNED_RECEIPTS": {"common_fields": dict, "serial_numbers": list},
+                "CONFIRM_SCANNED_ISSUES": {"common_fields": dict, "serial_numbers": list},
+                "UPDATE_DELIVERY_LINES": {"line_ids": list, "values": dict},
+                "ACCEPT_DELIVERY_SERIAL": {"values": dict},
+                "ACCEPT_DELIVERY_BATCH": {"line_ids": list, "common_values": dict},
+            }
+            allowed = collection_fields.get(action, {})
+            numeric_fields = {"equipment_id", "quantity", "delivery_id", "reference_id"}
+            boolean_fields = {"only_empty", "unplanned", "is_active", "confirmed"}
+            for key, value in data.items():
+                if key == "action":
+                    continue
+                if key in allowed:
+                    if not isinstance(value, allowed[key]):
+                        raise WarehouseError(f"Поле {key} имеет неверный тип")
+                    Handler._validate_action_collection(value, key)
+                elif key in numeric_fields:
+                    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+                        raise WarehouseError(f"Поле {key} должно быть числом")
+                elif key in boolean_fields:
+                    Handler._json_boolean(value, key)
+                elif not isinstance(value, str):
+                    raise WarehouseError(f"Поле {key} должно быть строкой")
+
+        @staticmethod
+        def _validate_action_collection(value: Any, field: str) -> None:
+            if field == "rows":
+                if any(not isinstance(item, dict) for item in value):
+                    raise WarehouseError("Поле rows должно быть списком объектов")
+                mappings = value
+            elif field == "serial_numbers":
+                if any(not isinstance(item, str) for item in value):
+                    raise WarehouseError("Поле serial_numbers должно быть списком строк")
+                return
+            elif field == "line_ids":
+                if any(
+                    isinstance(item, bool) or not isinstance(item, (str, int))
+                    for item in value
+                ):
+                    raise WarehouseError("Поле line_ids должно быть списком идентификаторов")
+                return
+            else:
+                mappings = [value]
+            for mapping in mappings:
+                for key, item in mapping.items():
+                    if not isinstance(key, str) or item is None or isinstance(item, (dict, list)):
+                        raise WarehouseError(f"Поле {field} содержит неверный тип значения")
+                    if not isinstance(item, (str, int, float, bool)):
+                        raise WarehouseError(f"Поле {field} содержит неверный тип значения")
+
+        @staticmethod
+        def _json_boolean(value: Any, field: str) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, int) and value in (0, 1):
+                return bool(value)
+            if isinstance(value, str):
+                normalized = value.strip().casefold()
+                if normalized in {"1", "true", "yes", "on"}:
+                    return True
+                if normalized in {"", "0", "false", "no", "off"}:
+                    return False
+            raise WarehouseError(f"Поле {field} должно быть логическим значением")
 
         def _balance_filters(self, query: dict[str, list[str]]) -> dict[str, str]:
             return {
@@ -1379,6 +1673,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
             if cookie := getattr(self, "_pending_cookie", ""):
                 self.send_header("Set-Cookie", cookie)
                 self._pending_cookie = ""

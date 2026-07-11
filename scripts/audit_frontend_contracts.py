@@ -37,6 +37,7 @@ DYNAMIC_ID_WHITELIST = {
     # Engineer UX creates these controls after load.
     "activeDrafts",
     "balanceKpis",
+    "balanceScope",
     "cableIssueForm",
     "dailyLogDate",
     "dailyLogRows",
@@ -44,6 +45,10 @@ DYNAMIC_ID_WHITELIST = {
     "deliveryScanResult",
     "deliveryFillField",
     "deliveryFillValue",
+    # Product shell creates the persistent global-search input and result panel.
+    "globalSearch",
+    "globalSearchResults",
+    "shiftProfileCard",
     "simpleReceiptForm",
     "simpleReceiptTitle",
     "uxBalanceCategory",

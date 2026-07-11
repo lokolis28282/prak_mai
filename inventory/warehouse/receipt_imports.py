@@ -34,7 +34,7 @@ class ReceiptWriteService:
         serial = self._required(str(serial_number).strip().upper(), "S/N")
         with connect(self.repository.db_path) as db:
             exists = db.execute(
-                "SELECT 1 FROM stock_receipts WHERE serial_number = ? COLLATE NOCASE",
+                "SELECT 1 FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE",
                 (serial,),
             ).fetchone()
         return {

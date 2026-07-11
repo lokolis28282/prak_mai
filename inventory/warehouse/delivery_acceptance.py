@@ -231,6 +231,17 @@ class DeliveryAcceptanceService:
         serial = self._serial(line.get("serial_number"))
         merged = {**line, **{key: value for key, value in values.items() if value not in (None, "")}}
         if existing:
+            linked = db.execute(
+                """SELECT l.id, d.delivery_number
+                   FROM delivery_lines l JOIN deliveries d ON d.id = l.delivery_id
+                   WHERE l.receipt_id = ? AND l.id <> ? LIMIT 1""",
+                (int(existing["id"]), int(line["id"])),
+            ).fetchone()
+            if linked:
+                number = linked["delivery_number"] or f"#{linked['id']}"
+                raise WarehouseError(
+                    f"Этот S/N уже связан с другой поставкой {number}"
+                )
             fill_values = self._receipt_values_from_line(merged, delivery)
             fill = self.receipt_writer.repository.fill_empty_fields_in_transaction(
                 db,

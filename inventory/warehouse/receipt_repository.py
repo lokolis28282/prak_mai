@@ -58,9 +58,17 @@ class ReceiptRepository:
 
     def insert_one(self, row: dict[str, Any], *, author: str, collect_refs: bool) -> int:
         with connect(self.db_path) as db:
-            if row["serial_number"].casefold() in self.existing_serials(db):
+            if row["serial_number"] and db.execute(
+                """SELECT 1 FROM stock_receipts
+                   WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE""",
+                (row["serial_number"],),
+            ).fetchone():
                 raise WarehouseError(f"S/N «{row['serial_number']}» уже используется")
-            if row["inventory_number"] and row["inventory_number"].casefold() in self.existing_inventories(db):
+            if row["inventory_number"] and db.execute(
+                """SELECT 1 FROM stock_receipts
+                   WHERE trim(inventory_number) <> '' AND inventory_number = ? COLLATE NOCASE""",
+                (row["inventory_number"],),
+            ).fetchone():
                 raise WarehouseError(f"инвентарный номер «{row['inventory_number']}» уже используется")
             self.collect_references(db, [row], enabled=collect_refs, author=author)
             try:
@@ -87,9 +95,17 @@ class ReceiptRepository:
         collect_refs: bool,
         audit_action: str = "RECEIPT_CREATE",
     ) -> int:
-        if row["serial_number"].casefold() in self.existing_serials(db):
+        if row["serial_number"] and db.execute(
+            """SELECT 1 FROM stock_receipts
+               WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE""",
+            (row["serial_number"],),
+        ).fetchone():
             raise WarehouseError(f"S/N «{row['serial_number']}» уже используется")
-        if row["inventory_number"] and row["inventory_number"].casefold() in self.existing_inventories(db):
+        if row["inventory_number"] and db.execute(
+            """SELECT 1 FROM stock_receipts
+               WHERE trim(inventory_number) <> '' AND inventory_number = ? COLLATE NOCASE""",
+            (row["inventory_number"],),
+        ).fetchone():
             raise WarehouseError(f"инвентарный номер «{row['inventory_number']}» уже используется")
         self.collect_references(db, [row], enabled=collect_refs, author=author)
         try:
@@ -168,8 +184,18 @@ class ReceiptRepository:
             return ids
 
     def validate_unique(self, db: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
-        existing_serials = self.existing_serials(db)
-        existing_inventories = self.existing_inventories(db)
+        requested_serials = {
+            str(row["serial_number"]).strip().casefold()
+            for row in rows if str(row["serial_number"]).strip()
+        }
+        requested_inventories = {
+            str(row["inventory_number"]).strip().casefold()
+            for row in rows if str(row["inventory_number"]).strip()
+        }
+        existing_serials = self._existing_identifiers(db, "serial_number", requested_serials)
+        existing_inventories = self._existing_identifiers(
+            db, "inventory_number", requested_inventories
+        )
         seen_serials: set[str] = set()
         seen_inventories: set[str] = set()
         for row in rows:
@@ -185,14 +211,41 @@ class ReceiptRepository:
             if inventory:
                 seen_inventories.add(inventory)
 
-    def receipts(self) -> list[dict[str, Any]]:
+    @staticmethod
+    def _existing_identifiers(
+        db: sqlite3.Connection, column: str, values: set[str]
+    ) -> set[str]:
+        if column not in {"serial_number", "inventory_number"}:
+            raise ValueError("unsupported identifier column")
+        result: set[str] = set()
+        ordered = list(values)
+        for offset in range(0, len(ordered), 400):
+            chunk = ordered[offset:offset + 400]
+            if not chunk:
+                continue
+            placeholders = ",".join("?" for _ in chunk)
+            rows = db.execute(
+                f"""SELECT {column} FROM stock_receipts
+                    WHERE trim({column}) <> ''
+                      AND {column} COLLATE NOCASE IN ({placeholders})""",
+                chunk,
+            )
+            result.update(str(row[0]).casefold() for row in rows)
+        return result
+
+    def receipts(self, limit: int | None = None) -> list[dict[str, Any]]:
+        sql = """SELECT r.*,
+                        r.quantity - COALESCE(SUM(a.quantity), 0) AS available
+                 FROM stock_receipts r
+                 LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
+                 GROUP BY r.id ORDER BY r.receipt_date DESC, r.id DESC"""
+        params: tuple[int, ...] = ()
+        if limit is not None:
+            sql += " LIMIT ?"
+            params = (max(1, min(int(limit), 10_000)),)
         with connect(self.db_path) as db:
             return [dict(row) for row in db.execute(
-                """SELECT r.*,
-                          r.quantity - COALESCE(SUM(a.quantity), 0) AS available
-                   FROM stock_receipts r
-                   LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
-                   GROUP BY r.id ORDER BY r.receipt_date DESC, r.id DESC"""
+                sql, params
             )]
 
     @staticmethod

@@ -120,6 +120,9 @@ class WarehouseServiceTest(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
             self.assertIn("ODE/WINDOWS_RELEASE.md", names)
+            self.assertIn("ODE/QA_STAGE_0_12_17.md", names)
+            self.assertIn("ODE/PRODUCT_REVIEW.md", names)
+            self.assertIn("ODE/docs/README.md", names)
             self.assertIn("ODE/start_windows.bat", names)
             self.assertIn("ODE/data/warehouse.db", names)
             self.assertFalse(any("backups" in name.casefold() for name in names))

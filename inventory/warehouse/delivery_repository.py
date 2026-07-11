@@ -55,20 +55,22 @@ class DeliveryRepository:
                     result.setdefault(str(row["serial_number"]).casefold(), []).append(dict(row))
         return result
 
-    def list_deliveries(self, query: str = "") -> list[dict[str, Any]]:
+    def list_deliveries(self, query: str = "", limit: int | None = None) -> list[dict[str, Any]]:
         term = f"%{query.strip()}%"
+        sql = """SELECT d.*, COUNT(l.id) AS total,
+                        SUM(CASE WHEN l.state='Принято' THEN 1 ELSE 0 END) AS accepted,
+                        SUM(CASE WHEN l.state IN ('Ошибка','Дубль в файле','Уже на складе') THEN 1 ELSE 0 END) AS problems
+                   FROM deliveries d LEFT JOIN delivery_lines l ON l.delivery_id=d.id
+                  WHERE ?='' OR d.delivery_number LIKE ? OR d.supplier LIKE ? OR d.source_filename LIKE ?
+                     OR EXISTS(SELECT 1 FROM delivery_lines s WHERE s.delivery_id=d.id AND
+                        (s.serial_number LIKE ? OR s.order_number LIKE ? OR s.request_number LIKE ?))
+                  GROUP BY d.id ORDER BY d.uploaded_at DESC,d.id DESC"""
+        params: list[Any] = [query.strip(), term, term, term, term, term, term]
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(max(1, min(int(limit), 5_000)))
         with connect(self.db_path) as db:
-            rows = db.execute(
-                """SELECT d.*, COUNT(l.id) AS total,
-                          SUM(CASE WHEN l.state='Принято' THEN 1 ELSE 0 END) AS accepted,
-                          SUM(CASE WHEN l.state IN ('Ошибка','Дубль в файле','Уже на складе') THEN 1 ELSE 0 END) AS problems
-                     FROM deliveries d LEFT JOIN delivery_lines l ON l.delivery_id=d.id
-                    WHERE ?='' OR d.delivery_number LIKE ? OR d.supplier LIKE ? OR d.source_filename LIKE ?
-                       OR EXISTS(SELECT 1 FROM delivery_lines s WHERE s.delivery_id=d.id AND
-                          (s.serial_number LIKE ? OR s.order_number LIKE ? OR s.request_number LIKE ?))
-                    GROUP BY d.id ORDER BY d.uploaded_at DESC,d.id DESC""",
-                (query.strip(), term, term, term, term, term, term),
-            ).fetchall()
+            rows = db.execute(sql, params).fetchall()
         return [dict(row) for row in rows]
 
     def get_delivery(self, delivery_id: int) -> dict[str, Any] | None:
@@ -90,8 +92,31 @@ class DeliveryRepository:
             sql += " AND state=?"
             params.append(state)
         sql += " ORDER BY row_number,id"
+        limit = filters.get("limit")
+        offset = filters.get("offset", 0)
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend((
+                max(1, min(int(limit), 5_000)),
+                max(0, int(offset)),
+            ))
         with connect(self.db_path) as db:
             return [dict(row) for row in db.execute(sql, params).fetchall()]
+
+    def delivery_line_summary(self, delivery_id: int) -> dict[str, int]:
+        with connect(self.db_path) as db:
+            row = db.execute(
+                """SELECT COUNT(*) total,
+                          SUM(CASE WHEN state='Принято' THEN 1 ELSE 0 END) accepted,
+                          SUM(CASE WHEN state='Уже на складе' THEN 1 ELSE 0 END) existing,
+                          SUM(CASE WHEN state IN ('Ошибка','Дубль в файле') THEN 1 ELSE 0 END) errors,
+                          SUM(CASE WHEN state='Ожидается' THEN 1 ELSE 0 END) waiting
+                   FROM delivery_lines WHERE delivery_id=?""",
+                (delivery_id,),
+            ).fetchone()
+        return {key: int(row[key] or 0) for key in (
+            "total", "accepted", "existing", "errors", "waiting"
+        )}
 
     def get_delivery_in_db(self, db: sqlite3.Connection, delivery_id: int) -> dict[str, Any] | None:
         row = db.execute("SELECT * FROM deliveries WHERE id=?", (delivery_id,)).fetchone()
@@ -129,7 +154,7 @@ class DeliveryRepository:
         serial_number: str,
     ) -> dict[str, Any] | None:
         row = db.execute(
-            "SELECT * FROM stock_receipts WHERE serial_number=? COLLATE NOCASE",
+            "SELECT * FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number=? COLLATE NOCASE",
             (serial_number,),
         ).fetchone()
         return dict(row) if row else None

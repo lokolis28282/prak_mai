@@ -14,12 +14,13 @@ from inventory import __version__
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "ODE_windows_test.zip"
-RC_DIR_NAME = "ODE_0.12.16_RC1"
+RC_DIR_NAME = "ODE_0.12.17_RC1"
+RC_PACKAGE_NAME = f"{RC_DIR_NAME}.zip"
 
 
 RELEASE_NOTES = f"""# ODE {__version__} Release Notes
 
-Status: Release Candidate for testing.
+Status: Release Candidate for controlled local pilot.
 
 This package includes:
 
@@ -33,9 +34,13 @@ This package includes:
 - history;
 - daily and weekly reports;
 - profile.
+- dashboard and global search;
+- equipment card with operational history;
+- bounded large-data views and session-isolated previews.
 
-Delivery acceptance was confirmed by Stage 0.12.16A end-to-end acceptance in
-headless Chrome. The validation suite passed 158 tests.
+The validation suite passed 185 tests. End-to-end headless Chrome acceptance
+covered engineer and administrator login, warehouse operations, global search,
+Back/reload, reports, deliveries, mobile navigation and zero HTTP/JS/resource errors.
 
 Limitations:
 
@@ -44,7 +49,8 @@ Limitations:
 - Monitoring is still in development;
 - external system APIs are not connected;
 - server deployment has not been performed;
-- this build is intended for test operation, not production.
+- deployment is limited to one local ODE process and one local SQLite file;
+- this build requires target Windows acceptance before production rollout.
 """
 
 
@@ -58,6 +64,8 @@ KNOWN_ISSUES = """# Known Issues
 - Physical Windows launch must be confirmed on the target laptop.
 - Scheduled automatic backup is not implemented.
 - Server deployment is not implemented.
+- One CSV import is limited to 40,000 non-empty rows.
+- Corrective/reversal operations are not implemented.
 """
 
 
@@ -67,6 +75,15 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
         "README.md",
         "README_WINDOWS.md",
         "WINDOWS_RELEASE.md",
+        "CHANGELOG.md",
+        "ARCHITECTURE.md",
+        "PRODUCT_REVIEW.md",
+        "UX_REVIEW.md",
+        "ARCHITECT_REVIEW.md",
+        "PERFORMANCE_REVIEW.md",
+        "SECURITY_REVIEW.md",
+        "QA_STAGE_0_12_17.md",
+        "BUGS_STAGE_0_12_17.md",
         "requirements.txt",
         "start_windows.bat",
         "start_macos.command",
@@ -81,6 +98,11 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
             (path, path.relative_to(root))
             for path in sorted(root.joinpath("static").rglob("*"))
             if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+        )
+    if (root / "docs").is_dir():
+        files.extend(
+            (path, path.relative_to(root))
+            for path in sorted(root.joinpath("docs").rglob("*.md"))
         )
     for name in ("LICENSE", "LICENSE.md", "NOTICE", "NOTICE.md"):
         if (root / name).is_file():
@@ -144,7 +166,11 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / "release" / PACKAGE_NAME)
     parser.add_argument("--release-dir", type=Path, default=None)
     args = parser.parse_args()
-    print(build_windows_package(args.output, release_dir=args.release_dir))
+    release_dir = args.release_dir or ROOT / "release" / RC_DIR_NAME
+    archive = build_windows_package(args.output, release_dir=release_dir)
+    if args.output.resolve() == (ROOT / "release" / PACKAGE_NAME).resolve():
+        shutil.copy2(archive, ROOT / "release" / RC_PACKAGE_NAME)
+    print(archive)
     return 0
 
 

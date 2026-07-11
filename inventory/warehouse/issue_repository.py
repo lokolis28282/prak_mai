@@ -63,7 +63,7 @@ class IssueRepository:
             """SELECT r.*, r.quantity - COALESCE(SUM(a.quantity), 0) AS available
                  FROM stock_receipts r
                  LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
-                WHERE r.serial_number = ? COLLATE NOCASE
+                WHERE trim(r.serial_number) <> '' AND r.serial_number = ? COLLATE NOCASE
                 GROUP BY r.id HAVING available > 0.0000001
                 ORDER BY r.receipt_date, r.id""",
             (serial,),
@@ -71,7 +71,7 @@ class IssueRepository:
 
     def serial_exists(self, db: sqlite3.Connection, serial: str) -> bool:
         return db.execute(
-            "SELECT 1 FROM stock_receipts WHERE serial_number = ? COLLATE NOCASE",
+            "SELECT 1 FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE",
             (serial,),
         ).fetchone() is not None
 
@@ -107,7 +107,7 @@ class IssueRepository:
         if source["component_type"]:
             target = db.execute(
                 """SELECT id FROM stock_receipts
-                   WHERE serial_number = ? COLLATE NOCASE AND equipment_type <> ''""",
+                   WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE AND equipment_type <> ''""",
                 (row["target_serial_number"],),
             ).fetchone()
             if target is None:
@@ -243,7 +243,7 @@ class IssueRepository:
                           r.quantity - COALESCE(SUM(a.quantity), 0) AS available
                    FROM stock_receipts r
                    LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
-                   WHERE r.serial_number = ? COLLATE NOCASE
+                   WHERE trim(r.serial_number) <> '' AND r.serial_number = ? COLLATE NOCASE
                    GROUP BY r.id""",
                 (serial,),
             ).fetchone()

@@ -10,7 +10,7 @@ import secrets
 import shutil
 import sqlite3
 import threading
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from contextvars import ContextVar
 from datetime import date, datetime
 from pathlib import Path
@@ -89,6 +89,9 @@ class WarehouseCore:
         self._actor_name: ContextVar[str | None] = ContextVar(
             f"warehouse_actor_name_{id(self)}", default=None
         )
+        self._actor_role_override: ContextVar[str | None] = ContextVar(
+            f"warehouse_actor_role_{id(self)}", default=None
+        )
         self.default_admin_created = initialize(self.db_path)
         if self.default_admin_created:
             print(
@@ -130,18 +133,30 @@ class WarehouseCore:
 
     def current_user(self) -> dict[str, Any]:
         # Прямые вызовы сервиса и CLI выполняются от встроенного администратора.
-        return self.user_by_email(self._actor_email.get() or "lokolis")
+        user = self.user_by_email(self._actor_email.get() or "lokolis")
+        role_override = self._actor_role_override.get()
+        if role_override:
+            user = {**user, "role": role_override, "must_change_password": 0}
+        return user
 
     @contextmanager
     def user_context(
-        self, email: str, *, author_name: str | None = None
+        self,
+        email: str,
+        *,
+        author_name: str | None = None,
+        role_override: str | None = None,
     ) -> Iterable[dict[str, Any]]:
+        if role_override not in {None, "engineer", "viewer"}:
+            raise WarehouseError("Недопустимое ограничение роли")
         user = self.user_by_email(email)
         token = self._actor_email.set(str(user["email"]))
         name_token = self._actor_name.set(author_name.strip() if author_name else None)
+        role_token = self._actor_role_override.set(role_override)
         try:
-            yield user
+            yield self.current_user()
         finally:
+            self._actor_role_override.reset(role_token)
             self._actor_name.reset(name_token)
             self._actor_email.reset(token)
 
@@ -305,21 +320,26 @@ class WarehouseCore:
     @staticmethod
     def _database_check(path: Path, required_tables: set[str]) -> dict[str, Any]:
         try:
-            db = sqlite3.connect(path)
-            messages = [str(row[0]) for row in db.execute("PRAGMA integrity_check")]
-            tables = {
-                str(row[0]) for row in db.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            db.close()
+            with closing(sqlite3.connect(path)) as db:
+                db.execute("PRAGMA foreign_keys = ON")
+                messages = [str(row[0]) for row in db.execute("PRAGMA integrity_check")]
+                foreign_key_errors = [tuple(row) for row in db.execute("PRAGMA foreign_key_check")]
+                tables = {
+                    str(row[0]) for row in db.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
         except sqlite3.Error as error:
-            return {"ok": False, "messages": [str(error)], "missing_tables": sorted(required_tables)}
+            return {
+                "ok": False, "messages": [str(error)],
+                "missing_tables": sorted(required_tables), "foreign_key_errors": [],
+            }
         missing = sorted(required_tables - tables)
         return {
-            "ok": messages == ["ok"] and not missing,
+            "ok": messages == ["ok"] and not missing and not foreign_key_errors,
             "messages": messages,
             "missing_tables": missing,
+            "foreign_key_errors": foreign_key_errors,
         }
 
     def check_integrity(self) -> dict[str, Any]:
@@ -766,20 +786,56 @@ class WarehouseCore:
         """Вернуть показатели, рассчитанные только по новой складской модели."""
         with connect(self.db_path) as db:
             row = db.execute(
-                """SELECT
+                """WITH lots AS (
+                       SELECT r.project, r.item_name, r.vendor, r.model,
+                              r.serial_number, r.inventory_number, r.unit,
+                              r.object_name, r.equipment_type, r.component_type,
+                              r.cable_type, r.datacenter,
+                              r.quantity - COALESCE(SUM(a.quantity), 0) AS balance
+                       FROM stock_receipts r
+                       LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
+                       GROUP BY r.id
+                   ), positions AS (
+                       SELECT cable_type, SUM(balance) AS balance
+                       FROM lots
+                       GROUP BY project, item_name, vendor, model, serial_number,
+                                inventory_number, unit, object_name, equipment_type,
+                                component_type, cable_type, datacenter
+                   )
+                   SELECT
                        COALESCE((SELECT SUM(quantity) FROM stock_receipts), 0) AS receipts,
                        COALESCE((SELECT SUM(quantity) FROM stock_issues), 0) AS issues,
                        COALESCE((SELECT SUM(quantity) FROM stock_receipts), 0)
                          - COALESCE((SELECT SUM(quantity) FROM stock_issue_allocations), 0)
-                         AS balance
+                         AS balance,
+                       COALESCE((SELECT SUM(quantity) FROM stock_receipts
+                                 WHERE receipt_date = date('now', 'localtime')), 0)
+                         AS received_today,
+                       COALESCE((SELECT SUM(a.quantity)
+                                 FROM stock_issue_allocations a
+                                 JOIN stock_issues i ON i.id = a.issue_id
+                                 WHERE i.issue_date = date('now', 'localtime')), 0)
+                         AS issued_today,
+                       (SELECT COUNT(*) FROM deliveries) AS deliveries,
+                       (SELECT COUNT(*) FROM positions WHERE balance > 0.0000001) AS positions,
+                       COALESCE((SELECT SUM(balance) FROM positions
+                                 WHERE balance > 0.0000001 AND cable_type = ''), 0)
+                         AS equipment,
+                       COALESCE((SELECT SUM(balance) FROM positions
+                                 WHERE balance > 0.0000001 AND cable_type <> ''), 0)
+                         AS cables
                 """
             ).fetchone()
-        balances = self.stock_balance()
         return {
             "receipts": float(row["receipts"]),
             "issues": float(row["issues"]),
             "balance": float(row["balance"]),
-            "positions": sum(float(item["balance"]) > 1e-9 for item in balances),
+            "positions": int(row["positions"]),
+            "equipment": float(row["equipment"]),
+            "cables": float(row["cables"]),
+            "received_today": float(row["received_today"]),
+            "issued_today": float(row["issued_today"]),
+            "deliveries": int(row["deliveries"]),
         }
 
     def operation_log(self, operation_type: str = "", limit: int | None = 100) -> list[dict[str, Any]]:
@@ -1230,7 +1286,7 @@ class WarehouseCore:
         serial = self._required(str(serial_number).strip().upper(), "S/N")
         with connect(self.db_path) as db:
             exists = db.execute(
-                "SELECT 1 FROM stock_receipts WHERE serial_number = ? COLLATE NOCASE",
+                "SELECT 1 FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE",
                 (serial,),
             ).fetchone()
         return {
@@ -1450,7 +1506,7 @@ class WarehouseCore:
                     receipt_id = int(db.execute("""INSERT INTO stock_receipts(receipt_date,responsible,order_date,request_number,order_number,plu,item_name,project,serial_number,inventory_number,supplier,vendor,model,shelf,object_name,datacenter,equipment_type,component_type,cable_type,unit,quantity) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", self._receipt_values(prepared)).lastrowid)
                     row["state"] = "Принято"
                 elif preview.get("auto_apply") and row["state"] == "Уже на складе":
-                    existing = db.execute("SELECT * FROM stock_receipts WHERE serial_number=? COLLATE NOCASE", (row.get("serial_number", ""),)).fetchone()
+                    existing = db.execute("SELECT * FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number=? COLLATE NOCASE", (row.get("serial_number", ""),)).fetchone()
                     if existing:
                         receipt_id = int(existing["id"])
                         mapping = {"inventory_number":"inventory_number", "supplier":"supplier", "order_number":"order_number", "request_number":"request_number", "plu":"plu", "project":"project", "model":"model", "vendor":"vendor", "shelf":"shelf", "datacenter":"datacenter", "item_name":"item_name", "equipment_type":"equipment_type"}
@@ -1553,7 +1609,7 @@ class WarehouseCore:
             delivery = db.execute("SELECT * FROM deliveries WHERE id=?", (delivery_id,)).fetchone()
             if delivery is None or delivery["status"] == "Закрыта":
                 raise WarehouseError("Поставка не найдена или уже закрыта")
-            existing = db.execute("SELECT id FROM stock_receipts WHERE serial_number=? COLLATE NOCASE", (serial,)).fetchone()
+            existing = db.execute("SELECT id FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number=? COLLATE NOCASE", (serial,)).fetchone()
             if existing:
                 raise WarehouseError("Этот S/N уже есть на складе")
             line = db.execute("SELECT * FROM delivery_lines WHERE delivery_id=? AND serial_number=? COLLATE NOCASE ORDER BY id LIMIT 1", (delivery_id, serial)).fetchone()
@@ -1601,13 +1657,44 @@ class WarehouseCore:
             self._audit(db, "DELIVERY_CLOSE", "delivery", delivery_id)
 
     def warehouse_categories(self) -> list[dict[str, Any]]:
-        rows = self.stock_balance()
         names = ("Серверы", "Диски", "Память", "Сетевое оборудование", "Кабели", "Прочее")
         totals = {name: 0.0 for name in names}
+
+        def category_name(
+            item_name: str, equipment_type: str, component_type: str, cable_type: str
+        ) -> str:
+            text = " ".join((
+                str(item_name or ""), str(equipment_type or ""),
+                str(component_type or ""), str(cable_type or ""),
+            )).casefold()
+            if cable_type:
+                return "Кабели"
+            if "сервер" in text:
+                return "Серверы"
+            if any(value in text for value in ("диск", "ssd", "hdd")):
+                return "Диски"
+            if any(value in text for value in ("памят", "ram", "dimm")):
+                return "Память"
+            if any(value in text for value in ("сет", "коммут", "switch", "маршрут")):
+                return "Сетевое оборудование"
+            return "Прочее"
+
+        with connect(self.db_path) as db:
+            db.create_function("ode_warehouse_category", 4, category_name, deterministic=True)
+            rows = db.execute(
+                """SELECT ode_warehouse_category(
+                              r.item_name, r.equipment_type, r.component_type, r.cable_type
+                          ) AS category,
+                          SUM(r.quantity - COALESCE(a.issued, 0)) AS balance
+                   FROM stock_receipts r
+                   LEFT JOIN (
+                       SELECT receipt_id, SUM(quantity) AS issued
+                       FROM stock_issue_allocations GROUP BY receipt_id
+                   ) a ON a.receipt_id = r.id
+                   GROUP BY category"""
+            ).fetchall()
         for row in rows:
-            text = " ".join(str(row.get(key, "")) for key in ("item_name", "equipment_type", "component_type", "cable_type")).casefold()
-            category = "Кабели" if row.get("cable_type") else "Серверы" if "сервер" in text else "Диски" if any(x in text for x in ("диск", "ssd", "hdd")) else "Память" if any(x in text for x in ("памят", "ram", "dimm")) else "Сетевое оборудование" if any(x in text for x in ("сет", "коммут", "switch", "маршрут")) else "Прочее"
-            totals[category] += float(row["balance"])
+            totals[str(row["category"])] = float(row["balance"])
         return [{"name": name, "quantity": totals[name]} for name in names]
 
     def stock_balance(
@@ -1622,6 +1709,7 @@ class WarehouseCore:
         datacenter: str = "",
         category: str = "",
         item_type: str = "",
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
         """Рассчитать баланс как приход минус распределенный расход, без учета полки."""
         filters = {
@@ -1645,6 +1733,11 @@ class WarehouseCore:
             params.extend([term] * 9)
         where_sql = "WHERE " + " AND ".join(where) if where else ""
         with connect(self.db_path) as db:
+            limit_sql = ""
+            if limit is not None:
+                limit = max(1, min(int(limit), 10_000))
+                limit_sql = " LIMIT ?"
+                params.append(limit)
             rows = db.execute(
                 f"""WITH lots AS (
                        SELECT r.id, r.project, r.item_name, r.supplier, r.vendor, r.model, r.serial_number,
@@ -1667,7 +1760,7 @@ class WarehouseCore:
                             unit, object_name, equipment_type, component_type,
                             cable_type, datacenter
                    ORDER BY item_name COLLATE NOCASE, model COLLATE NOCASE,
-                            serial_number COLLATE NOCASE""",
+                            serial_number COLLATE NOCASE{limit_sql}""",
                 params,
             ).fetchall()
             result = [dict(row) for row in rows]
@@ -1695,6 +1788,156 @@ class WarehouseCore:
         query = self._required(query, "поисковый запрос")
         return self.stock_balance(query=query)[:max(1, min(int(limit), 500))]
 
+    def global_search(self, query: str, limit: int = 30) -> list[dict[str, Any]]:
+        """Искать складские позиции, поставки и инженеров одной ограниченной выдачей."""
+        query = self._required(query, "поисковый запрос")
+        if len(query) < 2:
+            raise WarehouseError("Введите не менее двух символов")
+        if len(query) > 120:
+            raise WarehouseError("Поисковый запрос слишком длинный")
+        limit = max(1, min(int(limit), 50))
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        term = f"%{escaped}%"
+        match = " LIKE ? ESCAPE '\\' COLLATE NOCASE"
+        select_position = """SELECT r.id, r.serial_number, r.inventory_number, r.item_name,
+                                    r.vendor, r.model, r.project, r.shelf, r.datacenter,
+                                    r.equipment_type, r.component_type, r.cable_type,
+                                    COALESCE((SELECT d.delivery_number
+                                              FROM delivery_lines l
+                                              JOIN deliveries d ON d.id = l.delivery_id
+                                              WHERE l.receipt_id = r.id LIMIT 1), '') delivery_number
+                             FROM stock_receipts r"""
+        position_rows: list[sqlite3.Row] = []
+        position_ids: set[int] = set()
+
+        def add_positions(rows: Iterable[sqlite3.Row]) -> None:
+            for row in rows:
+                row_id = int(row["id"])
+                if row_id not in position_ids and len(position_rows) < limit:
+                    position_ids.add(row_id)
+                    position_rows.append(row)
+
+        with connect(self.db_path) as db:
+            # Exact identifiers use the existing partial unique indexes. This is
+            # the dominant scanner/search path and stays fast on large databases.
+            add_positions(db.execute(
+                select_position
+                + " WHERE trim(r.serial_number) <> '' AND r.serial_number = ? COLLATE NOCASE LIMIT ?",
+                (query, limit),
+            ))
+            add_positions(db.execute(
+                select_position
+                + " WHERE trim(r.inventory_number) <> '' AND r.inventory_number = ? COLLATE NOCASE LIMIT ?",
+                (query, limit),
+            ))
+
+            exact_position = bool(position_rows)
+            remaining = 0 if exact_position else limit - len(position_rows)
+            if remaining:
+                base_fields = (
+                    "r.serial_number", "r.inventory_number", "r.item_name", "r.equipment_type",
+                    "r.component_type", "r.cable_type", "r.vendor", "r.model", "r.project",
+                    "r.shelf", "r.object_name", "r.datacenter", "r.responsible",
+                    "r.order_number", "r.request_number",
+                )
+                add_positions(db.execute(
+                    select_position
+                    + f" WHERE {' OR '.join(field + match for field in base_fields)} LIMIT ?",
+                    [term] * len(base_fields) + [remaining],
+                ))
+
+            remaining = limit - len(position_rows)
+            if remaining:
+                related_ids = [int(row[0]) for row in db.execute(
+                    f"""SELECT DISTINCT l.receipt_id
+                         FROM delivery_lines l JOIN deliveries d ON d.id = l.delivery_id
+                         WHERE l.receipt_id IS NOT NULL AND (
+                           d.delivery_number{match} OR d.supplier{match} OR
+                           l.delivery_number{match} OR l.order_number{match} OR
+                           l.request_number{match}) LIMIT ?""",
+                    [term] * 5 + [remaining],
+                )]
+                related_ids.extend(int(row[0]) for row in db.execute(
+                    f"""SELECT DISTINCT a.receipt_id
+                         FROM stock_issues i
+                         JOIN stock_issue_allocations a ON a.issue_id = i.id
+                         WHERE i.responsible{match} LIMIT ?""",
+                    (term, remaining),
+                ))
+                target_serials = [str(row[0]) for row in db.execute(
+                    f"""SELECT DISTINCT target_serial_number FROM stock_issues
+                         WHERE trim(target_serial_number) <> '' AND target_hostname{match} LIMIT ?""",
+                    (term, remaining),
+                )]
+                if related_ids:
+                    unique_ids = list(dict.fromkeys(related_ids))[:remaining]
+                    placeholders = ",".join("?" for _ in unique_ids)
+                    add_positions(db.execute(
+                        select_position + f" WHERE r.id IN ({placeholders}) LIMIT ?",
+                        [*unique_ids, remaining],
+                    ))
+                if target_serials and len(position_rows) < limit:
+                    placeholders = ",".join("?" for _ in target_serials)
+                    add_positions(db.execute(
+                        select_position
+                        + f" WHERE trim(r.serial_number) <> '' AND r.serial_number COLLATE NOCASE IN ({placeholders}) LIMIT ?",
+                        [*target_serials, limit - len(position_rows)],
+                    ))
+
+            remaining = max(0, limit - len(position_rows))
+            delivery_fields = (
+                "d.delivery_number", "d.supplier", "d.source_filename", "d.uploaded_by",
+                "l.serial_number", "l.asset_number", "l.order_number", "l.request_number",
+                "l.item_name", "l.vendor", "l.model", "l.project", "l.shelf", "l.datacenter",
+            )
+            delivery_rows = db.execute(
+                f"""SELECT DISTINCT d.id, d.delivery_number, d.supplier, d.status,
+                           d.source_filename
+                    FROM deliveries d
+                    LEFT JOIN delivery_lines l ON l.delivery_id = d.id
+                    WHERE {" OR ".join(field + match for field in delivery_fields)}
+                    ORDER BY d.uploaded_at DESC, d.id DESC LIMIT ?""",
+                [term] * len(delivery_fields) + [remaining],
+            ).fetchall() if remaining else []
+            remaining = max(0, remaining - len(delivery_rows))
+            engineer_rows: list[dict[str, Any]] = []
+            seen_engineers: set[str] = set()
+            for table, name_column, date_column in (
+                ("stock_receipts", "responsible", "created_at"),
+                ("stock_issues", "responsible", "created_at"),
+                ("audit_log", "author", "event_date"),
+            ):
+                if len(engineer_rows) >= remaining:
+                    break
+                for row in db.execute(
+                    f"""SELECT {name_column} engineer, {date_column} last_activity
+                         FROM {table} WHERE trim({name_column}) <> ''
+                           AND {name_column}{match} LIMIT ?""",
+                    (term, remaining - len(engineer_rows)),
+                ):
+                    key = str(row["engineer"]).casefold()
+                    if key not in seen_engineers:
+                        seen_engineers.add(key)
+                        engineer_rows.append(dict(row))
+        results: list[dict[str, Any]] = []
+        for row in position_rows:
+            item = dict(row)
+            item_type = item["equipment_type"] or item["component_type"] or item["cable_type"]
+            item["category"] = "Кабели" if item["cable_type"] else (
+                "Компоненты" if item["component_type"] else "Оборудование"
+            )
+            item["item_type"] = item_type
+            item["position_key"] = (
+                f"sn:{item['serial_number']}" if item["serial_number"] else
+                "cable:" + "|".join(str(item.get(key) or "") for key in (
+                    "item_name", "cable_type", "project", "datacenter"
+                ))
+            )
+            results.append({"kind": "position", "position": item})
+        results.extend({"kind": "delivery", "delivery": dict(row)} for row in delivery_rows)
+        results.extend({"kind": "engineer", "engineer": dict(row)} for row in engineer_rows)
+        return results[:limit]
+
     def position_card(
         self,
         serial_number: str = "",
@@ -1708,7 +1951,7 @@ class WarehouseCore:
         where: list[str] = []
         params: list[Any] = []
         if serial_number:
-            where.append("r.serial_number = ? COLLATE NOCASE")
+            where.extend(("trim(r.serial_number) <> ''", "r.serial_number = ? COLLATE NOCASE"))
             params.append(serial_number)
         else:
             item_name = self._required(item_name, "наименование")
@@ -1746,6 +1989,21 @@ class WarehouseCore:
                     ORDER BY i.issue_date, i.id, a.id""",
                 receipt_ids,
             ).fetchall()
+            delivery_rows = db.execute(
+                f"""SELECT l.*, d.delivery_number AS parent_delivery_number,
+                           d.source_filename, d.uploaded_by, d.uploaded_at
+                    FROM delivery_lines l JOIN deliveries d ON d.id = l.delivery_id
+                    WHERE l.receipt_id IN ({placeholders})
+                    ORDER BY l.updated_at, l.id""",
+                receipt_ids,
+            ).fetchall()
+            target_events = db.execute(
+                """SELECT * FROM stock_issues
+                   WHERE trim(target_serial_number) <> ''
+                     AND target_serial_number = ? COLLATE NOCASE
+                   ORDER BY issue_date, id""",
+                (serial_number,),
+            ).fetchall() if serial_number else []
             issue_ids = sorted({int(row["id"]) for row in issues})
             audit_terms = [
                 "(entity_type = 'stock_receipt' AND entity_id IN ("
@@ -1759,6 +2017,14 @@ class WarehouseCore:
                     + issue_placeholders + "))"
                 )
                 audit_params.extend(str(value) for value in issue_ids)
+            delivery_line_ids = [int(row["id"]) for row in delivery_rows]
+            if delivery_line_ids:
+                line_placeholders = ",".join("?" for _ in delivery_line_ids)
+                audit_terms.append(
+                    "(entity_type = 'delivery_line' AND entity_id IN ("
+                    + line_placeholders + "))"
+                )
+                audit_params.extend(str(value) for value in delivery_line_ids)
             audits = db.execute(
                 "SELECT * FROM audit_log WHERE " + " OR ".join(audit_terms)
                 + " ORDER BY event_date, id",
@@ -1768,12 +2034,34 @@ class WarehouseCore:
         card = {key: first.get(key, "") for key in (
             "serial_number", "inventory_number", "item_name", "vendor", "model",
             "project", "object_name", "datacenter", "equipment_type",
-            "component_type", "cable_type", "unit",
+            "component_type", "cable_type", "unit", "supplier", "order_number",
+            "request_number", "receipt_date", "responsible",
         )}
+        card["category"] = (
+            "Кабели" if card["cable_type"] else
+            "Компоненты" if card["component_type"] else "Оборудование"
+        )
+        card["item_type"] = (
+            card["equipment_type"] or card["component_type"] or card["cable_type"]
+        )
         card["shelf"] = ", ".join(sorted({str(row["shelf"]) for row in receipts if row["shelf"]}))
         card["current_balance"] = sum(float(row["available"]) for row in receipts)
         card["status"] = "В наличии" if card["current_balance"] > 1e-9 else "Списано"
+        card["delivery_number"] = ""
+        card["hostname"] = ""
+        card["rack_row"] = ""
+        card["rack_unit"] = ""
         card["comment"] = ""
+        if delivery_rows:
+            delivery = dict(delivery_rows[-1])
+            card["delivery_number"] = (
+                delivery.get("parent_delivery_number") or delivery.get("delivery_number") or ""
+            )
+            card["order_number"] = card["order_number"] or delivery.get("order_number", "")
+            card["request_number"] = card["request_number"] or delivery.get("request_number", "")
+            card["comment"] = delivery.get("error_text", "")
+        if target_events:
+            card["hostname"] = target_events[-1]["target_hostname"]
         history: list[dict[str, Any]] = []
         for row in receipts:
             history.append({
@@ -1792,6 +2080,30 @@ class WarehouseCore:
                 ),
                 "responsible": row["responsible"], "comment": row["comment"],
                 "sort_id": 1_000_000 + int(row["id"]),
+            })
+        for row in target_events:
+            history.append({
+                "date": row["issue_date"], "event_type": "Установлен компонент",
+                "quantity": float(row["quantity"]),
+                "task": (
+                    f"{row['task_type']}-{row['task_number']}" if row["task_type"] else ""
+                ),
+                "responsible": row["responsible"],
+                "comment": " ".join(filter(None, (
+                    str(row["source_serial_number"] or row["source_item_name"]),
+                    str(row["comment"] or ""),
+                ))),
+                "sort_id": 1_250_000 + int(row["id"]),
+            })
+        for row in delivery_rows:
+            history.append({
+                "date": row["updated_at"] or row["uploaded_at"],
+                "event_type": "Принято по поставке",
+                "quantity": float(row["quantity"]),
+                "task": row["parent_delivery_number"] or row["delivery_number"],
+                "responsible": row["updated_by"] or row["uploaded_by"],
+                "comment": row["source_filename"],
+                "sort_id": 1_500_000 + int(row["id"]),
             })
         for row in audits:
             history.append({
@@ -1869,7 +2181,7 @@ class WarehouseCore:
                 raise WarehouseError(prefix + "тип и номер задачи заполняются вместе")
         else:
             source_exists = db.execute(
-                "SELECT id FROM stock_receipts WHERE serial_number = ? COLLATE NOCASE",
+                "SELECT id FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE",
                 (row["source_serial_number"],),
             ).fetchone()
             if source_exists is None:
@@ -1893,7 +2205,7 @@ class WarehouseCore:
             if source["component_type"]:
                 target = db.execute(
                     """SELECT id FROM stock_receipts
-                       WHERE serial_number = ? COLLATE NOCASE AND equipment_type <> ''""",
+                       WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE AND equipment_type <> ''""",
                     (row["target_serial_number"],),
                 ).fetchone()
                 if target is None:
@@ -1993,7 +2305,7 @@ class WarehouseCore:
                           r.quantity - COALESCE(SUM(a.quantity), 0) AS available
                    FROM stock_receipts r
                    LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
-                   WHERE r.serial_number = ? COLLATE NOCASE
+                   WHERE trim(r.serial_number) <> '' AND r.serial_number = ? COLLATE NOCASE
                    GROUP BY r.id""",
                 (serial,),
             ).fetchone()
@@ -2183,7 +2495,7 @@ class WarehouseCore:
                                   r.quantity - COALESCE(SUM(a.quantity), 0) AS available
                            FROM stock_receipts r
                            LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
-                           WHERE r.serial_number = ? COLLATE NOCASE
+                           WHERE trim(r.serial_number) <> '' AND r.serial_number = ? COLLATE NOCASE
                            GROUP BY r.id""",
                         (serial,),
                     ).fetchone()
@@ -2287,7 +2599,7 @@ class WarehouseCore:
             return [dict(row) for row in rows]
 
     def data_quality_problems(
-        self, date_from: str = "", date_to: str = ""
+        self, date_from: str = "", date_to: str = "", limit: int | None = None
     ) -> dict[str, list[dict[str, Any]]]:
         """Return warehouse inconsistencies without preventing normal balance reads."""
         start, end = self._validated_period(date_from, date_to, optional=True)
@@ -2299,6 +2611,10 @@ class WarehouseCore:
         if end:
             issue_where += " AND i.issue_date <= ?"
             params.append(end)
+        limit_sql = ""
+        if limit is not None:
+            limit = max(1, min(int(limit), 5_000))
+            limit_sql = " LIMIT ?"
         with connect(self.db_path) as db:
             unmatched = [dict(row) for row in db.execute(
                 f"""SELECT i.id, i.issue_date AS date, i.source_serial_number AS serial_number,
@@ -2311,15 +2627,30 @@ class WarehouseCore:
                      WHERE 1=1 {issue_where}
                      GROUP BY i.id
                     HAVING unmatched_quantity > 0.0000001
-                     ORDER BY i.issue_date, i.id""",
-                params,
+                     ORDER BY i.issue_date, i.id{limit_sql}""",
+                [*params, *([limit] if limit is not None else [])],
             )]
             duplicates = [dict(row) for row in db.execute(
-                """SELECT serial_number, COUNT(*) AS count
+                f"""SELECT serial_number, COUNT(*) AS count
                      FROM stock_receipts WHERE trim(serial_number) <> ''
-                     GROUP BY serial_number COLLATE NOCASE HAVING COUNT(*) > 1"""
+                     GROUP BY serial_number COLLATE NOCASE HAVING COUNT(*) > 1
+                     {limit_sql}""",
+                ([limit] if limit is not None else []),
             )]
-            negative = [row for row in self.stock_balance() if float(row["balance"]) < -1e-9]
+            negative = [dict(row) for row in db.execute(
+                f"""SELECT r.serial_number, r.item_name,
+                           SUM(r.quantity - COALESCE(a.issued, 0)) AS balance
+                    FROM stock_receipts r
+                    LEFT JOIN (
+                        SELECT receipt_id, SUM(quantity) AS issued
+                        FROM stock_issue_allocations GROUP BY receipt_id
+                    ) a ON a.receipt_id = r.id
+                    GROUP BY r.project, r.item_name, r.vendor, r.model, r.serial_number,
+                             r.inventory_number, r.unit, r.object_name, r.equipment_type,
+                             r.component_type, r.cable_type, r.datacenter
+                    HAVING balance < -0.0000001{limit_sql}""",
+                ([limit] if limit is not None else []),
+            )]
             receipt_where = ""
             receipt_params: list[Any] = []
             if start:
@@ -2334,12 +2665,128 @@ class WarehouseCore:
                        FROM stock_receipts
                       WHERE (trim(project) = '' OR trim(shelf) = '' OR trim(vendor) = ''
                              OR trim(model) = '') {receipt_where}
-                      ORDER BY receipt_date, id""",
-                receipt_params,
+                      ORDER BY receipt_date, id{limit_sql}""",
+                [*receipt_params, *([limit] if limit is not None else [])],
             )]
         return {
             "unmatched_issues": unmatched, "duplicate_serials": duplicates,
             "negative_balances": negative, "incomplete_rows": incomplete,
+        }
+
+    def data_quality_problem_counts(self) -> dict[str, int]:
+        """Count problem groups without materializing every problematic row."""
+        with connect(self.db_path) as db:
+            row = db.execute(
+                """WITH allocations AS (
+                       SELECT receipt_id, SUM(quantity) issued
+                       FROM stock_issue_allocations GROUP BY receipt_id
+                   ), grouped_balance AS (
+                       SELECT SUM(r.quantity - COALESCE(a.issued, 0)) balance
+                       FROM stock_receipts r LEFT JOIN allocations a ON a.receipt_id = r.id
+                       GROUP BY r.project, r.item_name, r.vendor, r.model, r.serial_number,
+                                r.inventory_number, r.unit, r.object_name, r.equipment_type,
+                                r.component_type, r.cable_type, r.datacenter
+                   ), issue_allocations AS (
+                       SELECT issue_id, SUM(quantity) matched
+                       FROM stock_issue_allocations GROUP BY issue_id
+                   )
+                   SELECT
+                     (SELECT COUNT(*) FROM stock_issues i
+                       LEFT JOIN issue_allocations a ON a.issue_id = i.id
+                       WHERE i.quantity - COALESCE(a.matched, 0) > 0.0000001) unmatched_issues,
+                     (SELECT COUNT(*) FROM (
+                       SELECT 1 FROM stock_receipts WHERE trim(serial_number) <> ''
+                       GROUP BY serial_number COLLATE NOCASE HAVING COUNT(*) > 1
+                     )) duplicate_serials,
+                     (SELECT COUNT(*) FROM grouped_balance WHERE balance < -0.0000001) negative_balances,
+                     (SELECT COUNT(*) FROM stock_receipts
+                       WHERE trim(project) = '' OR trim(shelf) = '' OR trim(vendor) = ''
+                          OR trim(model) = '') incomplete_rows"""
+            ).fetchone()
+        return {key: int(row[key]) for key in (
+            "unmatched_issues", "duplicate_serials", "negative_balances", "incomplete_rows"
+        )}
+
+    def data_quality_summary(self, limit: int = 200) -> dict[str, Any]:
+        """Return bounded problem examples and exact counts in the same SQL passes."""
+        limit = max(1, min(int(limit), 5_000))
+
+        def rows_and_count(rows: list[sqlite3.Row]) -> tuple[list[dict[str, Any]], int]:
+            count = int(rows[0]["_total_count"]) if rows else 0
+            result: list[dict[str, Any]] = []
+            for source in rows:
+                item = dict(source)
+                item.pop("_total_count", None)
+                result.append(item)
+            return result, count
+
+        with connect(self.db_path) as db:
+            unmatched_rows = db.execute(
+                """WITH problems AS (
+                       SELECT i.id, i.issue_date AS date,
+                              i.source_serial_number AS serial_number,
+                              i.source_item_name AS item_name,
+                              i.source_cable_type AS cable_type, i.quantity,
+                              COALESCE(SUM(a.quantity), 0) AS matched_quantity,
+                              i.quantity - COALESCE(SUM(a.quantity), 0) AS unmatched_quantity,
+                              i.responsible, i.comment
+                         FROM stock_issues i
+                         LEFT JOIN stock_issue_allocations a ON a.issue_id = i.id
+                        GROUP BY i.id
+                       HAVING unmatched_quantity > 0.0000001
+                   )
+                   SELECT problems.*, COUNT(*) OVER() AS _total_count
+                     FROM problems ORDER BY date, id LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            duplicate_rows = db.execute(
+                """WITH problems AS (
+                       SELECT serial_number, COUNT(*) AS count
+                         FROM stock_receipts WHERE trim(serial_number) <> ''
+                        GROUP BY serial_number COLLATE NOCASE HAVING COUNT(*) > 1
+                   )
+                   SELECT problems.*, COUNT(*) OVER() AS _total_count
+                     FROM problems LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            negative_rows = db.execute(
+                """WITH allocations AS (
+                       SELECT receipt_id, SUM(quantity) AS issued
+                         FROM stock_issue_allocations GROUP BY receipt_id
+                   ), problems AS (
+                       SELECT r.serial_number, r.item_name,
+                              SUM(r.quantity - COALESCE(a.issued, 0)) AS balance
+                         FROM stock_receipts r
+                         LEFT JOIN allocations a ON a.receipt_id = r.id
+                        GROUP BY r.project, r.item_name, r.vendor, r.model,
+                                 r.serial_number, r.inventory_number, r.unit,
+                                 r.object_name, r.equipment_type, r.component_type,
+                                 r.cable_type, r.datacenter
+                       HAVING balance < -0.0000001
+                   )
+                   SELECT problems.*, COUNT(*) OVER() AS _total_count
+                     FROM problems LIMIT ?""",
+                (limit,),
+            ).fetchall()
+            incomplete_rows = db.execute(
+                """SELECT id, receipt_date AS date, item_name, serial_number,
+                          inventory_number, project, shelf, vendor, model, quantity,
+                          COUNT(*) OVER() AS _total_count
+                     FROM stock_receipts
+                    WHERE trim(project) = '' OR trim(shelf) = '' OR trim(vendor) = ''
+                       OR trim(model) = ''
+                    ORDER BY receipt_date, id LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        groups = {
+            "unmatched_issues": rows_and_count(unmatched_rows),
+            "duplicate_serials": rows_and_count(duplicate_rows),
+            "negative_balances": rows_and_count(negative_rows),
+            "incomplete_rows": rows_and_count(incomplete_rows),
+        }
+        return {
+            "problems": {key: value[0] for key, value in groups.items()},
+            "counts": {key: value[1] for key, value in groups.items()},
         }
 
     def inventory_compare(self, rows: Iterable[dict[str, Any]]) -> dict[str, Any]:

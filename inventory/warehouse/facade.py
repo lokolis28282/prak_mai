@@ -67,7 +67,7 @@ class WarehouseFacade:
         )
 
     def receipts(self, *args: Any, **kwargs: Any) -> Any:
-        return _plain(self.receipt_writer.repository.receipts())
+        return _plain(self.receipt_writer.repository.receipts(*args, **kwargs))
 
     def add_receipt(self, *args: Any, **kwargs: Any) -> Any:
         if kwargs:
@@ -303,26 +303,34 @@ class WarehouseFacade:
         return _plain(self.service.reference_data(*args, **kwargs))
 
     def get_overview(self) -> dict[str, Any]:
-        problems = self.service.data_quality_problems()
+        quality = self.service.data_quality_summary(limit=200)
+        problems = quality["problems"]
+        problem_counts = quality["counts"]
+        stats = _plain(self.service.dashboard_stats())
+        stats["problems"] = sum(problem_counts.values())
         return {
-            "stats": _plain(self.service.dashboard_stats()),
+            "stats": stats,
             "equipment": _plain(self.service.equipment()),
             "operations": _plain(self.service.operation_log(limit=100)),
             "categories": _plain(self.service.reference_data("categories")),
             "locations": _plain(self.service.reference_data("locations")),
             "references": _plain(self.service.references()),
             "reference_kinds": _plain(self.service.REFERENCE_KINDS),
-            "balance": self.get_balance(),
-            "recent_receipts": self.receipts()[:20],
+            "balance": self.get_balance(limit=5_000),
+            "balance_limit": 5_000,
+            "balance_truncated": int(stats["positions"]) > 5_000,
+            "recent_receipts": self.receipts(limit=20),
             "problems": _plain({key: rows[:200] for key, rows in problems.items()}),
-            "problem_counts": {key: len(rows) for key, rows in problems.items()},
-            "deliveries": self.list_deliveries(),
+            "problem_counts": problem_counts,
+            "deliveries": self.list_deliveries(limit=100),
             "warehouse_categories": self.get_warehouse_categories(),
             "warehouse_history": self.get_warehouse_history(),
         }
 
-    def get_balance(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        return _plain(self.service.stock_balance(**(filters or {})))
+    def get_balance(
+        self, filters: dict[str, Any] | None = None, *, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        return _plain(self.service.stock_balance(**(filters or {}), limit=limit))
 
     def get_warehouse_history(
         self, filters: dict[str, Any] | None = None, limit: int = 300
@@ -383,11 +391,15 @@ class WarehouseFacade:
         self,
         query: str = "",
         filters: dict[str, Any] | None = None,
+        *,
+        limit: int | None = None,
     ) -> list[dict[str, Any]]:
-        return _plain(self.delivery_reader.list_deliveries(query, filters))
+        return _plain(self.delivery_reader.list_deliveries(query, filters, limit=limit))
 
-    def get_delivery(self, delivery_id: int) -> dict[str, Any]:
-        return _plain(self.delivery_reader.get_delivery(delivery_id))
+    def get_delivery(
+        self, delivery_id: int, filters: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        return _plain(self.delivery_reader.get_delivery(delivery_id, filters))
 
     def get_delivery_lines(
         self,
@@ -474,6 +486,9 @@ class WarehouseFacade:
 
     def search_warehouse(self, query: str) -> list[dict[str, Any]]:
         return _plain(self.service.search_stock_positions(query))
+
+    def global_search(self, query: str, limit: int = 30) -> list[dict[str, Any]]:
+        return _plain(self.service.global_search(query, limit=limit))
 
     def get_warehouse_references(self) -> dict[str, Any]:
         return {
