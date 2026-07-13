@@ -79,6 +79,22 @@ to the issue module. Matched issue rows still emit `ISSUE_CREATED`; unmatched
 problem rows continue to emit `DATA_PROBLEM_FOUND` through the problem event
 reader. Reports must not consume issue audit rows as duplicate business events.
 
+## Equipment Card Timeline — Stage 0.13.1/0.13.2
+
+Inventory Number assignment writes the existing audit action
+`EQUIPMENT_INVENTORY_NUMBER_ASSIGNED` with entity type `stock_receipt`, receipt
+ID, current actor and details containing S/N/Inventory Number. Bulk import
+creates one audit row for every actually changed `SUCCESS` position in the same
+transaction as the update.
+
+Equipment Card Timeline renders this as
+`Запись журнала: EQUIPMENT_INVENTORY_NUMBER_ASSIGNED`. Preview,
+`UNCHANGED`, `NOT_FOUND` and conflict statuses produce no audit/Timeline row.
+
+This action is deliberately not added to the `WarehouseEventReader` Event
+Types list above and is not a Reports business event. No second event publisher
+or event table is introduced; Timeline reuses the existing audit reader.
+
 ## Ordering
 
 Events are ordered by date/time and stable source priority. For reports, the

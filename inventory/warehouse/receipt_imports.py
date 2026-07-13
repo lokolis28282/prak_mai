@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -13,6 +14,18 @@ from .naming import build_item_name
 from .previews import WarehousePreviewStore
 from .receipt_repository import ReceiptRepository
 from .validators import is_cable_receipt, prepare_receipt, soft_receipt_source
+
+
+INVENTORY_NUMBER_IMPORT_KIND = "inventory_numbers"
+INVENTORY_NUMBER_STATUSES = (
+    "SUCCESS",
+    "UNCHANGED",
+    "NOT_FOUND",
+    "ALREADY_ASSIGNED",
+    "DUPLICATE_INVENTORY_NUMBER",
+    "VALIDATION_ERROR",
+)
+SQL_VALUE_CHUNK_SIZE = 400
 
 
 class ReceiptWriteService:
@@ -77,6 +90,363 @@ class ReceiptWriteService:
             inventory,
             author=self.audit_author(),
         )
+
+    def preview_inventory_number_import(
+        self,
+        rows: Iterable[dict[str, Any]],
+        filename: str = "inventory_numbers.csv",
+    ) -> dict[str, Any]:
+        """Analyze inventory-number assignments without changing the database."""
+        self._require_write()
+        source_rows = [dict(row) for row in rows]
+        with connect(self.repository.db_path) as db:
+            analysis = self._analyze_inventory_number_rows(db, source_rows)
+        all_rows = analysis.pop("_all_rows")
+        stored_rows = [
+            {
+                "serial_number": row["serial_number"],
+                "inventory_number": row["inventory_number"],
+                "_preview_status": row["status"],
+                "_preview_current_inventory_number": row["current_inventory_number"],
+                "_preview_receipt_id": str(row.get("_receipt_id") or ""),
+            }
+            for row in all_rows
+        ]
+        return self.previews.store(
+            kind=INVENTORY_NUMBER_IMPORT_KIND,
+            author=self.audit_author(),
+            filename=filename,
+            rows=stored_rows,
+            validation=analysis,
+        )
+
+    def confirm_inventory_number_import(self, preview_id: str) -> dict[str, Any]:
+        """Apply every SUCCESS row in one caller-visible atomic transaction."""
+        self._require_write()
+        preview = self.previews.consume(
+            preview_id,
+            kind=INVENTORY_NUMBER_IMPORT_KIND,
+            author=self.audit_author(),
+        )
+        stored_rows = [dict(row) for row in preview["rows"]]
+        source_rows = [
+            {
+                "serial_number": row.get("serial_number", ""),
+                "inventory_number": row.get("inventory_number", ""),
+            }
+            for row in stored_rows
+        ]
+        try:
+            with connect(self.repository.db_path) as db:
+                # Lock before revalidation so classification and all writes see
+                # one stable warehouse state.
+                db.execute("BEGIN IMMEDIATE")
+                analysis = self._analyze_inventory_number_rows(db, source_rows)
+                all_rows = analysis.pop("_all_rows")
+                if analysis["errors"]:
+                    raise WarehouseError(analysis["errors"][0]["reason"])
+                if not self._inventory_preview_matches(stored_rows, all_rows):
+                    raise WarehouseError(
+                        "Данные склада изменились после предпросмотра. "
+                        "Выполните предпросмотр повторно."
+                    )
+
+                changed_count = 0
+                author = self.audit_author()
+                for row in all_rows:
+                    if row["status"] != "SUCCESS":
+                        continue
+                    result = self.repository.assign_inventory_number_in_transaction(
+                        db,
+                        row["serial_number"],
+                        row["inventory_number"],
+                        author=author,
+                    )
+                    if not result["updated"]:
+                        raise WarehouseError(
+                            "Данные склада изменились во время импорта. "
+                            "Все изменения отменены."
+                        )
+                    row["message"] = "Инвентарный номер назначен"
+                    changed_count += 1
+        except sqlite3.Error as error:
+            raise WarehouseError(
+                "Не удалось применить импорт. Все изменения отменены."
+            ) from error
+
+        analysis["rows"] = [
+            self._public_inventory_number_row(row)
+            for row in all_rows[:PREVIEW_ROW_LIMIT]
+        ]
+        return {
+            **analysis,
+            "imported": changed_count,
+            "changed_count": changed_count,
+        }
+
+    def _analyze_inventory_number_rows(
+        self,
+        db: sqlite3.Connection,
+        source_rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        normalized: list[dict[str, Any]] = []
+        serial_occurrences: dict[str, int] = {}
+        for line, source in enumerate(source_rows, start=2):
+            reasons: list[str] = []
+            serial_value = source.get("serial_number", "")
+            inventory_value = source.get("inventory_number", "")
+            if not isinstance(serial_value, str):
+                reasons.append("Serial Number должен быть строкой")
+                serial = ""
+            else:
+                serial = serial_value.strip().upper()
+            if not isinstance(inventory_value, str):
+                reasons.append("Inventory Number должен быть строкой")
+                inventory = ""
+            else:
+                inventory = inventory_value.strip().upper()
+            if not serial:
+                reasons.append("Serial Number не может быть пустым")
+            elif len(serial) > 255:
+                reasons.append("Serial Number не должен быть длиннее 255 символов")
+            if not inventory:
+                reasons.append("Inventory Number не может быть пустым")
+            elif len(inventory) > 255:
+                reasons.append("Inventory Number не должен быть длиннее 255 символов")
+            if serial:
+                serial_key = serial.casefold()
+                serial_occurrences[serial_key] = serial_occurrences.get(serial_key, 0) + 1
+            normalized.append({
+                "line": line,
+                "serial_number": serial,
+                "inventory_number": inventory,
+                "current_inventory_number": "",
+                "status": "VALIDATION_ERROR" if reasons else "",
+                "message": "; ".join(dict.fromkeys(reasons)),
+                "_receipt_id": None,
+                "_legacy_equipment_id": None,
+            })
+
+        for row in normalized:
+            serial_key = row["serial_number"].casefold()
+            if serial_key and serial_occurrences.get(serial_key, 0) > 1:
+                reason = f"Serial Number «{row['serial_number']}» повторяется внутри CSV"
+                existing = [part for part in row["message"].split("; ") if part]
+                if reason not in existing:
+                    existing.append(reason)
+                row["status"] = "VALIDATION_ERROR"
+                row["message"] = "; ".join(existing)
+
+        valid_rows = [row for row in normalized if row["status"] != "VALIDATION_ERROR"]
+        serials = {row["serial_number"].casefold(): row["serial_number"] for row in valid_rows}
+        inventories = {
+            row["inventory_number"].casefold(): row["inventory_number"]
+            for row in valid_rows
+        }
+        receipts = self._receipt_rows_by_serial(db, list(serials.values()))
+        receipt_by_serial = {
+            str(row["serial_number"]).strip().casefold(): row for row in receipts
+        }
+        legacy_ids = {
+            int(row["legacy_equipment_id"])
+            for row in receipts if row["legacy_equipment_id"] is not None
+        }
+        legacy_by_id = self._legacy_rows_by_id(db, legacy_ids)
+        stock_owners = self._stock_inventory_owners(db, list(inventories.values()))
+        legacy_owners = self._legacy_inventory_owners(db, list(inventories.values()))
+
+        for row in valid_rows:
+            receipt = receipt_by_serial.get(row["serial_number"].casefold())
+            if receipt is None:
+                row["status"] = "NOT_FOUND"
+                row["message"] = "Оборудование с таким Serial Number не найдено"
+                continue
+            receipt_id = int(receipt["id"])
+            legacy_id = (
+                int(receipt["legacy_equipment_id"])
+                if receipt["legacy_equipment_id"] is not None else None
+            )
+            row["_receipt_id"] = receipt_id
+            row["_legacy_equipment_id"] = legacy_id
+            current = str(receipt["inventory_number"] or "").strip()
+            legacy_inventory = ""
+            if legacy_id is not None and legacy_id in legacy_by_id:
+                legacy_inventory = str(
+                    legacy_by_id[legacy_id]["inventory_number"] or ""
+                ).strip()
+            incoming_key = row["inventory_number"].casefold()
+            if current:
+                row["current_inventory_number"] = current
+                if current.casefold() == incoming_key:
+                    row["status"] = "UNCHANGED"
+                    row["message"] = "Инвентарный номер уже совпадает"
+                else:
+                    row["status"] = "ALREADY_ASSIGNED"
+                    row["message"] = f"Уже назначен другой номер «{current}»"
+                continue
+            if legacy_inventory and legacy_inventory.casefold() != incoming_key:
+                row["current_inventory_number"] = legacy_inventory
+                row["status"] = "ALREADY_ASSIGNED"
+                row["message"] = (
+                    f"В связанной карточке уже назначен номер «{legacy_inventory}»"
+                )
+                continue
+            foreign_stock_owner = any(
+                owner_id != receipt_id
+                for owner_id in stock_owners.get(incoming_key, set())
+            )
+            foreign_legacy_owner = any(
+                legacy_id is None or owner_id != legacy_id
+                for owner_id in legacy_owners.get(incoming_key, set())
+            )
+            if foreign_stock_owner or foreign_legacy_owner:
+                row["status"] = "DUPLICATE_INVENTORY_NUMBER"
+                row["message"] = "Inventory Number уже принадлежит другому оборудованию"
+                continue
+            row["status"] = "SUCCESS"
+            row["message"] = "Инвентарный номер будет назначен"
+
+        planned: dict[str, list[dict[str, Any]]] = {}
+        for row in valid_rows:
+            if row["status"] == "SUCCESS":
+                planned.setdefault(row["inventory_number"].casefold(), []).append(row)
+        for duplicates in planned.values():
+            if len(duplicates) < 2:
+                continue
+            for row in duplicates:
+                row["status"] = "DUPLICATE_INVENTORY_NUMBER"
+                row["message"] = (
+                    "Inventory Number назначается нескольким строкам внутри CSV"
+                )
+
+        counts = {status: 0 for status in INVENTORY_NUMBER_STATUSES}
+        for row in normalized:
+            counts[row["status"]] += 1
+        errors = [
+            {"line": row["line"], "reason": row["message"]}
+            for row in normalized if row["status"] == "VALIDATION_ERROR"
+        ]
+        if not normalized:
+            errors.append({"line": 1, "reason": "В CSV-файле нет строк"})
+            counts["VALIDATION_ERROR"] = 1
+        summary = {"total": len(normalized), **counts}
+        return {
+            "total": len(normalized),
+            "success": counts["SUCCESS"],
+            "unchanged": counts["UNCHANGED"],
+            "not_found": counts["NOT_FOUND"],
+            "already_assigned": counts["ALREADY_ASSIGNED"],
+            "duplicate_inventory_number": counts["DUPLICATE_INVENTORY_NUMBER"],
+            "validation_error": counts["VALIDATION_ERROR"],
+            "valid": len(normalized) - counts["VALIDATION_ERROR"],
+            "new": counts["SUCCESS"],
+            "error_count": counts["VALIDATION_ERROR"],
+            "summary": summary,
+            "errors": errors[:PREVIEW_ERROR_LIMIT],
+            "rows": [
+                self._public_inventory_number_row(row)
+                for row in normalized[:PREVIEW_ROW_LIMIT]
+            ],
+            "_all_rows": normalized,
+        }
+
+    @staticmethod
+    def _public_inventory_number_row(row: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "line": row["line"],
+            "serial_number": row["serial_number"],
+            "inventory_number": row["inventory_number"],
+            "current_inventory_number": row["current_inventory_number"],
+            "status": row["status"],
+            "message": row["message"],
+        }
+
+    @staticmethod
+    def _inventory_preview_matches(
+        stored_rows: list[dict[str, Any]],
+        current_rows: list[dict[str, Any]],
+    ) -> bool:
+        if len(stored_rows) != len(current_rows):
+            return False
+        for stored, current in zip(stored_rows, current_rows):
+            if (
+                str(stored.get("_preview_status") or "") != current["status"]
+                or str(stored.get("_preview_current_inventory_number") or "")
+                != current["current_inventory_number"]
+                or str(stored.get("_preview_receipt_id") or "")
+                != str(current.get("_receipt_id") or "")
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _receipt_rows_by_serial(
+        db: sqlite3.Connection, values: list[str]
+    ) -> list[sqlite3.Row]:
+        rows: list[sqlite3.Row] = []
+        for offset in range(0, len(values), SQL_VALUE_CHUNK_SIZE):
+            chunk = values[offset:offset + SQL_VALUE_CHUNK_SIZE]
+            placeholders = ",".join("?" for _ in chunk)
+            rows.extend(db.execute(
+                f"""SELECT id, serial_number, inventory_number, legacy_equipment_id
+                    FROM stock_receipts
+                    WHERE trim(serial_number) <> ''
+                      AND serial_number COLLATE NOCASE IN ({placeholders})""",
+                chunk,
+            ).fetchall())
+        return rows
+
+    @staticmethod
+    def _legacy_rows_by_id(
+        db: sqlite3.Connection, values: set[int]
+    ) -> dict[int, sqlite3.Row]:
+        result: dict[int, sqlite3.Row] = {}
+        ordered = sorted(values)
+        for offset in range(0, len(ordered), SQL_VALUE_CHUNK_SIZE):
+            chunk = ordered[offset:offset + SQL_VALUE_CHUNK_SIZE]
+            placeholders = ",".join("?" for _ in chunk)
+            for row in db.execute(
+                f"SELECT id, inventory_number FROM equipment WHERE id IN ({placeholders})",
+                chunk,
+            ):
+                result[int(row["id"])] = row
+        return result
+
+    @staticmethod
+    def _stock_inventory_owners(
+        db: sqlite3.Connection, values: list[str]
+    ) -> dict[str, set[int]]:
+        result: dict[str, set[int]] = {}
+        for offset in range(0, len(values), SQL_VALUE_CHUNK_SIZE):
+            chunk = values[offset:offset + SQL_VALUE_CHUNK_SIZE]
+            placeholders = ",".join("?" for _ in chunk)
+            for row in db.execute(
+                f"""SELECT id, inventory_number FROM stock_receipts
+                    WHERE trim(inventory_number) <> ''
+                      AND inventory_number COLLATE NOCASE IN ({placeholders})""",
+                chunk,
+            ):
+                key = str(row["inventory_number"]).strip().casefold()
+                result.setdefault(key, set()).add(int(row["id"]))
+        return result
+
+    @staticmethod
+    def _legacy_inventory_owners(
+        db: sqlite3.Connection, values: list[str]
+    ) -> dict[str, set[int]]:
+        result: dict[str, set[int]] = {}
+        for offset in range(0, len(values), SQL_VALUE_CHUNK_SIZE):
+            chunk = values[offset:offset + SQL_VALUE_CHUNK_SIZE]
+            placeholders = ",".join("?" for _ in chunk)
+            for row in db.execute(
+                f"""SELECT id, inventory_number FROM equipment
+                    WHERE trim(inventory_number) <> ''
+                      AND inventory_number COLLATE NOCASE IN ({placeholders})""",
+                chunk,
+            ):
+                key = str(row["inventory_number"]).strip().casefold()
+                result.setdefault(key, set()).add(int(row["id"]))
+        return result
 
     def create_receipt_batch(self, rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         self._require_write()

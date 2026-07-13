@@ -53,3 +53,19 @@
 @keyframes scan-duplicate-pulse{0%,100%{background:#dbeafe}50%{background:#fef3c7}}
 @media(prefers-reduced-motion:reduce){.scanner-table tr.scan-duplicate{animation:none}}
 @media(max-width:800px){.scanner-actions{align-items:stretch;flex-direction:column}.scanner-actions .scanner-count{margin:0}.scanner-actions .button{display:block;width:100%}}
+
+/* Preview and confirmation for assigning Inventory Number values from CSV. */
+.inventory-number-import{margin:18px 0 28px;padding:18px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.inventory-number-head h3{margin:0 0 5px}.inventory-number-head .hint{margin-bottom:14px}
+.inventory-number-summary{display:grid;grid-template-columns:repeat(4,minmax(145px,1fr));gap:10px;margin-bottom:14px}
+.inventory-number-summary-card{min-width:0;padding:12px;border:1px solid var(--line);border-radius:8px;background:#f8fafc}
+.inventory-number-summary-card span{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
+.inventory-number-summary-card strong{display:block;margin-top:6px;font-size:22px}
+.inventory-number-table-wrap{max-height:55vh}.inventory-number-table td:last-child{min-width:240px;white-space:normal}
+.inventory-number-status{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:750;line-height:1.2}
+.inventory-number-status-success{background:#dcfce7;color:#166534}.inventory-number-status-unchanged{background:#e2e8f0;color:#334155}
+.inventory-number-status-not-found,.inventory-number-status-already-assigned{background:#fef3c7;color:#92400e}
+.inventory-number-status-duplicate-inventory-number,.inventory-number-status-validation-error{background:#fee2e2;color:#991b1b}
+.inventory-number-errors{margin:0 0 14px;padding-left:22px}.inventory-number-actions{display:flex;justify-content:flex-end;margin-top:14px}.inventory-number-state{padding:24px;text-align:center;color:var(--muted)}
+@media(max-width:900px){.inventory-number-summary{grid-template-columns:repeat(2,minmax(130px,1fr))}}
+@media(max-width:600px){.inventory-number-summary{grid-template-columns:1fr}.inventory-number-actions .button{width:100%}}

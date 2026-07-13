@@ -6,12 +6,12 @@
 flowchart LR
     Supply[Снабжение / поставщик] -->|CSV поставки и оборудование| ODE((ODE))
     Admin[Администратор] -->|Пользователи, backup, восстановление| ODE
-    Engineer[Инженер] -->|Приход, расход, сканирование, логи| ODE
+    Engineer[Инженер] -->|Приход, расход, сканирование, логи, CSV Inventory Number| ODE
     Viewer[Наблюдатель] -->|Поиск, баланс и отчеты| ODE
     Scanner[USB/Bluetooth-сканер] -->|S/N или QR как клавиатурный ввод| ODE
     ODE -->|Статус приемки и CSV-результат| Supply
     ODE -->|Баланс, карточки, аудит и отчеты| Admin
-    ODE -->|Результаты операций и проблемные строки| Engineer
+    ODE -->|Preview/результаты операций, Timeline и проблемные строки| Engineer
     DB[(data/warehouse.db)] <--> ODE
     Backups[(data/backups)] <--> ODE
 ```

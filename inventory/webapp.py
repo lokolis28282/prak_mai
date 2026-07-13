@@ -60,7 +60,7 @@ HTML = r'''<!doctype html>
 </nav></aside>
 <main class="main"><header class="top"><div><h1 id="pageTitle">Склад</h1><span class="hint">Отдел дежурных инженеров · __DATACENTER__</span></div><div><label class="hint" style="display:inline">Импорт: <select id="importMode"><option value="soft">мягкий</option><option value="strict">строгий</option></select></label> <span id="currentUser"></span> <button class="button" onclick="showProfile()">Профиль</button> <button class="button" onclick="loadAll()">Обновить</button> <button class="button" onclick="logout()">Выйти</button></div></header><nav class="subnav" id="subnav"></nav>
 
-<section class="view panel" id="inventory"><div class="import-box"><div><strong>Инвентаризация по S/N</strong><p>Загрузите CSV со столбцом SN, S/N, Серийный номер или Серийник.</p></div><div class="import-actions"><a class="button" href="/import/inventory-template.csv">Шаблон</a><label class="button primary" for="inventoryCsv">Загрузить CSV</label><input class="file-input inventory-input" id="inventoryCsv" data-kind="inventory" type="file" accept=".csv"><button class="button" id="inventoryExport" disabled>Экспорт результата</button></div></div><div class="cards" id="inventoryCards"></div><div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>S/N</th><th>Результат</th><th>Количество</th></tr></thead><tbody id="inventoryBody"><tr><td class="empty" colspan="3">CSV еще не загружен</td></tr></tbody></table></div></section>
+<section class="view panel" id="inventory"><div class="import-box"><div><strong>Массовое назначение Inventory Number</strong><p>Загрузите UTF-8 CSV со столбцами Serial Number и Inventory Number. Сначала будет выполнен предпросмотр без изменения базы.</p></div><div class="import-actions"><a class="button" href="/import/inventory-numbers-template.csv">Скачать шаблон</a><label class="button primary" for="inventoryNumberCsv">Выбрать CSV</label><input class="file-input inventory-input" id="inventoryNumberCsv" type="file" accept=".csv,text/csv"></div></div><div class="preview" id="inventoryNumberImport" aria-live="polite"></div><div class="import-box"><div><strong>Инвентаризация по S/N</strong><p>Загрузите CSV со столбцом SN, S/N, Серийный номер или Серийник.</p></div><div class="import-actions"><a class="button" href="/import/inventory-template.csv">Шаблон</a><label class="button primary" for="inventoryCsv">Загрузить CSV</label><input class="file-input inventory-input" id="inventoryCsv" data-kind="inventory" type="file" accept=".csv"><button class="button" id="inventoryExport" disabled>Экспорт результата</button></div></div><div class="cards" id="inventoryCards"></div><div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>S/N</th><th>Результат</th><th>Количество</th></tr></thead><tbody id="inventoryBody"><tr><td class="empty" colspan="3">CSV еще не загружен</td></tr></tbody></table></div></section>
 
 <section class="view panel" id="problems"><h2>Контроль качества данных</h2><p class="hint">Проблемы не блокируют баланс и доступны для последующей сверки.</p><div class="cards" id="problemCards"></div><div id="problemDetails" style="margin-top:16px"></div></section>
 
@@ -764,6 +764,7 @@ USER_CSV_TEMPLATES = {
     ),
     "bulk_issue": "S/N;Комментарий\r\n",
     "inventory": "S/N\r\n",
+    "inventory_numbers": "Serial Number;Inventory Number\r\n",
     "work_logs": "Дата;Источник задачи;Тип задачи;Номер задачи;Описание работы;Статус;Комментарий\r\n",
     "daily_report": ";".join(REPORT_HEADERS.values()) + "\r\n",
     "delivery": "Дата;Поставщик;Номер поставки;Заявка;Заказ;PLU;Серийный номер;Инвентарный номер;Вендор;Модель;Тип оборудования;Проект;ЦОД;Полка;Количество;Комментарий\r\n",
@@ -1027,6 +1028,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_template("bulk_issue_template.csv", USER_CSV_TEMPLATES["bulk_issue"])
                 elif path == "/import/inventory-template.csv":
                     self._send_template("inventory_template.csv", USER_CSV_TEMPLATES["inventory"])
+                elif path == "/import/inventory-numbers-template.csv":
+                    self._send_template(
+                        "inventory_numbers_template.csv",
+                        USER_CSV_TEMPLATES["inventory_numbers"],
+                    )
                 elif path == "/import/work-logs-template.csv":
                     self._send_template("work_logs_import_template.csv", USER_CSV_TEMPLATES["work_logs"])
                 elif path == "/import/daily-report-template.csv":
@@ -1158,6 +1164,12 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         )
                         response["imported"] = result["row_count"]
                         response["upload_id"] = result["id"]
+                    elif kind == "inventory_numbers":
+                        response.update(
+                            app_context.warehouse.confirm_inventory_number_import(
+                                data.get("preview_id", "")
+                            )
+                        )
                     else:
                         raise WarehouseError("Неизвестный тип подтверждения")
                 elif action == "CONFIRM_BULK_ISSUE":
@@ -1250,7 +1262,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             try:
                 if kind not in {
                     "equipment", "receipt", "issue", "bulk_issue", "work_logs",
-                    "daily_report", "inventory",
+                    "daily_report", "inventory", "inventory_numbers",
                     "delivery",
                 }:
                     raise WarehouseError("Неизвестный тип CSV-импорта")
@@ -1272,6 +1284,19 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     return
                 if kind == "inventory":
                     self._send_json(200, {"ok": True, **service.inventory_compare(rows)})
+                    return
+                if kind == "inventory_numbers":
+                    if not preview:
+                        raise WarehouseError(
+                            "Назначение Inventory Number требует предпросмотра и подтверждения"
+                        )
+                    result = app_context.warehouse.preview_inventory_number_import(
+                        rows,
+                        unquote(self.headers.get(
+                            "X-Filename", "inventory_numbers.csv"
+                        )),
+                    )
+                    self._send_json(200, {"ok": True, **result})
                     return
                 if kind == "bulk_issue":
                     result = app_context.warehouse.preview_bulk_issue_serials(

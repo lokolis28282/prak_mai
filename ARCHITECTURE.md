@@ -1,49 +1,154 @@
-# ARCHITECTURE
+# Архитектура ODE
 
-Дата проверки: 2026-07-10
+Дата проверки: 2026-07-14. Текущий исходный код: Stage 0.13.2. Runtime-
+метаданные и target package builder: `0.12.17.1 RC2`. Последний фактически
+собранный Windows ZIP содержит `ODE 0.12.17 RC1`; ZIP RC2/Stage 0.13.2 не
+создавался.
 
-## Карта
+## Назначение системы
 
-`app.py`
+ODE — локальное браузерное приложение дежурной смены для складского учёта,
+поставок, логов работ и отчётов. Runtime использует Python standard library и
+один SQLite-файл; внешние сервисы для основных операций не требуются.
 
-Точка входа. Без аргументов или с `gui/web` запускает `inventory.webapp.main`; с CLI-командами передает управление `inventory.cli.main`.
+Главный бизнес-идентификатор сериализованного оборудования и компонентов —
+S/N. Inventory Number является вторичным реквизитом и может быть назначен
+позже. Кабели учитываются отдельно по количеству/метражу и не обязаны иметь
+S/N.
 
-`inventory/db.py`
+## Компоненты
 
-SQLite-слой: путь БД, schema DDL, миграции/инициализация, `connect`, хеширование и проверка пароля.
+```text
+app.py
+ ├─ inventory/webapp.py        HTTP server, session/auth, HTML shell, API routes
+ └─ inventory/cli.py           compatibility CLI
+             │
+             ▼
+ inventory/
+ ├─ core/                      ApplicationContext, feature flags, event contracts
+ ├─ warehouse/                 receipts, issues, cables, deliveries, balance/history
+ ├─ reports/                   work logs, daily/weekly reports
+ ├─ administration/            users, audit read, backup/restore, diagnostics
+ ├─ monitoring/                isolated placeholder/future module
+ ├─ shared/                    SQLite/CSV/audit/validation adapters
+ └─ db.py                      schema and idempotent migrations
+             │
+             ▼
+ data/warehouse.db             working SQLite database
+```
 
-`inventory/service.py`
+`ApplicationContext` является composition root. Web/API обращается к публичным
+`WarehouseFacade`, `ReportsFacade`, `AdministrationFacade` и
+`MonitoringFacade`. `WarehouseCore`/`WarehouseService` сохраняются как
+compatibility layer для ещё не мигрированных сценариев, но новая доменная
+логика не должна вызываться из webapp напрямую через core.
 
-Основная бизнес-логика. `WarehouseService` отвечает за пользователей, аудит, backup/restore, приход, расход, баланс, поставки, импорт, отчеты, справочники, инвентаризацию, integrity-check.
+Модульные границы контролирует `scripts/audit_module_boundaries.py`. Владение
+таблицами описано в [docs/DATABASE_OWNERSHIP.md](docs/DATABASE_OWNERSHIP.md),
+полная карта стадий — в
+[docs/MODULE_ARCHITECTURE.md](docs/MODULE_ARCHITECTURE.md).
 
-`inventory/webapp.py`
+## HTTP и frontend
 
-Локальный HTTP UI без внешних web-зависимостей. В одном файле формируются HTML, CSS, JS, CSV templates, HTTP handler, GET/POST API и экспорт CSV.
+`inventory/webapp.py` формирует итоговый HTML shell и HTTP handler. В конце
+сборки `_externalized_html()` подключает фактические runtime assets из
+`static/css/main.css` и `static/js/**`; большие legacy inline-константы не
+следует считать единственным источником браузерного поведения.
 
-DB
+Frontend разделён на `static/js/core`, `warehouse`, `reports`,
+`administration`, `monitoring` и общие components. Контракт статических DOM id
+проверяет `scripts/audit_frontend_contracts.py`, а реальное поведение —
+`tests/headless_smoke.js` через `scripts/smoke_ui.py`.
 
-Основная БД: `data/warehouse.db`. Ключевые таблицы: `stock_receipts`, `stock_issues`, `stock_issue_allocations`, `deliveries`, `delivery_lines`, `work_logs`, `daily_report_uploads`, `daily_report_rows`, `reference_values`, `audit_log`, `users`, legacy `equipment/operations/categories/locations`.
+Основные HTTP группы:
 
-JS
+- read API и exports/templates — GET `/api/**`, `/export/**`, `/import/**`;
+- write actions — POST `/api/action`;
+- CSV preview — POST `/api/preview-csv?kind=...`;
+- разрешённые direct imports — POST `/api/import-csv?kind=...`;
+- authentication/session — `/api/login`, `/api/logout`.
 
-Встроен в `inventory/webapp.py` внутри HTML-строк. Отвечает за навигацию, формы, fetch API, CSV preview/import, сканирование, карточки, отчеты, поставки, admin UI.
+Новые actions должны проходить через соответствующий facade, возвращать plain
+JSON values, использовать текущий actor context и не раскрывать traceback,
+секреты или абсолютные локальные пути.
 
-HTML/CSS
+## Данные и транзакции
 
-Генерируется строками в `inventory/webapp.py`. Итоговый HTML собирается базовой строкой `HTML` и серией `.replace(...)` плюс вставками `DELIVERY_JS`, `UX_SCRIPT`, `WIZARD_SCRIPT`.
+Основные таблицы:
 
-API
+- Warehouse: `stock_receipts`, `stock_issues`,
+  `stock_issue_allocations`, `deliveries`, `delivery_lines`, legacy
+  `equipment`/`operations`;
+- Reports: `work_logs`, `daily_report_uploads`, `daily_report_rows`;
+- Administration/shared infrastructure: `users`, `audit_log`,
+  `reference_values` до дальнейшего разделения.
 
-Создается в `make_handler(service)`: GET `/api/data`, `/api/balance`, `/api/delivery`, `/api/deliveries`, `/api/work-logs`, `/api/daily-report`, `/api/weekly-report`, `/api/admin`, exports/templates. POST `/api/login`, `/api/logout`, `/api/action`, `/api/preview-csv`, `/api/import-csv`, `/api/upload-prod-db`.
+Баланс вычисляется из receipts минус issue allocations; отдельная mutable
+таблица баланса не ведётся. Reports получает warehouse facts через
+`WarehouseEventReader`, а не прямой SQL к warehouse-owned таблицам.
 
-Tests
+Массовые write/import операции валидируют данные до записи и задают одну
+caller-visible SQLite transaction boundary. Mutation-тесты выполняются только
+на временных БД. Любая schema/data migration требует отдельного документа,
+backup-процедуры и rollback-плана.
 
-`tests/test_warehouse.py` покрывает сервис, импорт, отчеты, backup/release, UI-текстовые контракты. `scripts/smoke_ui.py` + `tests/headless_smoke.js` выполняют headless Chrome E2E на временной копии БД.
+## Stage 0.13.1/0.13.2: Inventory Number
 
-## Основной поток
+Одиночное и массовое назначение используют маршрут:
 
-UI -> `fetch('/api/...')` -> `Handler` -> `WarehouseService` -> SQLite -> JSON/CSV response -> JS render.
+```text
+UI/HTTP
+ -> ApplicationContext.warehouse
+ -> WarehouseFacade
+ -> ReceiptWriteService
+ -> ReceiptRepository
+ -> SQLite
+```
 
-## Архитектурный риск
+Stage 0.13.1 добавил заполнение пустого Inventory Number в существующей
+Equipment Card. Stage 0.13.2 добавил CSV Preview/Confirm поверх того же
+transaction-aware repository helper.
 
-`inventory/webapp.py` является монолитом: страницы, стили, JS, API и сборка UI находятся в одном файле. Итоговый DOM получается последовательными `.replace(...)`, поэтому изменение текста/разметки может сломать позднюю вставку. Это не текущий runtime-блокер, но главный источник будущих регрессий.
+Критические инварианты:
+
+- lookup только по case-insensitive `stock_receipts.serial_number`;
+- новые карточки не создаются, заполненные другие номера не перезаписываются;
+- preview читает БД и хранит план только в Warehouse preview store;
+- confirm выполняет `BEGIN IMMEDIATE`, повторный анализ и сравнение с preview;
+- все строки `SUCCESS`, legacy sync и audit применяются атомарно;
+- direct import для `kind=inventory_numbers` запрещён;
+- каждое реальное изменение публикует существующий audit action
+  `EQUIPMENT_INVENTORY_NUMBER_ASSIGNED`, который читает Equipment Card
+  Timeline; новый WarehouseEventReader event не вводился;
+- схема БД не менялась, используются существующие unique constraints/indexes.
+
+Полный API, CSV, status, sequence, security и failure contract находится в
+[docs/INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md](docs/INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md).
+
+## Безопасность и роли
+
+- `admin` и `engineer` выполняют operational writes;
+- `viewer` остаётся read-only и отклоняется backend, а не только скрытием UI;
+- admin-only: пользователи, backup/restore, audit view, production DB upload и
+  diagnostics;
+- actor/audit author берётся из authenticated application context;
+- session cookie — HttpOnly/SameSite, POST проверяет Origin/Host;
+- CSV body ограничен 50 МБ, импорт — 40 000 непустых строк;
+- preview имеет TTL/лимиты и owner binding согласно конкретному flow.
+
+Подробности — [docs/SECURITY_BOUNDARIES.md](docs/SECURITY_BOUNDARIES.md).
+
+## Известные архитектурные ограничения
+
+- single-process SQLite не предназначен для активной многопользовательской
+  записи и server deployment без отдельного решения;
+- `inventory/webapp.py` остаётся крупным переходным composition/HTTP файлом;
+- `WarehouseCore` и часть legacy service/API flows ещё существуют;
+- Warehouse preview хранится в памяти и не переживает restart;
+- нет persisted import jobs, progress/cancel и отдельного batch audit ID;
+- Monitoring и внешние интеграции остаются вне текущего runtime;
+- корректирующие/сторнирующие операции требуют отдельной модели событий.
+
+Изменения этих ограничений нельзя выполнять массовым refactor: каждый доменный
+flow мигрируется через facade с contract/API/headless тестами и синхронным
+обновлением документации.

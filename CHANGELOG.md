@@ -1,6 +1,94 @@
 # Changelog ODE
 
-## ODE 0.13, Stage 1 — Equipment Card Inventory Workflow
+## ODE 0.13, Stage 0.13.2 — Bulk Inventory Number Import
+
+Дата: 2026-07-14
+
+### Новые возможности
+
+- добавлено массовое назначение Inventory Number существующему оборудованию из
+  CSV через обязательные Preview и Confirm;
+- поиск выполняется исключительно по S/N; отсутствующий S/N получает
+  `NOT_FOUND`, новая карточка не создаётся;
+- публичные построчные статусы:
+  `SUCCESS`, `UNCHANGED`, `NOT_FOUND`, `ALREADY_ASSIGNED`,
+  `DUPLICATE_INVENTORY_NUMBER`, `VALIDATION_ERROR`;
+- повтор S/N внутри CSV является blocking validation error; остальные
+  конфликты пропускаются, а допустимые строки могут быть применены;
+
+### UI
+
+- добавлены UTF-8 BOM template, выбор CSV, таблица Preview, status counters,
+  Confirm и итоговый Result в разделе `Склад -> Инвентаризация`;
+- Equipment Card Timeline показывает существующее audit-событие для каждой
+  реально изменённой позиции.
+
+### API и безопасность
+
+- добавлен шаблон `GET /import/inventory-numbers-template.csv`;
+- существующий `POST /api/preview-csv` поддерживает
+  `kind=inventory_numbers`;
+- существующий `POST /api/action` поддерживает
+  `CONFIRM_IMPORT_PREVIEW` с `kind=inventory_numbers`;
+- прямой `/api/import-csv?kind=inventory_numbers` запрещён: обойти preview и
+  confirm нельзя;
+- preview/confirm разрешены только `engineer/admin`; `viewer` отклоняется
+  сервером; preview одноразовый, author-bound и ограничен TTL.
+
+### Бизнес-логика, audit и Timeline
+
+- preview выполняет только чтение и не меняет БД/audit;
+- confirm начинает `BEGIN IMMEDIATE`, повторно анализирует весь план и
+  отклоняет stale preview;
+- все строки `SUCCESS`, legacy sync и audit применяются одной SQLite-
+  транзакцией; при любой ошибке выполняется полный rollback;
+- на каждую реально изменённую позицию создаётся существующее audit-действие
+  `EQUIPMENT_INVENTORY_NUMBER_ASSIGNED`, которое отображается в Timeline
+  карточки; отдельная event subsystem не создана;
+- заполненный другой номер не перезаписывается, занятый номер не передаётся
+  другой позиции, повторный импорт становится `UNCHANGED`.
+
+### Импорт, тесты и документация
+
+- обязательны столбцы Serial Number и Inventory Number; parser поддерживает
+  UTF-8/UTF-8 BOM, compatibility fallback CP1251 и разделители `;`, `,`, tab;
+- лимиты общих импортов сохранены: 50 МБ и 40 000 непустых строк; preview
+  возвращает до 100 строк и 200 validation errors;
+- добавлены 16 unittest (2 unit, 7 contract/integration, 3 API,
+  4 frontend-contract) и headless сценарий; полный набор содержит 227 тестов;
+- добавлены нормативный архитектурный/API-контракт и руководство ручной
+  проверки Stage 0.13.2; актуализированы README, module/security/data/event и
+  diagram-документы.
+
+### БД и миграции
+
+- схема и модель хранения не менялись; migration не требуется;
+- используются существующие `stock_receipts.inventory_number`, связанная
+  legacy `equipment.inventory_number`, unique constraints и `audit_log`;
+- runtime-метаданные исходников и target package builder остаются
+  `0.12.17.1 RC2`, тогда как последний фактически собранный Windows ZIP
+  содержит `ODE 0.12.17 RC1`; ZIP RC2/Stage 0.13.2 не собирался;
+- перед следующим Windows-релизом metadata, builder, embedded release notes и
+  test count требуется синхронизировать отдельным release change.
+
+### Исправления
+
+- отдельных исправлений вне нового bulk workflow нет; бизнес-логика
+  Stage 0.13.1 и существующих import/export сценариев не изменялась.
+
+### Breaking changes
+
+- отсутствуют: существующие API, CSV kinds и схема БД обратно совместимы.
+
+### Известные ограничения
+
+- preview хранится в памяти процесса, теряется при restart/TTL/eviction и
+  после неуспешного confirm требует нового Preview;
+- отдельного persisted batch ID, batch audit-event и фонового progress нет;
+- сохраняются ограничения single-process SQLite и необходимость отдельной
+  приемки на целевом Windows-хосте.
+
+## ODE 0.13.1 — Equipment Card Inventory Workflow
 
 Дата: 2026-07-13
 

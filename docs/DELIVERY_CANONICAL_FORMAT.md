@@ -36,7 +36,7 @@ The database schema is not changed in Stage 0.12.15.
 - S/N: `S/N`, `SN`, `Серийный номер`, `Серийник`, `Серийные номера`,
   `Serial`, `Serial Number`
 - Inventory number: `Инв.№`, `Инв. №`, `Инвентарный номер`, `Inventory`,
-  `Asset Number`, `Номер ОС`
+  `Inventory Number`, `Asset Number`, `Номер ОС`
 - Order: `Заказ`, `Заказ №`, `Заказ№`, `Номер заказа`, `Order`
 - Request: `Заявка`, `Заявка №`, `Заявка№`, `Request`
 - Delivery: `Поставка`, `Номер поставки`, `Delivery`, `Delivery Number`

@@ -1,6 +1,7 @@
 # DATABASE_OWNERSHIP
 
-ODE 0.12.6 keeps one SQLite file. Ownership is logical, not physical.
+Boundary introduced in ODE 0.12.6 and verified for source Stage 0.13.2. ODE
+keeps one SQLite file; ownership is logical, not physical.
 
 | Table | Owner | Readers | Writers | Legacy | Future migration |
 |---|---|---|---|---|---|
@@ -22,6 +23,16 @@ the Warehouse receipt repository transaction contract. It may fill empty fields
 on an existing `stock_receipts` row according to the delivery conflict policy
 and may link `delivery_lines.receipt_id`. It must not write issues or
 allocations.
+
+Stage 0.13.1/0.13.2 note: Inventory Number assignment is a Warehouse receipt
+write. It updates only `stock_receipts.inventory_number` for an existing S/N.
+When `legacy_equipment_id` links a legacy `equipment` row whose number is
+empty, `equipment.inventory_number` is synchronized in the same transaction.
+The same transaction writes one `audit_log` entry per actually changed receipt
+through the shared audit adapter. Preview, conflicts and `UNCHANGED` write
+nothing; no receipt/equipment card is inserted. Ownership and schema do not
+change.
+
 | `equipment` | Warehouse | Warehouse | Warehouse | legacy stock card source | replace with normalized item/card model later |
 | `operations` | Warehouse | Warehouse | Warehouse | legacy operation log | replace with normalized warehouse events |
 | `reference_values` | Warehouse/shared | Warehouse, Reports, Administration | Administration/Warehouse/Reports soft import until split | mixed ownership | split global vs warehouse references later |

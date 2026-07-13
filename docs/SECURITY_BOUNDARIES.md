@@ -1,6 +1,7 @@
 # Security Boundaries
 
-Документ фиксирует минимальные границы безопасности для переходного состояния ODE 0.12.x.
+Документ фиксирует минимальные границы безопасности переходного состояния ODE,
+актуальные для source Stage 0.13.2.
 
 ## Stage 0.12.15 Delivery Import Access
 
@@ -92,6 +93,32 @@ Equipment/component receipt write/import actions are allowed for `admin` and
 `viewer` receives the existing insufficient-rights error. The audit author comes
 from the current session/application context, not from arbitrary request fields.
 
+## Inventory Number Assignment — Stage 0.13.1/0.13.2
+
+Одиночное и массовое назначение Inventory Number являются warehouse write
+operations. Preview и Confirm требуют аутентифицированную сессию и роль
+`admin` или `engineer`; `viewer` отклоняется backend независимо от скрытия
+кнопок UI. Шаблон может скачать вошедший пользователь, но он не даёт права на
+запись.
+
+Для bulk flow:
+
+- `preview_id` создаётся через `secrets.token_urlsafe`, одноразовый и живёт не
+  более 3600 секунд;
+- preview привязан к author application context, но не к конкретному HTTP
+  session token; нельзя передавать ID другому actor;
+- actor/audit author берётся из текущего context, CSV не может его задать;
+- body ограничен 50 МБ, parser — 40 000 непустых строк, preview store имеет
+  per-author/global/row limits;
+- `POST /api/import-csv?kind=inventory_numbers` намеренно запрещён;
+- Confirm повторно анализирует план под `BEGIN IMMEDIATE`; stale или
+  конфликтующий план отклоняется без частичной записи;
+- S/N используется как единственный lookup key; запрос не создаёт карточки и
+  не позволяет overwrite заполненного другого номера.
+
+Полный security/API lifecycle —
+[INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md](INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md).
+
 ## Warehouse Cable Write
 
 Cable receipt and cable issue actions are allowed for `admin` and `engineer`
@@ -119,6 +146,8 @@ actor.
 
 ## Current Limitations
 
-Stage 0.12.14 не меняет модель авторизации и не переносит authentication,
-delivery writes, inventory write, Administration writes, backup/restore или
-Monitoring.
+Authentication, session storage, Administration writes, backup/restore and
+Monitoring remain compatibility/in-memory boundaries. Inventory Number preview
+ownership is author-bound rather than session-bound and preview state does not
+survive process restart. Server/multi-process deployment therefore requires a
+separate persistent job/ownership design.

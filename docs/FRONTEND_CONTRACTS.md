@@ -1,6 +1,6 @@
 # FRONTEND_CONTRACTS
 
-Дата: 2026-07-10
+Дата актуализации: 2026-07-14
 
 ## Зачем нужен контракт
 
@@ -51,3 +51,22 @@ Whitelist допустим только для id, который создает
 ## Ограничения
 
 Скрипт не является полноценным JavaScript parser. Он намеренно проверяет только статические строковые обращения. Динамические template string id и сложные CSS-селекторы должны покрываться smoke UI и ручным click smoke.
+
+## Stage 0.13.2 Inventory Number Import
+
+HTML shell обязан содержать статические targets:
+
+- `#inventoryNumberCsv` — выбор CSV;
+- `#inventoryNumberImport` — loading/error/preview/result container;
+- `/static/js/warehouse/inventory.js` — runtime module.
+
+Модуль использует `renderElement`, `renderCard`, `renderTable`, `renderButton`,
+`renderBadge` и `replaceChildren`. S/N, Inventory Number, server messages и
+статусы передаются только как `text`, без `innerHTML`. Confirm renderится только
+для `engineer/admin` и только при server-side `can_confirm=true` плюс
+непустом `preview_id`; backend permission остаётся обязательной границей.
+
+Все шесть публичных статусов являются frontend/API contract. Их изменение
+требует одновременной правки UI, архитектурного документа, contract tests и
+headless smoke. Headless должен посещать этот блок (`inventoryNumbers=true`) и
+фиксировать ноль console/window/unhandled/resource/HTTP/API500 errors.

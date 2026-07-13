@@ -46,6 +46,18 @@ injects it into `ReportsFacade`.
 Reports must not create readers inside individual report methods. This avoids
 cyclic dependencies and keeps event extraction owned by Warehouse.
 
+## Stage 0.13.1/0.13.2 Inventory Number
+
+Equipment Card assignment and bulk Inventory Number CSV are resolved through
+`context.warehouse`, never by constructing a receipt service/repository in the
+HTTP layer. The actor provider attached to the Warehouse receipt service supplies
+role and audit author for both Preview and Confirm.
+
+The compatibility `kind=inventory` reconciliation path remains separate. The
+new write path is:
+
+`ApplicationContext -> WarehouseFacade -> ReceiptWriteService -> ReceiptRepository`.
+
 ## Feature Flags
 
 Central flags:

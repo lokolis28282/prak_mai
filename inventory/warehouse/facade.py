@@ -94,6 +94,18 @@ class WarehouseFacade:
             serial_number, inventory_number
         ))
 
+    def preview_inventory_number_import(
+        self,
+        rows: list[dict[str, Any]],
+        filename: str = "inventory_numbers.csv",
+    ) -> dict[str, Any]:
+        return _plain(self.receipt_writer.preview_inventory_number_import(
+            [dict(row) for row in rows], filename
+        ))
+
+    def confirm_inventory_number_import(self, preview_id: str) -> dict[str, Any]:
+        return _plain(self.receipt_writer.confirm_inventory_number_import(preview_id))
+
     def create_receipt_batch(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         return _plain(self.receipt_writer.create_receipt_batch([dict(row) for row in rows]))
 

@@ -39,6 +39,15 @@
   accept, safe line metadata edit, summary/conflicts read and delivery status
   refresh. Close delivery, destructive override/admin correction, inventory
   write, moves and DB migration remain out of scope.
+- Stage 0.13.1: filling an empty Inventory Number in an existing Equipment Card
+  is migrated to `WarehouseFacade` and the Warehouse receipt
+  service/repository. The card is found only by S/N; no new card is created.
+- Stage 0.13.2: bulk Inventory Number CSV Preview/Confirm is migrated through
+  the same receipt boundary. Preview is read-only, direct import is forbidden,
+  and Confirm revalidates then applies all `SUCCESS` rows atomically with the
+  existing audit/Timeline action. Physical `kind=inventory` reconciliation and
+  other legacy inventory subsystem functions remain separate compatibility
+  flows; this is not a claim of full inventory subsystem migration.
 - Move receipt methods behind `WarehouseFacade`.
 - Move issue methods behind `WarehouseFacade`.
 - Move balance, delivery, history and inventory analysis behind Warehouse submodules.

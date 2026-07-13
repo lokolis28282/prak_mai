@@ -83,3 +83,23 @@ Audit actions:
   `stock_receipts.serial_number` and `inventory_number`. Server-side duplicate
   checks must still run before insert for stable user errors; the DB unique
   indexes remain the final race guard.
+
+## Appendix: Stage 0.13.1/0.13.2 Inventory Number Assignment
+
+Этот appendix фиксирует последующее расширение receipt write boundary; таблицы
+Stage 0.12.12 выше остаются исторической картой своего этапа.
+
+| Flow | HTTP contract | Facade/service | Transaction and response |
+|---|---|---|---|
+| Template | `GET /import/inventory-numbers-template.csv` | static user template | UTF-8 BOM, `Serial Number;Inventory Number` |
+| Single card assignment | `POST /api/action`, `ASSIGN_INVENTORY_NUMBER` | `WarehouseFacade.assign_inventory_number` -> receipt service/repository | fills one existing S/N card; idempotent for same value; one audit on update |
+| Bulk preview | `POST /api/preview-csv?kind=inventory_numbers` | `preview_inventory_number_import(rows, filename)` | read-only DB; author-bound in-memory preview; returns six status counters, first 100 rows, up to 200 errors, `preview_id`, `can_confirm` |
+| Bulk confirm | `POST /api/action`, `CONFIRM_IMPORT_PREVIEW`, `kind=inventory_numbers` | `confirm_inventory_number_import(preview_id)` | one-shot consume, `BEGIN IMMEDIATE`, revalidation, atomic updates/legacy sync/audit; returns `imported` and `changed_count` |
+| Direct bulk import | `POST /api/import-csv?kind=inventory_numbers` | intentionally unsupported | controlled HTTP 400; Preview/Confirm cannot be bypassed |
+
+Assignment lookup is exclusively case-insensitive S/N lookup in
+`stock_receipts`. It creates no receipt/equipment card and never overwrites a
+different number. The older `kind=inventory` endpoint remains physical
+read-only reconciliation by S/N and is not an alias for this write flow.
+
+Full contract: [INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md](INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md).

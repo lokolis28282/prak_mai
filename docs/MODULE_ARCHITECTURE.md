@@ -1,6 +1,8 @@
 # MODULE_ARCHITECTURE
 
-Stage 0.12.6 defines product module boundaries without removing `WarehouseCore` or `legacy ui.js`.
+Stage 0.12.6 introduced product module boundaries without removing
+`WarehouseCore` or legacy UI. This document includes subsequent migrations
+through source Stage 0.13.2.
 
 ## Modules
 
@@ -17,6 +19,8 @@ Warehouse:
 - writes cable receipt/issue operations through `WarehouseFacade`;
 - writes serialized equipment/component issues through `WarehouseFacade`;
 - imports delivery documents through `WarehouseFacade` without creating receipts;
+- assigns Inventory Number to existing S/N cards, including bulk CSV
+  Preview/Confirm, through the receipt boundary of `WarehouseFacade`;
 - does not import Reports or Monitoring;
 - publishes/readies warehouse events through the Core event contract.
 
@@ -121,6 +125,17 @@ safe line metadata update, conflicts/summary read and status refresh. New S/N
 acceptance creates receipts through the receipt repository transaction
 contract; existing S/N acceptance fills only empty fields. Close delivery
 remains compatibility.
+
+Stage 0.13.1 routes Equipment Card Inventory Number assignment through:
+
+`web/API -> ApplicationContext -> WarehouseFacade -> ReceiptWriteService -> ReceiptRepository`
+
+Stage 0.13.2 reuses that boundary for bulk
+`kind=inventory_numbers` Preview/Confirm. S/N-only lookup, revalidation under
+`BEGIN IMMEDIATE`, atomic updates/legacy sync/audit and the prohibition on new
+cards are Warehouse-owned rules. The older physical inventory comparison
+`kind=inventory` and remaining legacy inventory functions are not migrated by
+these stages.
 
 `WarehouseCore` must not be referenced directly by `inventory/webapp.py`. New read-only Warehouse endpoints must be added to `WarehouseFacade` first.
 

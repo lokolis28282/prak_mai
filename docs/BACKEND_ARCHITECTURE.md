@@ -1,6 +1,6 @@
 # BACKEND_ARCHITECTURE
 
-Дата: 2026-07-10
+Дата актуализации: 2026-07-14. Current source: Stage 0.13.2.
 
 ## Цель refactoring
 
@@ -57,8 +57,12 @@ inventory/
 `service.*` вызовы допустимы только для неперенесенных legacy flows. Reports
 write/import идут через `ReportsFacade`; equipment/component receipt
 write/import, cable receipt/issue and serialized equipment/component issue
-идут через `WarehouseFacade`. Поставки, inventory write, Administration write
-и backup/restore остаются переходными compatibility flows.
+идут через `WarehouseFacade`. Delivery document/acceptance flows также
+Warehouse-owned с отдельно отмеченными legacy-операциями. Inventory Number
+assignment в карточке и bulk Preview/Confirm с Stage 0.13.1/0.13.2 идут через
+receipt boundary `WarehouseFacade`; старое физическое inventory compare,
+прочие legacy inventory operations, Administration write и backup/restore
+остаются переходными compatibility flows.
 
 ## Сервисы
 
@@ -99,6 +103,16 @@ write/import, cable receipt/issue and serialized equipment/component issue
 
 С Stage 0.12.13 кабельный приход перенесен в
 `inventory/warehouse/cables.py` и `cable_repository.py`.
+
+С Stage 0.13.1/0.13.2 receipt boundary также владеет одиночным и массовым
+назначением Inventory Number существующим S/N-позициям:
+
+`WarehouseFacade -> ReceiptWriteService -> ReceiptRepository`.
+
+Bulk flow использует Warehouse-owned preview store, повторный анализ под
+`BEGIN IMMEDIATE` и transaction-aware repository helper. Новые карточки не
+создаются. Полный контракт —
+[INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md](INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md).
 
 ### `IssueService`
 
@@ -189,46 +203,48 @@ receipt repository transaction contract, существующий S/N тольк
 - legacy imports;
 - CSV export.
 
+Эта compatibility-зона не включает новый Inventory Number write-flow: несмотря
+на историческое имя `InventoryService`, назначение вторичного реквизита
+существующему receipt является Warehouse receipt responsibility.
+
 ## Что осталось в `WarehouseCore`
 
 `WarehouseCore` содержит старую реализацию на переходном этапе. Это временный compatibility core, а не целевая архитектура.
 
-Текущее состояние Stage 0.12.2:
+Текущее состояние Stage 0.13.2:
 
 - `WarehouseCore` остается допустимым legacy-core;
-- новые сервисы пока являются фасадами/делегатами над `WarehouseCore`;
-- перенос методов будет идти постепенно, по одному доменному блоку;
+- часть сервисов остаётся фасадами/делегатами над `WarehouseCore`, а receipt,
+  issue, cable, delivery и Inventory Number flows имеют Warehouse-owned
+  реализации;
+- дальнейший перенос идёт постепенно, по одному доменному блоку;
 - публичный Python API `WarehouseService` не менялся;
-- HTTP API `/api/...` не менялся;
+- существующие generic HTTP API расширяются только через документированные
+  kind/action contracts;
 - схема SQLite и рабочая БД не менялись;
 - бизнес-логика не переписывалась.
 
-Причина такого состояния: первый безопасный разрез должен убрать внешний God Object и зафиксировать границы ответственности без риска потерять функциональность. Следующие переносы должны быть маленькими и покрываться существующими 80 regression-тестами, smoke UI и SQLite integrity-check.
+Причина такого состояния: безопасные доменные разрезы должны фиксировать
+границы ответственности без массового rewrite. Следующие переносы должны быть
+маленькими и покрываться текущими 227 regression/contract/API тестами, smoke
+UI, module/frontend audits и SQLite integrity-check.
 
 ## Зависимости
 
 ```text
-webapp.py / cli.py / tests
+webapp.py / tests
         |
         v
-inventory.service.WarehouseService
+  ApplicationContext
         |
-        +--> ProfileService
-        +--> ReceiptService
-        +--> IssueService
-        +--> DeliveryService
-        +--> BalanceService
-        +--> HistoryService
-        +--> ReportService
-        +--> ReferenceService
-        +--> MonitoringService
-        +--> InventoryService
-                 |
-                 v
-           WarehouseCore
-                 |
-                 v
-              SQLite
+        +--> WarehouseFacade --> warehouse services/repositories --+
+        +--> ReportsFacade -----------------------------------------+--> SQLite
+        +--> AdministrationFacade ---------------------------------+
+        +--> MonitoringFacade
+        |
+        +--> compat WarehouseService --> specialized services/WarehouseCore
+
+cli.py --> compatibility WarehouseService --> SQLite
 ```
 
 ## Правила следующего этапа
@@ -238,11 +254,17 @@ inventory.service.WarehouseService
 2. После каждого переноса запускать:
 
 ```bash
-python3 -m unittest -v tests.test_warehouse
+python3 -m py_compile app.py inventory/**/*.py scripts/*.py tests/*.py
+for file in static/js/*.js static/js/**/*.js tests/headless_smoke.js; do
+  node --check "$file" || exit 1
+done
+python3 scripts/audit_module_boundaries.py
+python3 scripts/audit_frontend_contracts.py
+python3 -W error::ResourceWarning -m unittest discover -s tests -v
+python3 scripts/create_clean_test_db.py --dry-run
 python3 scripts/smoke_ui.py
-sqlite3 data/warehouse.db 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
-python3 -m py_compile app.py inventory/*.py inventory/services/*.py inventory/shared/*.py inventory/models/*.py
-node --check static/js/core.js static/js/api.js static/js/router.js static/js/ui.js tests/headless_smoke.js
+sqlite3 -readonly data/warehouse.db 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
+git diff --check
 ```
 
 3. Не менять рабочую БД при backend-refactoring.

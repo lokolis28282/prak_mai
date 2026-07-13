@@ -38,3 +38,28 @@ flowchart TD
     J -->|Нет| E
     J -->|Да| K[Закрыть поставку и выгрузить результат]
 ```
+
+## Массовое назначение Inventory Number — Stage 0.13.2
+
+```mermaid
+flowchart TD
+    A[Скачать шаблон и заполнить Serial Number + Inventory Number] --> B[Загрузить CSV]
+    B --> C[Read-only Preview: lookup только по S/N]
+    C --> D{Есть VALIDATION_ERROR?}
+    D -->|Да| E[Заблокировать Confirm; исправить CSV]
+    D -->|Нет| F[Показать SUCCESS / UNCHANGED / NOT_FOUND / conflicts]
+    F --> G[Пользователь подтверждает]
+    G --> H[Consume one-shot preview и BEGIN IMMEDIATE]
+    H --> I[Повторно проанализировать весь план]
+    I --> J{План совпадает?}
+    J -->|Нет| K[ROLLBACK; потребовать новый Preview]
+    J -->|Да| L[Обновить все SUCCESS + legacy sync + audit]
+    L --> M{Все writes успешны?}
+    M -->|Нет| K
+    M -->|Да| N[COMMIT и показать Result]
+    N --> O[Timeline показывает событие каждой изменённой карточки]
+```
+
+Новые карточки не создаются, конфликтные строки не изменяются. Каноническая
+sequence diagram и API-контракт:
+[INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md](INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md).

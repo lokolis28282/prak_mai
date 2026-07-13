@@ -1,8 +1,15 @@
 # ODE: запуск и сохранность данных на Windows
 
-Инструкция относится к ODE 0.12.17.1 RC2. Перед заменой действующей установки обязательно
-сохраните её `data\warehouse.db` отдельно. ZIP-пакет собирается командой
-`python3 build_windows_package.py`.
+Текущие runtime-метаданные исходников и target package builder равны
+`0.12.17.1 RC2`, но последний фактически собранный Windows ZIP содержит
+`ODE 0.12.17 RC1`. ZIP RC2 и Stage 0.13.2 не создавался. Не запускайте и не
+публикуйте package builder из этого дерева до отдельного release change,
+который синхронно обновит `__version__`, имя package, embedded release
+notes/test count и пройдёт Windows sign-off.
+
+Перед заменой действующей установки обязательно сохраните её
+`data\warehouse.db` отдельно. После подготовки отдельного release commit ZIP
+собирается командой `python3 build_windows_package.py`.
 
 ## Установка и запуск
 
