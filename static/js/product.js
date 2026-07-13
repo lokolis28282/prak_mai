@@ -47,7 +47,7 @@
       renderElement('div',{className:'monitoring-icon',text:'M'}),
       renderElement('p',{className:'eyebrow',text:'Мониторинг'}),
       renderElement('h2',{text:'Раздел в разработке'}),
-      renderElement('p',{text:'Интеграция с системами мониторинга ЦОД появится в следующем этапе. Складские проблемы и события находятся в разделе «Склад».'})
+      renderElement('p',{text:'Интеграция с системами мониторинга ЦОД появится после стабильного 1.0.'})
     ]}));
   };
 
@@ -137,7 +137,7 @@
     return `Инженер · последнее действие ${result.engineer.last_activity||''}`;
   }
   function openSearchResult(result){
-    closeGlobalSearch();
+    closeGlobalSearchModal();
     if(result.kind==='position'){
       state.searchRows=state.searchRows||[];
       if(!state.searchRows.some(row=>row.position_key===result.position.position_key))state.searchRows.push(result.position);
@@ -153,9 +153,24 @@
 
   let searchTimer=0,searchSequence=0;
   function closeGlobalSearch(){
+    clearTimeout(searchTimer);searchTimer=0;searchSequence+=1;
     const panel=byId('globalSearchResults'),input=byId('globalSearch');
     if(panel){panel.hidden=true;panel.replaceChildren()}
     if(input)input.setAttribute('aria-expanded','false');
+  }
+  function closeGlobalSearchModal(){
+    const modal=byId('globalSearchModal'),input=byId('globalSearch'),trigger=byId('globalSearchTrigger');
+    if(modal)modal.classList.remove('show');
+    closeGlobalSearch();
+    if(input)input.value='';
+    if(trigger)trigger.focus();
+  }
+  window.closeGlobalSearchModal=closeGlobalSearchModal;
+  function openGlobalSearchModal(){
+    const modal=byId('globalSearchModal'),input=byId('globalSearch');
+    if(!modal||!input)return;
+    modal.classList.add('show');
+    input.focus();input.select();
   }
   async function runGlobalSearch(query){
     const panel=byId('globalSearchResults');
@@ -183,20 +198,40 @@
       if(sequence===searchSequence)panel.replaceChildren(renderElement('div',{className:'global-search-state error-list',text:error.message}));
     }
   }
-  function focusGlobalSearch(){const input=byId('globalSearch');if(input){input.focus();input.select()}}
+  function focusGlobalSearch(){openGlobalSearchModal()}
   window.focusGlobalSearch=focusGlobalSearch;
 
+  // Compact header per 0.12.17.1: a magnifying-glass button opens a modal
+  // dialog with the search field and results, instead of a permanent input
+  // sitting in the header. Debounce, keyboard navigation and reuse of the
+  // existing equipment card (openPositionCard) are unchanged from before.
   function initGlobalSearch(){
     const top=document.querySelector('.top');
     if(!top||byId('globalSearch'))return;
-    const input=renderInput({id:'globalSearch',placeholder:'Поиск по ODE: S/N, hostname, поставка, проект...',attrs:{autocomplete:'off','aria-label':'Глобальный поиск'}});
+    const trigger=renderButton({className:'button search-trigger',onClick:openGlobalSearchModal,children:[
+      renderSvgIcon('M11 4a7 7 0 105.06 11.83l4.55 4.56 1.42-1.42-4.56-4.55A7 7 0 0011 4zm0 2a5 5 0 110 10 5 5 0 010-10z')
+    ]});
+    trigger.id='globalSearchTrigger';
+    trigger.setAttribute('aria-label','Поиск по ODE');
+    trigger.setAttribute('aria-haspopup','dialog');
+    const input=renderInput({id:'globalSearch',placeholder:'S/N, инвентарный №, hostname, поставка, проект...',attrs:{autocomplete:'off','aria-label':'Глобальный поиск'}});
     const panel=renderElement('div',{className:'global-search-results',attrs:{id:'globalSearchResults',hidden:true,role:'listbox'}});
-    const shell=renderElement('div',{className:'global-search',children:[input,panel]});
-    top.insertBefore(shell,top.querySelector('.profile-actions'));
-    input.addEventListener('input',()=>{clearTimeout(searchTimer);searchTimer=window.setTimeout(()=>runGlobalSearch(input.value),180)});
+    const closeButton=renderButton({text:'Закрыть',className:'button',onClick:closeGlobalSearchModal});
+    const modalCard=renderElement('div',{className:'modal-card global-search-card',children:[
+      renderElement('div',{className:'modal-head',children:[renderElement('h2',{text:'Поиск по ODE'}),closeButton]}),
+      input,panel
+    ]});
+    const modal=renderElement('div',{className:'modal global-search-modal',attrs:{id:'globalSearchModal',role:'dialog','aria-modal':'true','aria-label':'Глобальный поиск'},children:[modalCard]});
+    top.insertBefore(trigger,top.querySelector('.profile-actions'));
+    document.body.appendChild(modal);
+    input.addEventListener('input',()=>{
+      clearTimeout(searchTimer);searchSequence+=1;
+      const query=input.value;if(query.trim().length<2){closeGlobalSearch();return}
+      searchTimer=window.setTimeout(()=>runGlobalSearch(query),180);
+    });
     input.setAttribute('aria-haspopup','listbox');input.setAttribute('aria-expanded','false');
     input.addEventListener('keydown',event=>{
-      if(event.key==='Escape'){input.value='';closeGlobalSearch();input.setAttribute('aria-expanded','false')}
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeGlobalSearchModal();return}
       if(event.key==='ArrowDown'){
         const first=panel.querySelector('.global-search-result');
         if(first){event.preventDefault();first.focus()}
@@ -206,26 +241,10 @@
       const items=[...panel.querySelectorAll('.global-search-result')],index=items.indexOf(document.activeElement);
       if(event.key==='ArrowDown'&&index>=0){event.preventDefault();items[Math.min(index+1,items.length-1)].focus()}
       if(event.key==='ArrowUp'&&index>=0){event.preventDefault();if(index===0)input.focus();else items[index-1].focus()}
-      if(event.key==='Escape'){event.preventDefault();input.focus();closeGlobalSearch()}
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();closeGlobalSearchModal()}
     });
-    document.addEventListener('click',event=>{if(!shell.contains(event.target))closeGlobalSearch()});
-  }
-
-  function initPrimaryNavigation(){
-    const top=document.querySelector('.top');
-    if(!top||document.querySelector('.product-nav'))return;
-    const items=[
-      ['home','Главная',()=>goHome()],
-      ['warehouse','Склад',()=>openWarehouseHub()],
-      ['reports','Отчеты',()=>openTask('reports','daily')],
-      ['monitoring','Мониторинг',()=>openMonitoringHub()],
-      ['administration','Администрирование',()=>openTask('administration','admin_users')]
-    ];
-    const nav=renderElement('nav',{className:'product-nav',attrs:{'aria-label':'Основные разделы'},children:items.map(([section,label,onClick])=>
-      renderButton({text:label,className:'product-nav-button',dataset:{productSection:section},onClick})
-    )});
-    nav.querySelector('[data-product-section="administration"]').hidden=true;
-    top.insertBefore(nav,top.querySelector('.global-search'));
+    modal.addEventListener('click',event=>{if(event.target===modal)closeGlobalSearchModal()});
+    modal.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();closeGlobalSearchModal()}});
   }
 
   function textCell(value,editableField='',lineId=0){
@@ -328,20 +347,38 @@
   };
 
   let initialBalanceRows=[],balanceSearchTimer=0,balanceSearchSequence=0;
+  function renderBalanceSearchState(message,busy=false){
+    const body=byId('balanceBody');
+    if(body){
+      body.setAttribute('aria-busy',busy?'true':'false');
+      body.replaceChildren(renderElement('tr',{children:[
+        renderElement('td',{className:'empty',attrs:{colspan:12},text:message})
+      ]}));
+    }
+    setText('balanceLimit',message);
+  }
   function initServerBalanceSearch(){
     const input=byId('balanceQuery');
     if(!input||input.dataset.serverSearch==='true')return;
     input.dataset.serverSearch='true';
     input.oninput=()=>{
-      clearTimeout(balanceSearchTimer);
+      clearTimeout(balanceSearchTimer);balanceSearchTimer=0;
+      const sequence=++balanceSearchSequence;
       const query=input.value.trim();
       if(!query){
         state.balance=initialBalanceRows.slice();
         renderSimpleBalance();
+        byId('balanceBody')?.setAttribute('aria-busy','false');
         setBalanceScope(Boolean(state.balance_truncated));
         return;
       }
-      balanceSearchTimer=window.setTimeout(()=>searchBalanceOnServer(query),220);
+      // Do not leave stale rows actionable while the debounced server search
+      // is pending: a user could otherwise open or issue an unrelated item.
+      renderBalanceSearchState('Поиск по всей базе...',true);
+      setBalanceScope(false,'Поиск по всей базе...');
+      balanceSearchTimer=window.setTimeout(()=>{
+        balanceSearchTimer=0;searchBalanceOnServer(query,sequence);
+      },220);
     };
   }
   function setBalanceScope(truncated,message=''){
@@ -352,16 +389,19 @@
     }
     note.textContent=message||(truncated?'Показана ограниченная выборка. Используйте поиск, чтобы найти позицию во всей базе.':'Показаны все позиции.');
   }
-  async function searchBalanceOnServer(query){
-    const sequence=++balanceSearchSequence;
-    setBalanceScope(false,'Поиск по всей базе...');
+  async function searchBalanceOnServer(query,sequence=++balanceSearchSequence){
     try{
       const response=await request('/api/balance?'+new URLSearchParams({query,limit:'500'}));
       if(sequence!==balanceSearchSequence||byId('balanceQuery')?.value.trim()!==query)return;
       state.balance=response.rows||[];
       renderSimpleBalance();
+      byId('balanceBody')?.setAttribute('aria-busy','false');
       setBalanceScope(Boolean(response.truncated),response.truncated?'Показаны первые 500 совпадений. Уточните запрос.':`Найдено позиций: ${state.balance.length}`);
-    }catch(error){if(sequence===balanceSearchSequence){notify(error.message,true);setBalanceScope(false,'Поиск не выполнен')}}
+    }catch(error){
+      if(sequence===balanceSearchSequence&&byId('balanceQuery')?.value.trim()===query){
+        notify(error.message,true);renderBalanceSearchState('Поиск не выполнен');setBalanceScope(false,'Поиск не выполнен');
+      }
+    }
   }
 
   openPositionCard=async function(key){
@@ -438,12 +478,13 @@
   loadAll=async function(){
     await productLoadAll();
     initialBalanceRows=(state.balance||[]).slice();
-    renderDashboard();initServerBalanceSearch();setBalanceScope(Boolean(state.balance_truncated));
-    const admin=document.querySelector('[data-product-section="administration"]');
-    if(admin)admin.hidden=state.current_user?.role!=='admin';
+    initServerBalanceSearch();setBalanceScope(Boolean(state.balance_truncated));
   };
+  // 0.12.17.1: ODE always opens the four-module launcher built by
+  // warehouseLanding() (static/js/ui.js). renderDashboard() (KPI overview,
+  // defined above) is intentionally not called here anymore so it no longer
+  // overwrites that screen; kept in case a future "Обзор" tab wants it.
   initGlobalSearch();
-  initPrimaryNavigation();
   const modal=byId('positionModal'),status=byId('status');
   if(modal){modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','Карточка оборудования')}
   if(status){status.setAttribute('role','status');status.setAttribute('aria-live','polite')}

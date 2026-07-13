@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 from inventory.core.application import create_application_context
@@ -132,7 +133,8 @@ class DeliveryAcceptanceContractTest(unittest.TestCase):
         self.assertEqual(self.counts()["stock_receipts"], before["stock_receipts"])
         with self.service.user_context("lokolis"):
             self.facade.accept_delivery_batch(delivery_id, ids)
-        report = self.context.reports.get_weekly_report("2026-07-11", "2026-07-11")
+        today = date.today().isoformat()
+        report = self.context.reports.get_weekly_report(today, today)
         self.assertGreaterEqual(report["summary"]["accepted_delivery_items"], 2)
 
 

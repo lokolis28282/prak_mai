@@ -14,7 +14,7 @@ from inventory import __version__
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE_NAME = "ODE_windows_test.zip"
-RC_DIR_NAME = "ODE_0.12.17_RC1"
+RC_DIR_NAME = "ODE_0.12.17.1_RC2"
 RC_PACKAGE_NAME = f"{RC_DIR_NAME}.zip"
 
 
@@ -34,11 +34,13 @@ This package includes:
 - history;
 - daily and weekly reports;
 - profile.
-- dashboard and global search;
+- compact four-module home and modal global search;
+- editable receipt/issue scanner drafts before confirmation;
+- disposable test contour with an unmistakable UI banner;
 - equipment card with operational history;
 - bounded large-data views and session-isolated previews.
 
-The validation suite passed 185 tests. End-to-end headless Chrome acceptance
+The validation suite passed 206 tests. End-to-end headless Chrome acceptance
 covered engineer and administrator login, warehouse operations, global search,
 Back/reload, reports, deliveries, mobile navigation and zero HTTP/JS/resource errors.
 
@@ -87,6 +89,9 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
         "requirements.txt",
         "start_windows.bat",
         "start_macos.command",
+        "start_test_windows.bat",
+        "start_test_macos.command",
+        "scripts/create_clean_test_db.py",
     ]
     files = [(root / name, Path(name)) for name in required]
     files.extend(

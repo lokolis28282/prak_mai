@@ -156,8 +156,8 @@ HTML = HTML.replace(
     "ODE 0.12 — учет работ и склада",
     f"{PRODUCT_NAME} {PRODUCT_VERSION} — учет работ и склада",
 )
-RECEIPT_SCANNER_HTML = '''<div class="scanner-box"><h2>Приемка сканером</h2><p class="hint">Заполните общие поля партии, затем сканируйте S/N. Запись в базу выполняется только после подтверждения.</p><form class="form" id="scanReceiptForm"><label>Дата</label><input name="receipt_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Поставщик</label><input name="supplier" class="ref-input" data-kind="supplier" list="ref-supplier" required><label>Вендор</label><input name="vendor" class="ref-input" data-kind="vendor" list="ref-vendor" required><label>Модель</label><input name="model" class="ref-input" data-kind="model" list="ref-model"><label>Наименование</label><input name="item_name" class="ref-input" data-kind="item_name" list="ref-item_name" required><label>Проект</label><input name="project" class="ref-input" data-kind="project" list="ref-project"><label>ЦОД</label><input name="datacenter" class="ref-input" data-kind="datacenter" list="ref-datacenter" value="Ixcellerate" required><label>Стеллаж/Полка</label><input name="shelf" class="ref-input" data-kind="shelf" list="ref-shelf"><label>Объект</label><input name="object_name" class="ref-input" data-kind="object" list="ref-object" required><label>Тип оборудования</label><input name="equipment_type" class="ref-input" data-kind="equipment_type" list="ref-equipment_type"><label>Тип компонента</label><input name="component_type" class="ref-input" data-kind="component_type" list="ref-component_type"><label>Тип кабеля</label><input name="cable_type" class="ref-input" data-kind="cable_type" list="ref-cable_type"><label>Единица учета</label><input name="unit" class="ref-input" data-kind="unit" list="ref-unit" value="шт" required></form><input class="scanner-input" id="receiptScanner" placeholder="Сканируйте S/N или QR" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th>S/N</th><th>Результат проверки</th><th></th></tr></thead><tbody id="scanReceiptBody"><tr><td class="scanner-empty" colspan="3">Список сканирования пуст</td></tr></tbody></table></div><div class="actions" style="margin-top:14px"><button class="button primary" id="confirmScanReceipts" disabled>Принять всё на склад</button></div></div>'''
-ISSUE_SCANNER_HTML = '''<div class="scanner-box"><h2>Списание сканером</h2><p class="hint">Сканер работает как клавиатура. Неизвестные S/N отмечаются и после подтверждения попадают в проблемные строки.</p><form class="form" id="scanIssueForm"><label>Дата</label><input name="issue_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Тип задачи</label><select name="task_type" id="scanIssueTaskType" required></select><label>Номер задачи</label><input name="task_number" required><label>S/N целевого оборудования</label><input name="target_serial_number"><label>Hostname</label><input name="target_hostname"><label>Комментарий</label><textarea name="comment"></textarea></form><input class="scanner-input" id="issueScanner" placeholder="Сканируйте S/N списываемого оборудования" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th>S/N</th><th>Наименование</th><th>Модель</th><th>Полка</th><th>Остаток</th><th>Результат</th><th></th></tr></thead><tbody id="scanIssueBody"><tr><td class="scanner-empty" colspan="7">Список сканирования пуст</td></tr></tbody></table></div><div class="actions" style="margin-top:14px"><button class="button primary" id="confirmScanIssues" disabled>Списать всё</button></div></div>'''
+RECEIPT_SCANNER_HTML = '''<div class="scanner-box"><h2>Приемка сканером</h2><p class="hint">Заполните общие поля партии, затем сканируйте S/N. Запись в базу выполняется только после подтверждения.</p><form class="form" id="scanReceiptForm"><label>Дата</label><input name="receipt_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Поставщик</label><input name="supplier" class="ref-input" data-kind="supplier" list="ref-supplier" required><label>Вендор</label><input name="vendor" class="ref-input" data-kind="vendor" list="ref-vendor" required><label>Модель</label><input name="model" class="ref-input" data-kind="model" list="ref-model"><label>Наименование</label><input name="item_name" class="ref-input" data-kind="item_name" list="ref-item_name" required><label>Проект</label><input name="project" class="ref-input" data-kind="project" list="ref-project"><label>ЦОД</label><input name="datacenter" class="ref-input" data-kind="datacenter" list="ref-datacenter" value="Ixcellerate" required><label>Стеллаж/Полка</label><input name="shelf" class="ref-input" data-kind="shelf" list="ref-shelf"><label>Объект</label><input name="object_name" class="ref-input" data-kind="object" list="ref-object" required><label>Тип оборудования</label><input name="equipment_type" class="ref-input" data-kind="equipment_type" list="ref-equipment_type"><label>Тип компонента</label><input name="component_type" class="ref-input" data-kind="component_type" list="ref-component_type"><label>Тип кабеля</label><input name="cable_type" class="ref-input" data-kind="cable_type" list="ref-cable_type"><label>Единица учета</label><input name="unit" class="ref-input" data-kind="unit" list="ref-unit" value="шт" required></form><input class="scanner-input" id="receiptScanner" placeholder="Сканируйте S/N или QR" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th><input id="selectAllScannedReceipts" type="checkbox" aria-label="Выбрать все строки прихода"></th><th>S/N</th><th>Результат проверки</th><th>Действие</th></tr></thead><tbody id="scanReceiptBody"><tr><td class="scanner-empty" colspan="4">Список сканирования пуст</td></tr></tbody></table></div><div class="actions scanner-actions"><span class="scanner-count" id="scanReceiptCount" role="status" aria-live="polite">0 позиций</span><button class="button" id="deleteSelectedReceipts" type="button" hidden disabled>Удалить выбранные</button><button class="button" id="clearScannedReceipts" type="button" disabled>Очистить список</button><button class="button primary" id="confirmScanReceipts" type="button" disabled>Принять всё на склад</button></div></div>'''
+ISSUE_SCANNER_HTML = '''<div class="scanner-box"><h2>Списание сканером</h2><p class="hint">Сканер работает как клавиатура. Неизвестные S/N отмечаются и после подтверждения попадают в проблемные строки.</p><form class="form" id="scanIssueForm"><label>Дата</label><input name="issue_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Тип задачи</label><select name="task_type" id="scanIssueTaskType" required></select><label>Номер задачи</label><input name="task_number" required><label>S/N целевого оборудования</label><input name="target_serial_number"><label>Hostname</label><input name="target_hostname"><label>Комментарий</label><textarea name="comment"></textarea></form><input class="scanner-input" id="issueScanner" placeholder="Сканируйте S/N списываемого оборудования" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th><input id="selectAllScannedIssues" type="checkbox" aria-label="Выбрать все строки расхода"></th><th>S/N</th><th>Наименование</th><th>Модель</th><th>Полка</th><th>Остаток</th><th>Результат</th><th>Действие</th></tr></thead><tbody id="scanIssueBody"><tr><td class="scanner-empty" colspan="8">Список сканирования пуст</td></tr></tbody></table></div><div class="actions scanner-actions"><span class="scanner-count" id="scanIssueCount" role="status" aria-live="polite">0 позиций</span><button class="button" id="deleteSelectedIssues" type="button" hidden disabled>Удалить выбранные</button><button class="button" id="clearScannedIssues" type="button" disabled>Очистить список</button><button class="button primary" id="confirmScanIssues" type="button" disabled>Списать всё</button></div></div>'''
 SCANNER_SCRIPT = r'''
 let scannedReceipts=[];let scannedIssues=[];
 function renderScannedReceipts(){document.getElementById('scanReceiptBody').innerHTML=scannedReceipts.map((x,i)=>`<tr><td>${esc(x.serial_number)}</td><td>Готово к приемке</td><td><button class="button" onclick="removeScannedReceipt(${i})">Удалить</button></td></tr>`).join('')||'<tr><td class="scanner-empty" colspan="3">Список сканирования пуст</td></tr>';document.getElementById('confirmScanReceipts').disabled=!scannedReceipts.length}
@@ -666,6 +666,46 @@ def _externalized_html(html: str) -> str:
 
 HTML = _externalized_html(HTML)
 
+# 0.12.17.1: test launchers (start_test_macos.command / start_test_windows.bat)
+# set ODE_TEST_MODE=1 before starting the process so the UI always shows an
+# unmistakable label when it is running against a disposable test database
+# instead of data/warehouse.db. Regular production launchers never set this.
+ODE_TEST_MODE = os.environ.get("ODE_TEST_MODE") == "1"
+if ODE_TEST_MODE:
+    _TEST_BANNER = (
+        '<div class="test-circuit-banner" role="status">ТЕСТОВЫЙ КОНТУР '
+        '— изменения не влияют на рабочую базу</div>'
+    )
+    HTML = HTML.replace(
+        '<div class="interface-error" id="interfaceError" hidden></div>',
+        '<div class="interface-error" id="interfaceError" hidden></div>' + _TEST_BANNER,
+        1,
+    )
+    LOGIN_HTML = LOGIN_HTML.replace(
+        "<body>",
+        '<body><div style="position:fixed;top:0;left:0;right:0;z-index:1000;'
+        'padding:9px 14px;background:#b45309;color:#fff;font-weight:700;'
+        'text-align:center;font-size:13px">ТЕСТОВЫЙ КОНТУР — изменения не '
+        'влияют на рабочую базу</div>',
+        1,
+    )
+
+
+def _validate_test_mode_database(db_path: str | Path) -> None:
+    """Refuse a test-labelled server that actually points at the working DB."""
+    if not ODE_TEST_MODE:
+        return
+    selected = Path(db_path).resolve()
+    production = DEFAULT_DB_PATH.resolve()
+    same_file = selected == production
+    if not same_file and selected.exists() and production.exists():
+        same_file = os.path.samefile(selected, production)
+    if same_file:
+        raise RuntimeError(
+            "ODE_TEST_MODE=1 нельзя использовать с рабочей data/warehouse.db; "
+            "укажите отдельную тестовую базу через --db"
+        )
+
 WORK_LOG_HEADERS = {
     "work_date": "Дата", "task_source": "Источник задачи", "task_type": "Тип задачи",
     "task_number": "Номер задачи", "description": "Описание работы",
@@ -758,6 +798,7 @@ def csv_download_bytes(rows: list[dict[str, Any]], delimiter: str = ";") -> byte
 def make_handler(application: WarehouseService | ApplicationContext) -> type[BaseHTTPRequestHandler]:
     app_context = ensure_application_context(application)
     service = app_context.service_adapter()
+    _validate_test_mode_database(service.db_path)
     sessions: dict[str, dict[str, str]] = {}
     sessions_lock = threading.Lock()
     session_ttl_seconds = 12 * 60 * 60
@@ -1699,7 +1740,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        _validate_test_mode_database(args.db)
+    except RuntimeError as error:
+        parser.error(str(error))
     app_context = create_application_context(args.db)
     server = ThreadingHTTPServer((args.host, args.port), make_handler(app_context))
     url = f"http://{args.host}:{server.server_port}"

@@ -5,6 +5,7 @@ import tempfile
 import time
 import unittest
 from contextlib import closing
+from datetime import date
 from pathlib import Path
 
 from inventory.core.application import create_application_context
@@ -38,7 +39,7 @@ class WarehouseEventReaderTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_receipt_issue_cable_delivery_and_problem_events(self) -> None:
-        today = "2026-07-11"
+        today = date.today().isoformat()
         self.service.add_stock_receipt(**receipt(receipt_date=today))
         self.service.import_stock_receipt_rows([receipt(
             receipt_date=today, serial_number="EV-SN-2", inventory_number="EV-INV-2",

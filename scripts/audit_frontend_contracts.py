@@ -45,9 +45,12 @@ DYNAMIC_ID_WHITELIST = {
     "deliveryScanResult",
     "deliveryFillField",
     "deliveryFillValue",
-    # Product shell creates the persistent global-search input and result panel.
+    # Product shell creates the global-search lupe modal (input, result panel,
+    # the dialog wrapper and its trigger button) after load.
     "globalSearch",
     "globalSearchResults",
+    "globalSearchModal",
+    "globalSearchTrigger",
     "shiftProfileCard",
     "simpleReceiptForm",
     "simpleReceiptTitle",

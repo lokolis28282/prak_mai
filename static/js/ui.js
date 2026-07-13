@@ -66,15 +66,129 @@ async function confirmDelivery(preview_id){try{const r=await actionJson({action:
 
 const now=new Date(),padDatePart=value=>String(value).padStart(2,'0'),today=`${now.getFullYear()}-${padDatePart(now.getMonth()+1)}-${padDatePart(now.getDate())}`;document.querySelector('[name=work_date]').value=today;document.querySelector('[name=receipt_date]').value=today;document.querySelector('[name=issue_date]').value=today;document.querySelector('#bulkIssueForm [name=issue_date]').value=today;document.querySelector('#scanReceiptForm [name=receipt_date]').value=today;document.querySelector('#scanIssueForm [name=issue_date]').value=today;document.querySelector('#dailyForm [name=date]').value=today;document.querySelector('#weeklyForm [name=start_date]').value=today;document.querySelector('#weeklyForm [name=end_date]').value=today;showSection('home');
 
-let scannedReceipts=[];let scannedIssues=[];
-function renderScannedReceipts(){document.getElementById('scanReceiptBody').innerHTML=scannedReceipts.map((x,i)=>`<tr><td>${esc(x.serial_number)}</td><td>Готово к приемке</td><td><button class="button" onclick="removeScannedReceipt(${i})">Удалить</button></td></tr>`).join('')||'<tr><td class="scanner-empty" colspan="3">Список сканирования пуст</td></tr>';document.getElementById('confirmScanReceipts').disabled=!scannedReceipts.length}
-function removeScannedReceipt(i){scannedReceipts.splice(i,1);renderScannedReceipts();document.getElementById('receiptScanner').focus()}
-document.getElementById('receiptScanner').onkeydown=async e=>{if(e.key!=='Enter')return;e.preventDefault();const input=e.currentTarget,serial=input.value.trim().toUpperCase();input.value='';if(!serial){notify('Пустой S/N не добавлен',true);return}if(scannedReceipts.some(x=>x.serial_number.toLocaleLowerCase()===serial.toLocaleLowerCase())){notify(`S/N ${serial} уже есть в списке`,true);return}try{const r=await request('/api/scan-serial?kind=receipt&serial_number='+encodeURIComponent(serial));if(!r.valid){notify(r.error,true);return}scannedReceipts.push(r);renderScannedReceipts()}catch(x){notify(x.message,true)}finally{input.focus()}};
-document.getElementById('confirmScanReceipts').onclick=async()=>{const form=document.getElementById('scanReceiptForm');if(!form.reportValidity())return;try{const r=await actionJson({action:'CONFIRM_SCANNED_RECEIPTS',common_fields:formData(form),serial_numbers:scannedReceipts.map(x=>x.serial_number)});notify(`Принято на склад: ${r.imported}`);scannedReceipts=[];renderScannedReceipts();await loadAll();document.getElementById('receiptScanner').focus()}catch(x){notify(x.message,true)}};
-function renderScannedIssues(){document.getElementById('scanIssueBody').innerHTML=scannedIssues.map((x,i)=>`<tr class="${x.valid?(x.found?'':'warn'):'bad'}"><td>${esc(x.serial_number)}</td><td>${esc(x.item_name)}</td><td>${esc(x.model)}</td><td>${esc(x.shelf)}</td><td>${Number(x.available||0).toLocaleString('ru-RU')}</td><td>${esc(x.error||x.warning||'Готово к списанию')}</td><td><button class="button" onclick="removeScannedIssue(${i})">Удалить</button></td></tr>`).join('')||'<tr><td class="scanner-empty" colspan="7">Список сканирования пуст</td></tr>';document.getElementById('confirmScanIssues').disabled=!scannedIssues.length||scannedIssues.some(x=>!x.valid)}
-function removeScannedIssue(i){scannedIssues.splice(i,1);renderScannedIssues();document.getElementById('issueScanner').focus()}
-document.getElementById('issueScanner').onkeydown=async e=>{if(e.key!=='Enter')return;e.preventDefault();const input=e.currentTarget,serial=input.value.trim().toUpperCase();input.value='';if(!serial){notify('Пустой S/N не добавлен',true);return}if(scannedIssues.some(x=>x.serial_number.toLocaleLowerCase()===serial.toLocaleLowerCase())){notify(`S/N ${serial} уже есть в списке`,true);return}try{const r=await request('/api/scan-serial?kind=issue&serial_number='+encodeURIComponent(serial));scannedIssues.push(r);renderScannedIssues();if(!r.valid)notify(r.error,true);else if(!r.found)notify(r.warning,true)}catch(x){notify(x.message,true)}finally{input.focus()}};
-document.getElementById('confirmScanIssues').onclick=async()=>{const form=document.getElementById('scanIssueForm');if(!form.reportValidity())return;try{const r=await actionJson({action:'CONFIRM_SCANNED_ISSUES',common_fields:formData(form),serial_numbers:scannedIssues.map(x=>x.serial_number)});notify(`Обработано: ${r.imported}${r.unmatched?`, в проблемных: ${r.unmatched}`:''}`);scannedIssues=[];renderScannedIssues();await loadAll();document.getElementById('issueScanner').focus()}catch(x){notify(x.message,true)}};
+let scannedReceipts=[];
+let scannedIssues=[];
+const scanDraftRuntime={
+ receipt:{pending:new Set(),selected:new Set(),generation:0,confirming:false},
+ issue:{pending:new Set(),selected:new Set(),generation:0,confirming:false}
+};
+const scanDraftElements={
+ receipt:{body:'scanReceiptBody',input:'receiptScanner',form:'scanReceiptForm',count:'scanReceiptCount',selectAll:'selectAllScannedReceipts',deleteSelected:'deleteSelectedReceipts',clear:'clearScannedReceipts',confirm:'confirmScanReceipts',columns:4},
+ issue:{body:'scanIssueBody',input:'issueScanner',form:'scanIssueForm',count:'scanIssueCount',selectAll:'selectAllScannedIssues',deleteSelected:'deleteSelectedIssues',clear:'clearScannedIssues',confirm:'confirmScanIssues',columns:8}
+};
+function scanDraftRows(kind){return kind==='receipt'?scannedReceipts:scannedIssues}
+function scanSerialKey(value){return String(value||'').trim().toLocaleLowerCase('ru-RU')}
+function uniqueScanDraftRows(rows){const seen=new Set();return (Array.isArray(rows)?rows:[]).filter(row=>{const key=scanSerialKey(row?.serial_number);if(!key||seen.has(key))return false;seen.add(key);return true})}
+function setScanDraftRows(kind,rows){const unique=uniqueScanDraftRows(rows);if(kind==='receipt')scannedReceipts=unique;else scannedIssues=unique}
+function scanPositionLabel(count){const tail=count%100;if(tail>=11&&tail<=14)return `${count} позиций`;const digit=count%10;return `${count} ${digit===1?'позиция':digit>=2&&digit<=4?'позиции':'позиций'}`}
+function focusScanner(kind){const input=document.getElementById(scanDraftElements[kind].input);if(!input||input.disabled||!input.getClientRects().length)return;try{input.focus({preventScroll:true})}catch(_){input.focus()}}
+function scanDraftCheckbox(kind,row){
+ const runtime=scanDraftRuntime[kind],key=scanSerialKey(row.serial_number);
+ const checkbox=renderElement('input',{attrs:{type:'checkbox','aria-label':`Выбрать S/N ${row.serial_number}`}});
+ checkbox.checked=runtime.selected.has(key);checkbox.disabled=runtime.confirming;
+ checkbox.addEventListener('change',()=>{if(checkbox.checked)runtime.selected.add(key);else runtime.selected.delete(key);updateScanDraftControls(kind)});
+ return checkbox;
+}
+function scanDraftDeleteButton(kind,row){return renderButton({text:'Удалить',className:'button scanner-delete',disabled:scanDraftRuntime[kind].confirming,onClick:()=>removeScannedDraftRow(kind,row.serial_number)})}
+function renderScanDraftRow(kind,row){
+ const key=scanSerialKey(row.serial_number),cells=[renderElement('td',{children:[scanDraftCheckbox(kind,row)]}),renderElement('td',{text:row.serial_number})];
+ if(kind==='receipt')cells.push(renderElement('td',{text:'Готово к приемке'}));
+ else cells.push(
+  renderElement('td',{text:row.item_name||''}),renderElement('td',{text:row.model||''}),renderElement('td',{text:row.shelf||''}),
+  renderElement('td',{text:Number(row.available||0).toLocaleString('ru-RU')}),renderElement('td',{text:row.error||row.warning||'Готово к списанию'})
+ );
+ cells.push(renderElement('td',{children:[scanDraftDeleteButton(kind,row)]}));
+ return renderElement('tr',{className:kind==='issue'?(row.valid?(row.found?'':'warn'):'bad'):'',dataset:{scanSerial:key},children:cells});
+}
+function updateScanDraftControls(kind){
+ const ids=scanDraftElements[kind],runtime=scanDraftRuntime[kind],rows=scanDraftRows(kind),keys=new Set(rows.map(row=>scanSerialKey(row.serial_number)));
+ runtime.selected=new Set([...runtime.selected].filter(key=>keys.has(key)));
+ const count=document.getElementById(ids.count),selectAll=document.getElementById(ids.selectAll),deleteSelected=document.getElementById(ids.deleteSelected),clear=document.getElementById(ids.clear),confirm=document.getElementById(ids.confirm),input=document.getElementById(ids.input);
+ if(count)count.textContent=scanPositionLabel(rows.length)+(runtime.pending.size?` · проверяется: ${runtime.pending.size}`:'');
+ if(selectAll){selectAll.disabled=!rows.length||runtime.confirming;selectAll.checked=Boolean(rows.length)&&runtime.selected.size===rows.length;selectAll.indeterminate=runtime.selected.size>0&&runtime.selected.size<rows.length}
+ if(deleteSelected){deleteSelected.hidden=runtime.selected.size===0;deleteSelected.disabled=!runtime.selected.size||runtime.confirming;deleteSelected.textContent=`Удалить выбранные (${runtime.selected.size})`}
+ if(clear)clear.disabled=!rows.length||runtime.confirming;
+ if(confirm)confirm.disabled=!rows.length||runtime.pending.size>0||runtime.confirming||(kind==='issue'&&rows.some(row=>!row.valid));
+ if(input)input.disabled=runtime.confirming;
+ document.getElementById(ids.body)?.querySelectorAll('button,input[type="checkbox"]').forEach(control=>{control.disabled=runtime.confirming});
+}
+function renderScanDraft(kind){
+ const ids=scanDraftElements[kind],rows=scanDraftRows(kind),body=document.getElementById(ids.body);
+ if(body)body.replaceChildren(...(rows.length?rows.map(row=>renderScanDraftRow(kind,row)):[renderElement('tr',{children:[renderElement('td',{className:'scanner-empty',attrs:{colspan:ids.columns},text:'Список сканирования пуст'})]})]));
+ updateScanDraftControls(kind);saveScanDraft(kind,rows);
+}
+function renderScannedReceipts(){renderScanDraft('receipt')}
+function renderScannedIssues(){renderScanDraft('issue')}
+function highlightScannedDuplicate(kind,serial){
+ const key=scanSerialKey(serial),body=document.getElementById(scanDraftElements[kind].body),row=[...(body?.querySelectorAll('tr[data-scan-serial]')||[])].find(item=>item.dataset.scanSerial===key);
+ if(row){row.classList.remove('scan-duplicate');void row.offsetWidth;row.classList.add('scan-duplicate');row.scrollIntoView({block:'nearest'});window.setTimeout(()=>row.classList.remove('scan-duplicate'),1600)}
+ focusScanner(kind);
+}
+function notifyDraftDuplicate(kind,serial){notify('Этот S/N уже находится в текущем списке',true);highlightScannedDuplicate(kind,serial)}
+function removeScannedDraftRow(kind,indexOrSerial){
+ const runtime=scanDraftRuntime[kind];if(runtime.confirming)return;
+ const rows=scanDraftRows(kind),index=typeof indexOrSerial==='number'?indexOrSerial:rows.findIndex(row=>scanSerialKey(row.serial_number)===scanSerialKey(indexOrSerial));
+ if(index<0||index>=rows.length){focusScanner(kind);return}
+ const [removed]=rows.splice(index,1);runtime.selected.delete(scanSerialKey(removed.serial_number));renderScanDraft(kind);
+ notify(`S/N ${removed.serial_number} удалён из текущего списка`);focusScanner(kind);
+}
+function removeScannedReceipt(index){removeScannedDraftRow('receipt',index)}
+function removeScannedIssue(index){removeScannedDraftRow('issue',index)}
+function toggleAllScannedRows(kind,checked){
+ const runtime=scanDraftRuntime[kind];runtime.selected=checked?new Set(scanDraftRows(kind).map(row=>scanSerialKey(row.serial_number))):new Set();updateScanDraftControls(kind);
+}
+function deleteSelectedScannedRows(kind){
+ const runtime=scanDraftRuntime[kind];if(runtime.confirming||!runtime.selected.size)return;
+ const selected=new Set(runtime.selected),count=selected.size;
+ if(!confirm(`Удалить выбранные строки (${count}) из текущего списка?`)){focusScanner(kind);return}
+ setScanDraftRows(kind,scanDraftRows(kind).filter(row=>!selected.has(scanSerialKey(row.serial_number))));runtime.selected.clear();renderScanDraft(kind);
+ notify(`Удалено из текущего списка: ${count}`);focusScanner(kind);
+}
+async function scanDraftSerial(kind,event){
+ if(event.key!=='Enter')return;event.preventDefault();
+ const runtime=scanDraftRuntime[kind],input=event.currentTarget,serial=input.value.trim().toLocaleUpperCase('ru-RU'),key=scanSerialKey(serial);input.value='';
+ if(!serial){notify('Пустой S/N не добавлен',true);focusScanner(kind);return}
+ if(scanDraftRows(kind).some(row=>scanSerialKey(row.serial_number)===key)||runtime.pending.has(key)){notifyDraftDuplicate(kind,serial);return}
+ const generation=runtime.generation;runtime.pending.add(key);updateScanDraftControls(kind);
+ try{
+  const row=await request(`/api/scan-serial?kind=${kind}&serial_number=${encodeURIComponent(serial)}`);
+  if(generation!==runtime.generation||runtime.confirming)return;
+  if(scanDraftRows(kind).some(item=>scanSerialKey(item.serial_number)===key)){notifyDraftDuplicate(kind,serial);return}
+  if(kind==='receipt'&&!row.valid){notify(row.error,true);return}
+  scanDraftRows(kind).push(row);renderScanDraft(kind);
+  if(kind==='issue'){if(!row.valid)notify(row.error,true);else if(!row.found)notify(row.warning,true)}
+ }catch(error){if(generation===runtime.generation)notify(error.message,true)}
+ finally{runtime.pending.delete(key);updateScanDraftControls(kind);if(!runtime.confirming)focusScanner(kind)}
+}
+async function confirmScannedDraft(kind){
+ const runtime=scanDraftRuntime[kind],ids=scanDraftElements[kind],rows=scanDraftRows(kind),form=document.getElementById(ids.form);
+ if(runtime.confirming)return;
+ if(runtime.pending.size){notify('Дождитесь завершения проверки S/N',true);focusScanner(kind);return}
+ if(!rows.length){notify('Текущий список пуст',true);focusScanner(kind);return}
+ if(kind==='issue'&&rows.some(row=>!row.valid)){notify('Удалите ошибочные строки перед подтверждением',true);focusScanner(kind);return}
+ if(!form.reportValidity())return;
+ runtime.confirming=true;runtime.generation+=1;runtime.selected.clear();updateScanDraftControls(kind);
+ const serialNumbers=rows.map(row=>row.serial_number),action=kind==='receipt'?'CONFIRM_SCANNED_RECEIPTS':'CONFIRM_SCANNED_ISSUES';
+ try{
+  const result=await actionJson({action,common_fields:formData(form),serial_numbers:serialNumbers});
+  setScanDraftRows(kind,[]);renderScanDraft(kind);
+  if(kind==='receipt')notify(`Принято на склад: ${result.imported}`);
+  else notify(`Обработано: ${result.imported}${result.unmatched?`, в проблемных: ${result.unmatched}`:''}`);
+  await loadAll();
+ }catch(error){notify(error.message,true)}
+ finally{runtime.confirming=false;updateScanDraftControls(kind);focusScanner(kind)}
+}
+document.getElementById('receiptScanner').onkeydown=event=>scanDraftSerial('receipt',event);
+document.getElementById('issueScanner').onkeydown=event=>scanDraftSerial('issue',event);
+document.getElementById('selectAllScannedReceipts').onchange=event=>toggleAllScannedRows('receipt',event.currentTarget.checked);
+document.getElementById('selectAllScannedIssues').onchange=event=>toggleAllScannedRows('issue',event.currentTarget.checked);
+document.getElementById('deleteSelectedReceipts').onclick=()=>deleteSelectedScannedRows('receipt');
+document.getElementById('deleteSelectedIssues').onclick=()=>deleteSelectedScannedRows('issue');
+document.getElementById('clearScannedReceipts').onclick=()=>clearScanDraft('receipt');
+document.getElementById('clearScannedIssues').onclick=()=>clearScanDraft('issue');
+document.getElementById('confirmScanReceipts').onclick=()=>confirmScannedDraft('receipt');
+document.getElementById('confirmScanIssues').onclick=()=>confirmScannedDraft('issue');
+for(const kind of ['receipt','issue'])document.getElementById(scanDraftElements[kind].form).addEventListener('input',()=>{const rows=scanDraftRows(kind);if(rows.length)saveScanDraft(kind,rows)});
 
 const RECEIPT_TYPES={
  'Оборудование':['Сервер','Коммутатор','СХД','ИБП','Другое оборудование'],
@@ -161,7 +275,7 @@ function scenarioCards(rootId,items){const root=document.getElementById(rootId),
 const previewErrors={};const baseRenderPreview=renderPreview;renderPreview=function(kind,result){previewErrors[kind]=result.errors||[];baseRenderPreview(kind,result);const target=document.getElementById(`${kind}Preview`),actions=target?.lastElementChild;if(actions&&previewErrors[kind].length){const button=document.createElement('button');button.type='button';button.className='button';button.textContent='Скачать ошибки';button.onclick=()=>downloadPreviewErrors(kind);actions.appendChild(button)}};
 function downloadPreviewErrors(kind){const rows=previewErrors[kind]||[];if(!rows.length){notify('Ошибок в файле нет');return}const csv='\ufeffСтрока;Ошибка\r\n'+rows.map(x=>[x.line,x.reason].map(csvQuotedCell).join(';')).join('\r\n'),link=document.createElement('a');link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));link.download=`${kind}_errors.csv`;link.click();URL.revokeObjectURL(link.href)}
 function initScenarios(){const receiptScanner=document.getElementById('receiptScanner').closest('.scanner-box'),receiptImport=document.getElementById('receiptCsv').closest('.import-box'),receiptPreview=document.getElementById('receiptPreview'),simpleReceipt=document.getElementById('simpleReceiptForm'),manualReceipt=document.getElementById('stockReceiptForm'),deliveryHelp=document.createElement('div');deliveryHelp.className='box';deliveryHelp.innerHTML='<h2>Принять из поставки</h2><p class="hint">Загрузите файл снабжения и принимайте позиции сканером.</p><button type="button" class="button primary" onclick="openTask(\'warehouse\',\'deliveries\')">Открыть поставки</button>';scenarioCards('receipt',[{title:'Принять сканером',help:'Для партии серверов или компонентов',nodes:[receiptScanner],focus:()=>document.getElementById('receiptScanner').focus()},{title:'Принять из файла',help:'Для большого Excel/CSV',nodes:[receiptImport,receiptPreview]},{title:'Принять из поставки',help:'Через файл снабжения',nodes:[deliveryHelp]},{title:'Принять кабели',help:'Без серийных номеров',nodes:[simpleReceipt],focus:()=>setReceiptMode('Кабели')},{title:'Ручной ввод',help:'Запасной режим',nodes:[manualReceipt]}]);const issueScanner=document.getElementById('issueScanner').closest('.scanner-box'),bulk=document.getElementById('bulkIssueForm').closest('.box'),cable=document.getElementById('cableIssueForm').closest('.box'),search=document.getElementById('issueSearchForm').closest('.box'),manualIssue=document.getElementById('stockIssueForm');scenarioCards('issue',[{title:'Списать сканером',help:'Для партии серверов или компонентов',nodes:[issueScanner],focus:()=>document.getElementById('issueScanner').focus()},{title:'Списать из файла',help:'Для большого Excel/CSV',nodes:[bulk]},{title:'Списать кабели',help:'Без серийных номеров',nodes:[cable]},{title:'Найти и списать из баланса',help:'Поиск в текущем балансе',nodes:[search]},{title:'Ручной ввод',help:'Запасной режим',nodes:[manualIssue]}]);document.querySelector('[data-section="profile"]')?.remove();document.querySelectorAll('[name="responsible"]').forEach(x=>{x.readOnly=true;x.title='ФИО задано при входе'})}
-const originalLoadAll=loadAll;loadAll=async function(){await originalLoadAll();if(document.getElementById('simpleReceiptForm')){setSelectOptions(document.getElementById('uxBalanceType'),[...new Set(state.balance.map(x=>x.item_type).filter(Boolean))],'Все типы',document.getElementById('uxBalanceType')?.value||'');setSelectOptions(document.getElementById('uxBalanceProject'),[...new Set(state.balance.map(x=>x.project).filter(Boolean))],'Все проекты',document.getElementById('uxBalanceProject')?.value||'');renderSimpleBalance()}const fullName=`${state.current_user.last_name||''} ${state.current_user.first_name||''}`.trim();document.getElementById('currentUser').textContent=`${fullName} · ${state.current_user.position||'Инженер'}`;document.getElementById('adminPassword').hidden=state.current_user.role!=='admin';document.querySelectorAll('[name="responsible"]').forEach(x=>x.value=fullName)};
+const originalLoadAll=loadAll;loadAll=async function(){await originalLoadAll();if(document.getElementById('simpleReceiptForm')){setSelectOptions(document.getElementById('uxBalanceType'),[...new Set(state.balance.map(x=>x.item_type).filter(Boolean))],'Все типы',document.getElementById('uxBalanceType')?.value||'');setSelectOptions(document.getElementById('uxBalanceProject'),[...new Set(state.balance.map(x=>x.project).filter(Boolean))],'Все проекты',document.getElementById('uxBalanceProject')?.value||'');renderSimpleBalance()}const fullName=`${state.current_user.last_name||''} ${state.current_user.first_name||''}`.trim();document.getElementById('currentUser').textContent=`${fullName} · ${state.current_user.position||'Инженер'}`;document.getElementById('adminPassword').hidden=state.current_user.role!=='admin';const adminEntry=document.querySelector('.admin-entry');if(adminEntry)adminEntry.hidden=state.current_user.role!=='admin';document.querySelectorAll('[name="responsible"]').forEach(x=>x.value=fullName)};
 try{initEngineerUX()}catch(error){console.error('Engineer UX initialization failed',error)}
 try{initScenarios()}catch(error){console.error('Scenario initialization failed',error)}
 const WIZARD_MODELS={
@@ -180,14 +294,14 @@ function warehouseLanding(){
   monitor:'M3 12h4l2-5 4 10 2-5h6',
   profile:'M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9c.8-4 3.1-6 7-6s6.2 2 7 6'
  };
- const portalCard=({icon,title,subtitle,items,onOpen})=>{
+ const portalCard=({module,route,icon,title,subtitle,items,onOpen})=>{
   const list=renderElement('ul',{children:items.map(item=>renderElement('li',{text:item}))});
-  return renderElement('article',{className:'portal-card',children:[
+  return renderElement('article',{className:'portal-card',dataset:{module,route},children:[
    renderElement('div',{className:'portal-icon',children:[renderSvgIcon(icons[icon])]}),
    renderElement('h3',{text:title}),
    renderElement('p',{text:subtitle}),
    list,
-   renderButton({text:'Открыть',className:'',onClick:onOpen})
+   renderButton({text:'Открыть',className:'',dataset:{moduleOpen:module,route},onClick:onOpen})
   ]});
  };
  home.replaceChildren(
@@ -197,15 +311,18 @@ function warehouseLanding(){
    renderElement('p',{text:'Выберите направление — на следующем экране будут только относящиеся к нему действия.'})
   ]}),
   renderElement('div',{className:'portal-grid',children:[
-   portalCard({icon:'warehouse',title:'Склад',subtitle:'Работа со складом',items:['Приемка и выдача','Баланс и поставки','Инвентаризация'],onOpen:openWarehouseHub}),
-   portalCard({icon:'report',title:'Отчеты',subtitle:'Работа смены',items:['Ежедневный отчет','Еженедельный отчет','История работ'],onOpen:()=>openTask('reports','daily')}),
-   portalCard({icon:'monitor',title:'Мониторинг',subtitle:'Состояние системы',items:['Проблемы','События','Мониторинг'],onOpen:openMonitoringHub}),
-   portalCard({icon:'profile',title:'Профиль',subtitle:'Инженер смены',items:['Текущий инженер','Настройки смены','Смена инженера'],onOpen:openShiftProfile})
+   portalCard({module:'warehouse',route:'warehouse/overview',icon:'warehouse',title:'Склад',subtitle:'Работа со складом',items:['Приемка и выдача','Баланс и поставки','Инвентаризация'],onOpen:()=>openWarehouseHub()}),
+   portalCard({module:'reports',route:'reports/daily',icon:'report',title:'Отчеты',subtitle:'Работа смены',items:['Ежедневный отчет','Еженедельный отчет','История работ'],onOpen:()=>openTask('reports','daily')}),
+   portalCard({module:'monitoring',route:'monitoring/monitoring',icon:'monitor',title:'Мониторинг',subtitle:'Состояние системы',items:['Раздел в разработке','Будущий контроль ЦОД','Без складских операций'],onOpen:()=>openMonitoringHub()}),
+   portalCard({module:'profile',route:'profile/profile',icon:'profile',title:'Профиль',subtitle:'Инженер смены',items:['Текущий инженер','Настройки смены','Смена инженера'],onOpen:()=>openShiftProfile()})
   ]})
  );
 }
 function openWarehouseHub(){showSection('warehouse');if(!byId('overview'))return;setHtml('overview',`<div class="landing-head compact"><p class="eyebrow">Склад</p><h2>Что нужно сделать?</h2><p>Выберите одну операцию для продолжения.</p></div><div class="action-grid"><button onclick="openTask('warehouse','receipt')"><strong>Принять оборудование</strong><span>Сканирование, поставка, кабели или ручной ввод</span></button><button onclick="openTask('warehouse','issue')"><strong>Выдать оборудование</strong><span>Сканирование, баланс или списание кабелей</span></button><button onclick="openTask('warehouse','deliveries')"><strong>Поставки</strong><span>Документы снабжения и приемка</span></button><button onclick="openTask('warehouse','balance')"><strong>Баланс</strong><span>Остатки, поиск и фильтры</span></button><button onclick="openTask('warehouse','inventory')"><strong>Инвентаризация</strong><span>Сверка фактического наличия</span></button></div>`);showView('overview')}
-function openMonitoringHub(){showSection('monitoring');if(!byId('monitoring'))return;setHtml('monitoring',`<div class="landing-head compact"><p class="eyebrow">Мониторинг</p><h2>Контроль системы</h2></div><div class="action-grid"><button onclick="showView('problems')"><strong>Проблемы</strong><span>Ошибки и несопоставленные операции</span></button><button onclick="openTask('warehouse','journal')"><strong>События</strong><span>Журнал складских операций</span></button><button><strong>Мониторинг</strong><span>Состояние ЦОД Ixcellerate</span></button></div>`);showView('monitoring')}
+function openMonitoringHub(){
+ openTask('monitoring','monitoring');const root=byId('monitoring');if(!root)return;
+ root.replaceChildren(renderElement('div',{className:'monitoring-placeholder',children:[renderElement('div',{className:'monitoring-icon',text:'M'}),renderElement('p',{className:'eyebrow',text:'Мониторинг'}),renderElement('h2',{text:'Раздел в разработке'}),renderElement('p',{text:'Интеграция с системами мониторинга ЦОД появится после стабильного 1.0.'})]}));
+}
 function openShiftProfile(){
  const root=byId('profile');if(!root)return;showSection('profile');
  let card=byId('shiftProfileCard');
@@ -242,7 +359,14 @@ function startReceiptWizard(){
  render();
 }
 function rebuildScenarioCards(){const receipt=document.getElementById('receipt'),bar=receipt.querySelector('.scenario-cards');bar.innerHTML='';[['📷','Сканировать оборудование','Партия с серийными номерами',startReceiptWizard],['✍','Ручное добавление','Одна или несколько позиций',()=>receipt.showScenario('Ручной ввод')],['📦','Принять кабели','Быстро, без серийных номеров',()=>receipt.showScenario('Принять кабели')],['📁','Импорт поставки','Preview и подтверждение',()=>openTask('warehouse','deliveries')]].forEach(([icon,title,help,fn])=>{const b=document.createElement('button');b.className='scenario-card';b.innerHTML=`<b>${icon}</b><strong>${title}</strong><span>${help}</span>`;b.onclick=fn;bar.appendChild(b)});const issue=document.getElementById('issue'),ib=issue.querySelector('.scenario-cards');ib.innerHTML='';[['📷','Сканировать оборудование','Найти по S/N и собрать список','Списать сканером'],['📋','Найти в балансе и списать','Выберите позицию из остатков','Найти и списать из баланса'],['🧵','Списать кабели','Одна операция на всё количество','Списать кабели'],['✍','Ручное списание','Нестандартная операция','Ручной ввод']].forEach(([icon,title,help,target])=>{const b=document.createElement('button');b.className='scenario-card';b.innerHTML=`<b>${icon}</b><strong>${title}</strong><span>${help}</span>`;b.onclick=()=>issue.showScenario(target);ib.appendChild(b)})}
-function modernShell(){const top=document.querySelector('.top'),actions=top?.querySelector('.profile-actions');if(!top||!actions)return;const brand=top.querySelector('div:first-child');if(brand){brand.replaceChildren(renderButton({className:'top-brand',onClick:goHome,children:[renderElement('strong',{text:'ODE'}),renderElement('span',{text:'Отдел дежурных инженеров'}),renderElement('span',{attrs:{id:'pageTitle',hidden:true},text:'Главная'})]}));brand.querySelector('.top-brand')?.setAttribute('aria-label','Вернуться на главную ODE')}const refresh=actions.querySelector('[onclick="loadAll()"]');if(refresh)refresh.onclick=async()=>{try{await loadAll();notify('Данные обновлены')}catch(e){notify(e.message,true)}};if(!actions.querySelector('.shift-profile')){const profile=renderButton({text:'Профиль',className:'button shift-profile',onClick:openShiftProfile});actions.insertBefore(profile,refresh)}const logout=top.querySelector('[onclick="logout()"]');if(logout){logout.style.display='inline-block';logout.textContent='Сменить инженера'}const homeButton=document.querySelector('[data-section="home"]');if(homeButton)homeButton.textContent='Главная';}
+function modernShell(){
+ const top=document.querySelector('.top'),actions=top?.querySelector('.profile-actions');if(!top||!actions)return;
+ const brand=top.querySelector('div:first-child');if(brand){brand.replaceChildren(renderButton({className:'top-brand',onClick:goHome,children:[renderElement('strong',{text:'ODE'}),renderElement('span',{text:'Отдел дежурных инженеров'}),renderElement('span',{attrs:{id:'pageTitle',hidden:true},text:'Главная'})]}));brand.querySelector('.top-brand')?.setAttribute('aria-label','Вернуться на главную ODE')}
+ const refresh=actions.querySelector('[onclick="loadAll()"]');if(refresh)refresh.onclick=async()=>{try{await loadAll();notify('Данные обновлены')}catch(e){notify(e.message,true)}};
+ if(!actions.querySelector('.admin-entry')){const admin=renderButton({text:'Администрирование',className:'button admin-entry',onClick:()=>openTask('administration','admin_users')});admin.id='adminEntry';admin.hidden=true;actions.insertBefore(admin,refresh)}
+ if(!actions.querySelector('.shift-profile')){const profile=renderButton({text:'Профиль',className:'button shift-profile',onClick:openShiftProfile});actions.insertBefore(profile,refresh)}
+ const logout=top.querySelector('[onclick="logout()"]');if(logout){logout.style.display='inline-block';logout.textContent='Сменить инженера'}const homeButton=document.querySelector('[data-section="home"]');if(homeButton)homeButton.textContent='Главная';
+}
 function balanceKind(row){const text=`${row.category||''} ${row.item_type||''} ${row.item_name||''} ${row.equipment_type||''} ${row.component_type||''} ${row.cable_type||''}`.toLocaleLowerCase();if(text.includes('кабел'))return 'Кабели';if(text.includes('ssd')||text.includes('диск'))return 'SSD';if(text.includes('ram')||text.includes('памят'))return 'RAM';if(text.includes('коммут')||text.includes('switch'))return 'Коммутаторы';if(text.includes('сервер'))return 'Серверы';return ''}
 function renderBalanceKpis(){let strip=document.getElementById('balanceKpis');if(!strip){strip=document.createElement('div');strip.id='balanceKpis';strip.className='kpi-strip';document.getElementById('balance')?.prepend(strip)}const totals=Object.fromEntries(balanceGroupNames.map(x=>[x,0]));state.balance.forEach(x=>totals[balanceGroup(x)]+=Number(x.balance)||0);strip.replaceChildren(...balanceGroupNames.map(name=>renderButton({className:`kpi-card ${balanceCardFilter===name?'active':''}`,onClick:()=>setBalanceCardFilter(name),children:[renderElement('b',{text:balanceGroupIcons[name]}),renderElement('span',{text:name}),renderElement('strong',{text:totals[name].toLocaleString('ru-RU')})]})),renderButton({text:'Сбросить фильтр',className:'button reset-balance',onClick:()=>setBalanceCardFilter()}))}
 const stage5LoadAll=loadAll;loadAll=async function(){await stage5LoadAll();renderBalanceKpis()}
@@ -352,9 +476,40 @@ function renderWarehouseHistory(){
   ui.error.textContent=error.message||String(error);ui.error.hidden=false;ui.body.replaceChildren(renderElement('tr',{children:[renderElement('td',{className:'empty history-empty',attrs:{colspan:6},text:'Историю не удалось отобразить'})]}));
  }
 }
-function saveScanDraft(kind,rows){const key=`ode_${kind}_draft`,form=document.getElementById(kind==='receipt'?'scanReceiptForm':'scanIssueForm');if(rows.length)localStorage.setItem(key,JSON.stringify({rows,fields:form?formData(form):{}}));else localStorage.removeItem(key);renderDraftPanel()}
-function restoreScanDraft(kind){const draft=JSON.parse(localStorage.getItem(`ode_${kind}_draft`)||'null');if(!draft)return;openTask('warehouse',kind==='receipt'?'receipt':'issue');const root=document.getElementById(kind==='receipt'?'receipt':'issue');root.showScenario(kind==='receipt'?'Принять сканером':'Списать сканером');const form=document.getElementById(kind==='receipt'?'scanReceiptForm':'scanIssueForm');Object.entries(draft.fields||{}).forEach(([k,v])=>{const field=form.elements.namedItem(k);if(field)field.value=v});if(kind==='receipt'){scannedReceipts=draft.rows;renderScannedReceipts()}else{scannedIssues=draft.rows;renderScannedIssues()}}
-function clearScanDraft(kind){localStorage.removeItem(`ode_${kind}_draft`);if(kind==='receipt'){scannedReceipts=[];renderScannedReceipts()}else{scannedIssues=[];renderScannedIssues()}renderDraftPanel()}
-function renderDraftPanel(){let panel=document.getElementById('activeDrafts');if(!panel){panel=document.createElement('aside');panel.id='activeDrafts';panel.className='active-drafts';document.body.appendChild(panel)}panel.innerHTML=[['receipt','Черновик приемки'],['issue','Черновик расхода']].map(([kind,title])=>{const d=JSON.parse(localStorage.getItem(`ode_${kind}_draft`)||'null');return d?`<div><strong>${title}</strong><span>${d.rows.length} строк</span><button onclick="restoreScanDraft('${kind}')">Вернуться</button><button onclick="clearScanDraft('${kind}')">Очистить</button></div>`:''}).join('');panel.hidden=!panel.innerHTML}
-const baseReceiptRender=renderScannedReceipts;renderScannedReceipts=function(){baseReceiptRender();saveScanDraft('receipt',scannedReceipts)};const baseIssueRender=renderScannedIssues;renderScannedIssues=function(){baseIssueRender();saveScanDraft('issue',scannedIssues)};
-const finalLoadAll=loadAll;loadAll=async function(){await finalLoadAll();renderWarehouseHistory();renderBalanceKpis();renderDraftPanel()};renderDraftPanel();
+function scanDraftStorageKey(kind){return `ode_${kind}_draft`}
+function readScanDraft(kind){
+ const key=scanDraftStorageKey(kind),raw=localStorage.getItem(key);if(!raw)return null;
+ try{
+  const value=JSON.parse(raw),rows=uniqueScanDraftRows(Array.isArray(value?.rows)?value.rows.filter(row=>row&&typeof row==='object'):[]);
+  if(!rows.length){localStorage.removeItem(key);return null}
+  return {rows,fields:value.fields&&typeof value.fields==='object'&&!Array.isArray(value.fields)?value.fields:{}};
+ }catch(_){localStorage.removeItem(key);return null}
+}
+function saveScanDraft(kind,rows){
+ const key=scanDraftStorageKey(kind),form=document.getElementById(scanDraftElements[kind].form);
+ try{if(rows.length)localStorage.setItem(key,JSON.stringify({rows,fields:form?formData(form):{}}));else localStorage.removeItem(key)}
+ catch(_){notify('Не удалось сохранить временный список в браузере',true)}
+ renderDraftPanel();
+}
+function restoreScanDraft(kind){
+ const draft=readScanDraft(kind);if(!draft)return;
+ const runtime=scanDraftRuntime[kind];runtime.generation+=1;runtime.pending.clear();runtime.selected.clear();
+ openTask('warehouse',kind);const root=document.getElementById(kind),title=kind==='receipt'?'Принять сканером':'Списать сканером';root.showScenario?.(title);
+ const form=document.getElementById(scanDraftElements[kind].form);
+ Object.entries(draft.fields).forEach(([name,value])=>{const field=form.elements.namedItem(name);if(field&&typeof value==='string')field.value=value});
+ setScanDraftRows(kind,draft.rows.map(row=>({...row})));renderScanDraft(kind);window.requestAnimationFrame(()=>focusScanner(kind));
+}
+function clearScanDraft(kind){
+ const runtime=scanDraftRuntime[kind];if(runtime.confirming)return;
+ const stored=readScanDraft(kind),count=Math.max(scanDraftRows(kind).length,stored?.rows.length||0);if(!count)return;
+ if(!confirm(`Очистить текущий список (${count})?`)){focusScanner(kind);return}
+ runtime.generation+=1;runtime.pending.clear();runtime.selected.clear();setScanDraftRows(kind,[]);localStorage.removeItem(scanDraftStorageKey(kind));renderScanDraft(kind);
+ notify('Текущий список очищен');focusScanner(kind);
+}
+function renderDraftPanel(){
+ let panel=document.getElementById('activeDrafts');if(!panel){panel=renderElement('aside',{className:'active-drafts',attrs:{id:'activeDrafts'}});document.body.appendChild(panel)}
+ const drafts=[['receipt','Черновик приемки'],['issue','Черновик расхода']].map(([kind,title])=>{const draft=readScanDraft(kind);if(!draft)return null;return renderElement('div',{children:[renderElement('strong',{text:title}),renderElement('span',{text:scanPositionLabel(draft.rows.length)}),renderButton({text:'Вернуться',className:'button',onClick:()=>restoreScanDraft(kind)}),renderButton({text:'Очистить',className:'button',onClick:()=>clearScanDraft(kind)})]})}).filter(Boolean);
+ panel.replaceChildren(...drafts);panel.hidden=!drafts.length;
+}
+const finalLoadAll=loadAll;loadAll=async function(){await finalLoadAll();renderWarehouseHistory();renderBalanceKpis();renderDraftPanel()};
+updateScanDraftControls('receipt');updateScanDraftControls('issue');renderDraftPanel();

@@ -4,6 +4,9 @@ __pycache__/
 .idea/
 .vscode/
 data/backups/
+/data/warehouse_test_clean.db
+/data/warehouse_test_clean.db-*
+/data/.warehouse_test_clean.db.*.tmp
 backups/
 acceptance_backups/
 release_backups/
