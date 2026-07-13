@@ -33,6 +33,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   const visited = {odeHome:false,warehouse:false,receipt:false,issue:false,balance:false,history:false,reports:false,profile:false,administration:false,monitoring:false,globalSearch:false,reloadAndBack:false};
   const smokeToken=Date.now().toString(36).toUpperCase();
   const serials={a:`ODE012-${smokeToken}-A`,b:`ODE012-${smokeToken}-B`,c:`ODE012-${smokeToken}-C`};
+  const assignedInventory=`INV-ODE013-${smokeToken}`;
   const receiptTemps=[`ODE012-${smokeToken}-CLEAR-1`,`ODE012-${smokeToken}-CLEAR-2`];
   const unknownIssue=`ODE012-${smokeToken}-UNKNOWN`;
   const evaluate = async expression => {
@@ -103,6 +104,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
   await waitFor(`document.querySelector('.global-search-result')?.textContent.includes(${JSON.stringify(serials.b)})`);
   await evaluate(`document.querySelector('.global-search-result').click()`);
   await waitFor(`document.getElementById('positionModal').classList.contains('show')&&document.getElementById('positionDetails').textContent.includes(${JSON.stringify(serials.b)})`);
+  await waitFor(`document.querySelector('#positionDetails .equipment-inventory-assignment input[name="inventory_number"]')!==null`);
+  await evaluate(`(()=>{const form=document.querySelector('#positionDetails .equipment-inventory-assignment');form.elements.namedItem('inventory_number').value=${JSON.stringify(assignedInventory)};form.requestSubmit();return true})()`);
+  await waitFor(`document.getElementById('positionDetails').textContent.includes(${JSON.stringify(assignedInventory)})&&!document.querySelector('#positionDetails .equipment-inventory-assignment')&&document.getElementById('positionHistory').textContent.includes('EQUIPMENT_INVENTORY_NUMBER_ASSIGNED')`);
+  await assertClean('equipment inventory number assignment');
   visited.globalSearch = true;
   await evaluate(`history.back()`);
   await waitFor(`!document.getElementById('positionModal').classList.contains('show')`);

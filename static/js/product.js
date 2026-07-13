@@ -404,6 +404,57 @@
     }
   }
 
+  function inventoryNumberAssignment(card,key){
+    const canWrite=['admin','engineer'].includes(state.current_user?.role);
+    if(!canWrite||!card.serial_number||card.inventory_number)return null;
+    const input=renderInput({
+      name:'inventory_number',
+      placeholder:'Введите полученный инвентарный номер',
+      required:true,
+      attrs:{maxlength:255,autocomplete:'off','aria-label':'Инвентарный номер'}
+    });
+    const submit=renderButton({text:'Присвоить номер',primary:true,type:'submit'});
+    const form=renderElement('form',{
+      className:'equipment-inventory-assignment',
+      attrs:{'aria-label':'Присвоить инвентарный номер существующей карточке'},
+      children:[
+        renderElement('div',{children:[
+          renderElement('strong',{text:'Инвентарный номер ещё не получен'}),
+          renderElement('p',{text:'Когда номер вернётся из учётного отдела, добавьте его сюда. Карточка останется той же.'})
+        ]}),
+        renderElement('label',{children:[renderElement('span',{text:'Inventory Number'}),input]}),
+        submit
+      ]
+    });
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const inventoryNumber=input.value.trim();
+      if(!inventoryNumber){input.focus();return}
+      submit.disabled=true;
+      try{
+        const response=await actionJson({
+          action:'ASSIGN_INVENTORY_NUMBER',
+          serial_number:card.serial_number,
+          inventory_number:inventoryNumber
+        });
+        const assigned=response.position?.inventory_number||inventoryNumber;
+        for(const rows of [state.balance,state.searchRows]){
+          if(!Array.isArray(rows))continue;
+          for(const row of rows){
+            if(String(row.serial_number||'').toLocaleUpperCase()===String(card.serial_number).toLocaleUpperCase())row.inventory_number=assigned;
+          }
+        }
+        notify(response.position?.updated===false?'Инвентарный номер уже был присвоен':'Инвентарный номер сохранён');
+        await openPositionCard(key);
+      }catch(error){
+        notify(error.message,true);input.focus();
+      }finally{
+        submit.disabled=false;
+      }
+    });
+    return form;
+  }
+
   openPositionCard=async function(key){
     const position=findPosition(key);
     if(!position)return;
@@ -421,9 +472,12 @@
         ['Дата поступления',card.receipt_date],['Инженер',card.responsible],['Комментарий',card.comment]
       ];
       currentPositionHistory=response.history||[];
-      byId('positionDetails').replaceChildren(renderElement('dl',{className:'equipment-details',children:details.map(([label,value])=>
+      const detailList=renderElement('dl',{className:'equipment-details',children:details.map(([label,value])=>
         renderElement('div',{className:'equipment-field',children:[renderElement('dt',{text:label}),renderElement('dd',{text:value||'—'})]})
-      )}));
+      )});
+      const detailChildren=[detailList],assignment=inventoryNumberAssignment(card,key);
+      if(assignment)detailChildren.push(assignment);
+      byId('positionDetails').replaceChildren(...detailChildren);
       const historyBody=byId('positionHistory');
       historyBody.replaceChildren(...(currentPositionHistory.length?currentPositionHistory.map(row=>renderElement('tr',{children:[
         renderElement('td',{text:row.date||''}),renderElement('td',{text:row.event_type||''}),renderElement('td',{text:row.quantity}),

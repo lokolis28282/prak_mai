@@ -87,6 +87,13 @@ class WarehouseFacade:
             return self.create_cable_receipt(data)
         return int(self.receipt_writer.create_receipt(dict(data)))
 
+    def assign_inventory_number(
+        self, serial_number: str, inventory_number: str
+    ) -> dict[str, Any]:
+        return _plain(self.receipt_writer.assign_inventory_number(
+            serial_number, inventory_number
+        ))
+
     def create_receipt_batch(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         return _plain(self.receipt_writer.create_receipt_batch([dict(row) for row in rows]))
 

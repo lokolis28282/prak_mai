@@ -1121,6 +1121,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         app_context.warehouse.create_cable_receipt(data)
                     else:
                         app_context.warehouse.create_receipt(data)
+                elif action == "ASSIGN_INVENTORY_NUMBER":
+                    response["position"] = app_context.warehouse.assign_inventory_number(
+                        data.get("serial_number", ""), data.get("inventory_number", "")
+                    )
                 elif action == "STOCK_ISSUE":
                     if app_context.warehouse._is_cable_issue(data):
                         app_context.warehouse.create_cable_issue(data)

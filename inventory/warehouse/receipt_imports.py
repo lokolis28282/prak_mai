@@ -66,6 +66,18 @@ class ReceiptWriteService:
             collect_refs=not self.strict_reference_validation,
         )
 
+    def assign_inventory_number(
+        self, serial_number: str, inventory_number: str
+    ) -> dict[str, Any]:
+        self._require_write()
+        serial = self._identifier(serial_number, "S/N")
+        inventory = self._identifier(inventory_number, "инвентарный номер")
+        return self.repository.assign_inventory_number(
+            serial,
+            inventory,
+            author=self.audit_author(),
+        )
+
     def create_receipt_batch(self, rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         self._require_write()
         prepared = self._prepare_rows(rows, soft=False)
@@ -261,3 +273,10 @@ class ReceiptWriteService:
         if not value:
             raise WarehouseError(f"Поле «{field}» не может быть пустым")
         return value
+
+    @classmethod
+    def _identifier(cls, value: str, field: str) -> str:
+        normalized = cls._required(str(value or ""), field).upper()
+        if len(normalized) > 255:
+            raise WarehouseError(f"Поле «{field}» не должно быть длиннее 255 символов")
+        return normalized

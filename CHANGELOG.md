@@ -1,5 +1,30 @@
 # Changelog ODE
 
+## ODE 0.13, Stage 1 — Equipment Card Inventory Workflow
+
+Дата: 2026-07-13
+
+- существующая карточка оборудования получила workflow присвоения Inventory
+  Number после появления S/N: обновляется та же строка `stock_receipts`, новая
+  карточка не создаётся;
+- запись проходит через `ApplicationContext -> WarehouseFacade ->
+  ReceiptWriteService -> ReceiptRepository -> SQLite`; отдельный endpoint,
+  глобальный сервис и параллельная бизнес-логика не добавлены;
+- заполненный Inventory Number нельзя перезаписать из карточки; повтор того же
+  запроса идемпотентен, дубли блокируются существующими unique constraints и
+  проверкой legacy `equipment`;
+- связанная через `legacy_equipment_id` карточка синхронизируется в той же
+  транзакции; viewer не может выполнить запись;
+- реальное изменение фиксируется audit-действием
+  `EQUIPMENT_INVENTORY_NUMBER_ASSIGNED` и автоматически попадает в текущую
+  Timeline карточки;
+- форма показывается внутри существующего `openPositionCard` только для S/N без
+  Inventory Number и ролей `engineer/admin`; DOM строится безопасными
+  компонентами без HTML-интерполяции пользовательского значения;
+- добавлены contract/API/query-plan тесты и headless Chrome сценарий. Схема БД
+  не менялась, рабочая `data/warehouse.db` не использовалась для mutation-тестов,
+  release не собирался.
+
 ## ODE 0.12.17.1 RC2 — Compact Navigation, Search Modal, Test Circuit
 
 Дата: 2026-07-12
