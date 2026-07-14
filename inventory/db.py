@@ -95,6 +95,8 @@ CREATE TABLE IF NOT EXISTS work_logs (
     task_number TEXT NOT NULL,
     description TEXT NOT NULL,
     status TEXT NOT NULL,
+    section TEXT NOT NULL DEFAULT '',
+    needs_review INTEGER NOT NULL DEFAULT 0 CHECK (needs_review IN (0, 1)),
     comment TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -444,6 +446,22 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
                    CREATE INDEX idx_work_logs_source ON work_logs(task_source);
                    CREATE INDEX idx_work_logs_status ON work_logs(status);"""
             )
+        work_log_columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(work_logs)").fetchall()
+        }
+        if "section" not in work_log_columns:
+            connection.execute(
+                "ALTER TABLE work_logs ADD COLUMN section TEXT NOT NULL DEFAULT ''"
+            )
+        if "needs_review" not in work_log_columns:
+            connection.execute(
+                "ALTER TABLE work_logs ADD COLUMN needs_review INTEGER NOT NULL "
+                "DEFAULT 0 CHECK (needs_review IN (0, 1))"
+            )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_work_logs_section ON work_logs(section)"
+        )
         columns = {
             str(row["name"])
             for row in connection.execute("PRAGMA table_info(equipment)").fetchall()
@@ -558,9 +576,26 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
             "equipment_type": ("Серверы", "Коммутаторы", "Системы хранения данных"),
             "component_type": ("Комплектующие",),
             "cable_type": ("Оптика", "Медь"),
-            "task_source": ("Rooms", "Outlook", "ITSM", "Zabbix", "DCIM", "Склад", "Другое"),
-            "task_type": ("ЗНР", "ПНР", "ИЗМ", "ЗНО", "ИНЦ", "Другое"),
-            "work_log_status": ("Выполнено", "В работе", "Ожидание", "Отложено"),
+            "task_source": (
+                "PNR", "ИЗМ", "ЗНР", "ЗНО", "Сопровождение", "ROOMS", "Time",
+                "Zabbix", "Заказ", "Волна", "DCIM", "ITSM", "Outlook",
+                "Rooms", "Склад", "Другое",
+            ),
+            "task_type": (
+                "ЗНО", "ЗНР", "ИЗМ", "ИНЦ", "Ночные работы", "ПНР", "Работа",
+                "Другое",
+            ),
+            "work_log_status": ("Выполнено", "В работе", "В ожидании", "Ожидание", "Отложено"),
+            "work_log_section": (
+                "Solar", "Виртуализация", "SALT", "BigData", "ТОРГ", "БД",
+                "Linux", "NTP", "Exchange", "Digital", "USB-hub", "Cognos",
+                "QlikView", "АССД", "X5ID", "CIP", "Подписки микросервис",
+                "Loymax", "GPU-инфраструктура", "УЦ", "Голограмма",
+                "Пополнение TC5", "FnR (F&R)", "Видеоконференции",
+                "Серверы интеграции УПГУ", "Серверы СРК",
+                "WAF Pro — система контроля и защиты веб-приложений",
+                "1C", "APM",
+            ),
             "supplier": ("Не указан",),
             "vendor": ("Не указан",),
             "unit": ("шт", "м"),

@@ -144,7 +144,10 @@ Huawei/xFusion and vendor-scoped models remain distinct candidate facts.
 - `deliveries`, `delivery_lines` - оставить.
 - `reference_values` - оставить.
 - `audit_log` - оставить для технического аудита.
-- `users`, `work_logs`, `daily_report_*` - оставить без изменения.
+- `users`, `daily_report_*` - оставить без изменения.
+- `work_logs` (УВР) - добавлены `section` («Раздел») и `needs_review` (флаг
+  строк, мигрированных из legacy Excel и требующих ручной проверки раздела);
+  миграция идемпотентна (`ALTER TABLE ADD COLUMN`).
 - `equipment`, `operations`, `categories`, `locations` - оставить только как legacy-совместимость до отдельного решения.
 
 ### Поля, которые добавить позже

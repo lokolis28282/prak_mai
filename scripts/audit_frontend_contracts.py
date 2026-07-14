@@ -34,6 +34,8 @@ DYNAMIC_ID_WHITELIST = {
     "deliveryPreview",
     "receiptPreview",
     "issuePreview",
+    # УВР edit modal builds this form dynamically in openUvrEdit().
+    "uvrEditForm",
     # Engineer UX creates these controls after load.
     "activeDrafts",
     "balanceKpis",

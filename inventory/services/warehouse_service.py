@@ -52,6 +52,7 @@ class WarehouseCore:
         "task_source": "Источники задач",
         "task_type": "Типы задач",
         "work_log_status": "Статусы логов",
+        "work_log_section": "Разделы работ (УВР)",
     }
     RECEIPT_REFERENCE_FIELDS = {
         "item_name": "item_name", "model": "model", "shelf": "shelf",
@@ -3156,7 +3157,7 @@ class WarehouseCore:
         date_from, date_to = self._validated_period(date_from, date_to, optional=True)
         sql = """SELECT id, work_date, task_source, task_type, task_number,
                         task_type || '-' || task_number AS full_task_name,
-                        description, status, comment, created_at
+                        description, status, section, needs_review, comment, created_at
                  FROM work_logs WHERE 1 = 1"""
         params: list[Any] = []
         if date_from:

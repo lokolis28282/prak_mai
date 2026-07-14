@@ -8,9 +8,50 @@ from typing import Any
 from inventory.shared.validators import WarehouseError
 
 
-TASK_SOURCES = ("Rooms", "Outlook", "ITSM", "Zabbix", "DCIM", "Склад", "Другое")
-TASK_TYPES = ("ЗНР", "ПНР", "ИЗМ", "ЗНО", "ИНЦ", "Другое")
-WORK_LOG_STATUSES = ("Выполнено", "В работе", "Ожидание", "Отложено")
+TASK_SOURCES = (
+    "PNR", "ИЗМ", "ЗНР", "ЗНО", "Сопровождение", "ROOMS", "Time", "Zabbix",
+    "Заказ", "Волна", "DCIM", "ITSM", "Outlook", "Rooms", "Склад", "Другое",
+)
+TASK_TYPES = ("ЗНО", "ЗНР", "ИЗМ", "ИНЦ", "Ночные работы", "ПНР", "Работа", "Другое")
+WORK_LOG_STATUSES = ("Выполнено", "В работе", "В ожидании", "Ожидание", "Отложено")
+
+
+def _normalize(value: str) -> str:
+    return " ".join(str(value or "").replace("ё", "е").strip().casefold().split())
+
+
+def match_section(value: str, known: dict[str, str]) -> tuple[str, bool]:
+    """Map a raw section value onto a known canonical section.
+
+    `known` maps normalized section names to their canonical display form.
+    Returns the resolved value and a flag that is True when the value could not
+    be matched and must be reviewed manually. Nothing is ever dropped: an
+    unmatched value is kept verbatim so migrated data is not lost.
+    """
+    text = str(value or "").strip()
+    if not text:
+        return "", False
+    normalized = _normalize(text)
+    if normalized in known:
+        return known[normalized], False
+    for canonical_norm, canonical in known.items():
+        if normalized in canonical_norm or canonical_norm in normalized:
+            return canonical, False
+    return text, True
+
+
+def _task_number(number: str, source: str) -> str:
+    """Task number is optional for standalone task templates (ROOMS, Time, …).
+
+    It is only mandatory when the task source carries no identity of its own, so
+    a fully anonymous entry (no source and no number) is still rejected.
+    """
+    number = number.strip()
+    if number:
+        return number
+    if source.strip() and source.strip().casefold() not in ("не указан", ""):
+        return ""
+    raise WarehouseError("Укажите имя задачи (шаблон или номер)")
 
 
 def required(value: str, field: str) -> str:
@@ -61,6 +102,24 @@ def soft_work_log_source(source: dict[str, Any]) -> dict[str, Any]:
     row["task_type"] = str(row.get("task_type") or "")
     row["task_number"] = str(row.get("task_number") or "")
     row["status"] = str(row.get("status") or "Выполнено")
+    row["section"] = str(row.get("section") or "")
+    return row
+
+
+def migration_placeholders(source: dict[str, Any]) -> dict[str, Any]:
+    """Fill placeholders for empty required fields during file migration only.
+
+    Unlike the general soft import path, a spreadsheet migration must never drop
+    a content-bearing row: an empty task number or description is replaced with a
+    placeholder and the row is flagged for manual review.
+    """
+    row = dict(source)
+    if not str(row.get("task_number") or "").strip():
+        row["task_number"] = "—"
+        row["needs_review"] = 1
+    if not str(row.get("description") or "").strip():
+        row["description"] = "(без описания)"
+        row["needs_review"] = 1
     return row
 
 
@@ -85,12 +144,20 @@ def prepare_work_log(
                 references or {"task_type": {x.casefold() for x in TASK_TYPES}},
                 optional=True, strict=strict_references,
             ),
-            "task_number": required(str(source.get("task_number", "")), "номер задачи"),
+            "task_number": _task_number(
+                str(source.get("task_number", "")), str(source.get("task_source", ""))
+            ),
             "description": required(str(source.get("description", "")), "описание работы"),
             "status": reference(
                 str(source.get("status", "")), "статус", "work_log_status",
                 references or {"work_log_status": {x.casefold() for x in WORK_LOG_STATUSES}},
             ),
+            "section": reference(
+                str(source.get("section", "")), "раздел", "work_log_section",
+                references or {"work_log_section": set()},
+                optional=True, strict=strict_references,
+            ),
+            "needs_review": int(bool(source.get("needs_review", 0))),
             "comment": str(source.get("comment", "")).strip(),
         }
     except WarehouseError as error:
