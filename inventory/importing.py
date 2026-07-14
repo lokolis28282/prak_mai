@@ -35,6 +35,7 @@ FIELD_ALIASES: dict[str, tuple[str, ...]] = {
     "task_type": ("Тип задачи", "task_type"),
     "description": ("Описание работы", "Описание", "Описание / наименование", "description"),
     "status": ("Статус", "status"),
+    "section": ("Раздел", "section"),
     "comment": ("Комментарий", "Комментарий / основание", "comment"),
     "report_block": ("Блок отчета", "report_block"),
     "order_date": ("Дата заказа", "order_date"),
@@ -132,6 +133,55 @@ def parse_csv_bytes(body: bytes, kind: str) -> list[dict[str, str]]:
             if len(rows) > MAX_IMPORT_ROWS:
                 raise ValueError(f"CSV содержит больше {MAX_IMPORT_ROWS:,} строк")
     return rows
+
+
+def _header_row_index(rows: list[list[str]]) -> int:
+    """Find the row that best matches known column aliases (0 if none stand out)."""
+    best_index, best_score = 0, 0
+    for index, row in enumerate(rows[:20]):
+        score = sum(1 for cell in row if _key(cell) in ALIAS_TO_FIELD)
+        if score > best_score:
+            best_index, best_score = index, score
+    return best_index
+
+
+def xlsx_rows_to_records(rows: list[list[str]]) -> list[dict[str, str]]:
+    """Map a raw XLSX sheet (list of string rows) to canonical work-log records.
+
+    Only the first contiguous block of recognised columns is read; a blank
+    header cell marks the end of the block, so trailing warehouse blocks in the
+    source workbook are ignored. Excel serial dates are normalised to ISO.
+    """
+    from inventory.shared.xlsx import excel_serial_to_iso
+
+    if not rows:
+        return []
+    header_index = _header_row_index(rows)
+    header = rows[header_index]
+    column_field: dict[int, str] = {}
+    for position, title in enumerate(header):
+        if not str(title).strip():
+            if column_field:
+                break  # end of the first table block
+            continue
+        field = ALIAS_TO_FIELD.get(_key(title), "")
+        if field:
+            column_field[position] = field
+    records: list[dict[str, str]] = []
+    for row in rows[header_index + 1:]:
+        record: dict[str, str] = {}
+        for position, field in column_field.items():
+            value = str(row[position]).strip() if position < len(row) else ""
+            if field in ("work_date", "receipt_date", "issue_date"):
+                value = excel_serial_to_iso(value)
+            record[field] = value
+        # A log entry is only meaningful when it carries work content; date-only
+        # spacer rows from the source spreadsheet are skipped, not imported.
+        if record.get("description") or record.get("task_number"):
+            records.append(record)
+            if len(records) > MAX_IMPORT_ROWS:
+                raise ValueError(f"Файл содержит больше {MAX_IMPORT_ROWS:,} строк")
+    return records
 
 
 def unknown_csv_headers(body: bytes) -> list[str]:

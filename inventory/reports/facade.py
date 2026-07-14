@@ -63,6 +63,29 @@ class ReportsFacade:
     def create_work_logs(self, rows: list[dict[str, Any]]) -> int:
         return int(self.work_log_service.create_work_logs([dict(row) for row in rows]))
 
+    def update_work_log(self, log_id: int, data: dict[str, Any]) -> None:
+        self.work_log_service.update_work_log(int(log_id), dict(data))
+
+    def delete_work_log(self, log_id: int) -> None:
+        self.work_log_service.delete_work_log(int(log_id))
+
+    def preview_work_log_xlsx(
+        self, data: bytes, *, sheet_name: str = "Логи", filename: str = "work_logs.xlsx"
+    ) -> dict[str, Any]:
+        return _plain(self.work_log_service.preview_xlsx_import(
+            data, sheet_name=sheet_name, filename=filename
+        ))
+
+    def work_log_xlsx_sheets(self, data: bytes) -> list[str]:
+        from inventory.shared.xlsx import XlsxError, sheet_names
+
+        try:
+            return list(sheet_names(data))
+        except XlsxError as error:
+            from inventory.shared.validators import WarehouseError
+
+            raise WarehouseError(str(error)) from error
+
     def preview_work_log_import(
         self, rows: list[dict[str, Any]], filename: str = "work_logs.csv", *, soft: bool = True
     ) -> dict[str, Any]:

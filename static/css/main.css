@@ -69,3 +69,23 @@
 .inventory-number-errors{margin:0 0 14px;padding-left:22px}.inventory-number-actions{display:flex;justify-content:flex-end;margin-top:14px}.inventory-number-state{padding:24px;text-align:center;color:var(--muted)}
 @media(max-width:900px){.inventory-number-summary{grid-template-columns:repeat(2,minmax(130px,1fr))}}
 @media(max-width:600px){.inventory-number-summary{grid-template-columns:1fr}.inventory-number-actions .button{width:100%}}
+
+/* УВР (учет выполненных работ) — реестр работ смены */
+.uvr-form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px 16px;margin-bottom:12px}
+.uvr-form-grid label{display:block;margin-bottom:4px;font-weight:650}
+.uvr-form-grid input,.uvr-form-grid select{width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff}
+.uvr-form.form{max-width:none;display:block}
+.uvr-form.form>label{display:block;margin:10px 0 4px;font-weight:650}
+.uvr-form.form>textarea{width:100%;min-height:70px;padding:9px 10px;border:1px solid #cbd5e1;border-radius:7px;resize:vertical}
+.uvr-toolbar{grid-template-columns:2fr 1fr 1fr 1fr 1fr auto}
+.uvr-table th.sortable{cursor:pointer;user-select:none}
+.uvr-table th.sortable:hover{color:var(--blue)}
+.uvr-table td{white-space:normal;max-width:340px}
+.uvr-actions{white-space:nowrap}
+.button.small{padding:5px 9px;font-size:12px}
+.badge.warn{background:#fffbeb;color:#92400e}
+.uvr-table tr.row-review{background:#fffdf5}
+.uvr-report-form{grid-template-columns:auto auto auto;justify-content:start;gap:9px;align-items:center}
+.uvr-legacy{margin-top:20px}
+.uvr-legacy>summary{cursor:pointer;color:var(--muted);font-weight:650;padding:8px 0}
+@media(max-width:700px){.uvr-report-form{grid-template-columns:1fr 1fr}}

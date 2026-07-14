@@ -12,8 +12,11 @@ from inventory.shared.db import connect
 
 WORK_LOG_FIELDS = (
     "work_date", "task_source", "task_type", "task_number",
-    "description", "status", "comment",
+    "description", "status", "section", "needs_review", "comment",
 )
+
+WORK_LOG_INSERT_COLUMNS = ", ".join(WORK_LOG_FIELDS)
+WORK_LOG_INSERT_PLACEHOLDERS = ", ".join("?" for _ in WORK_LOG_FIELDS)
 
 
 class ReportsRepository:
@@ -59,10 +62,8 @@ class ReportsRepository:
     def insert_work_log(self, row: dict[str, str], *, author: str) -> int:
         with connect(self.db_path) as db:
             cursor = db.execute(
-                """INSERT INTO work_logs(
-                       work_date, task_source, task_type, task_number,
-                       description, status, comment
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                f"""INSERT INTO work_logs({WORK_LOG_INSERT_COLUMNS})
+                    VALUES ({WORK_LOG_INSERT_PLACEHOLDERS})""",
                 self.work_log_values(row),
             )
             log_id = int(cursor.lastrowid)
@@ -79,9 +80,8 @@ class ReportsRepository:
     def insert_work_logs(self, rows: list[dict[str, str]], *, author: str) -> int:
         with connect(self.db_path) as db:
             db.executemany(
-                """INSERT INTO work_logs(work_date, task_source, task_type, task_number,
-                                          description, status, comment)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                f"""INSERT INTO work_logs({WORK_LOG_INSERT_COLUMNS})
+                    VALUES ({WORK_LOG_INSERT_PLACEHOLDERS})""",
                 [self.work_log_values(row) for row in rows],
             )
             write_audit_entry(
@@ -113,10 +113,8 @@ class ReportsRepository:
                 author=author,
             )
             db.executemany(
-                """INSERT INTO work_logs(
-                       work_date, task_source, task_type, task_number,
-                       description, status, comment
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                f"""INSERT INTO work_logs({WORK_LOG_INSERT_COLUMNS})
+                    VALUES ({WORK_LOG_INSERT_PLACEHOLDERS})""",
                 [self.work_log_values(row) for row in rows],
             )
             write_audit_entry(
@@ -131,7 +129,7 @@ class ReportsRepository:
     def work_logs(self, date_from: str = "", date_to: str = "") -> list[dict[str, Any]]:
         sql = """SELECT id, work_date, task_source, task_type, task_number,
                         task_type || '-' || task_number AS full_task_name,
-                        description, status, comment, created_at
+                        description, status, section, needs_review, comment, created_at
                  FROM work_logs WHERE 1 = 1"""
         params: list[Any] = []
         if date_from:
@@ -143,6 +141,42 @@ class ReportsRepository:
         sql += " ORDER BY work_date DESC, id DESC"
         with connect(self.db_path) as db:
             return [dict(row) for row in db.execute(sql, params).fetchall()]
+
+    def update_work_log(self, log_id: int, row: dict[str, str], *, author: str) -> None:
+        from inventory.shared.validators import WarehouseError
+
+        assignments = ", ".join(f"{field} = ?" for field in WORK_LOG_FIELDS)
+        with connect(self.db_path) as db:
+            cursor = db.execute(
+                f"UPDATE work_logs SET {assignments} WHERE id = ?",
+                (*self.work_log_values(row), log_id),
+            )
+            if cursor.rowcount == 0:
+                raise WarehouseError("Запись лога работ не найдена")
+            write_audit_entry(
+                db,
+                action="WORK_LOG_UPDATE",
+                entity_type="work_log",
+                entity_id=log_id,
+                author=author,
+                details={"task": f"{row['task_type']}-{row['task_number']}"},
+            )
+
+    def delete_work_log(self, log_id: int, *, author: str) -> None:
+        from inventory.shared.validators import WarehouseError
+
+        with connect(self.db_path) as db:
+            cursor = db.execute("DELETE FROM work_logs WHERE id = ?", (log_id,))
+            if cursor.rowcount == 0:
+                raise WarehouseError("Запись лога работ не найдена")
+            write_audit_entry(
+                db,
+                action="WORK_LOG_DELETE",
+                entity_type="work_log",
+                entity_id=log_id,
+                author=author,
+                details={},
+            )
 
     def insert_daily_report(
         self,
@@ -207,5 +241,8 @@ class ReportsRepository:
             )]
 
     @staticmethod
-    def work_log_values(row: dict[str, str]) -> tuple[str, ...]:
-        return tuple(row[field] for field in WORK_LOG_FIELDS)
+    def work_log_values(row: dict[str, Any]) -> tuple[Any, ...]:
+        return tuple(
+            int(bool(row.get(field, 0))) if field == "needs_review" else row[field]
+            for field in WORK_LOG_FIELDS
+        )

@@ -117,7 +117,7 @@ class ReportsReadApiContractTest(unittest.TestCase):
 
     def test_csv_contracts_preserve_bom_headers_and_text(self) -> None:
         checks = [
-            (f"/export/work-logs.csv?date_from={self.today}&date_to={self.today}", "work_logs.csv", "Номер задачи", "Проверка отчета"),
+            (f"/export/work-logs.csv?date_from={self.today}&date_to={self.today}", "work_logs.csv", "Имя задачи", "Проверка отчета"),
             (f"/export/daily-report.csv?date={self.today}", "daily_report.csv", "Блок отчета", "RPT-1"),
             (f"/export/weekly-report.csv?start_date={self.today}&end_date={self.today}", "period_report.csv", "Показатель", "Логи работ"),
             (f"/export/uploaded-daily-report.csv?id={self.upload['id']}", "uploaded_daily_report.csv", "Номер задачи", "READY-1"),

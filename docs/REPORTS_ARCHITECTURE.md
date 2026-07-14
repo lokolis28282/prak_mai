@@ -59,7 +59,10 @@ All methods return plain `dict`/`list` data and preserve existing row order and 
 
 - `create_work_log(data)`
 - `create_work_logs(rows)`
+- `update_work_log(log_id, data)`
+- `delete_work_log(log_id)`
 - `preview_work_log_import(rows, filename, soft=True)`
+- `preview_work_log_xlsx(data, sheet_name, filename)`
 - `confirm_work_log_import(preview_id)`
 - `import_work_logs(rows, soft=False)`
 - `preview_daily_report_import(rows, filename)`
@@ -67,8 +70,13 @@ All methods return plain `dict`/`list` data and preserve existing row order and 
 - `import_daily_report(filename, rows)`
 
 The facade accepts plain dictionaries/lists and returns plain dictionaries,
-lists or integers. Validation lives inside `inventory/reports`. Update/delete
-work-log methods are not exposed because no legacy implementation exists.
+lists or integers. Validation lives inside `inventory/reports`. The УВР
+(work-log) records carry an optional `section` field and a `needs_review` flag;
+the flag is set for rows migrated from legacy Excel whose section could not be
+matched to the reference set. XLSX import reuses the standard preview → confirm
+pipeline; the reader (`inventory/shared/xlsx.py`) is standard-library only.
+The shift and week report tabs reuse `list_work_logs` with a date filter and the
+`WORK_LOG_HEADERS` CSV export, so all three report views share the same columns.
 
 ## Atomicity And Preview
 
@@ -87,6 +95,8 @@ Reports publishes these actions through the shared audit adapter:
 
 - `WORK_LOG_CREATE`
 - `WORK_LOG_BATCH_CREATE`
+- `WORK_LOG_UPDATE`
+- `WORK_LOG_DELETE`
 - `WORK_LOG_IMPORT`
 - `DAILY_REPORT_UPLOAD`
 

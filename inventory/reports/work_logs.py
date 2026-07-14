@@ -10,7 +10,13 @@ from inventory.shared.validators import WarehouseError
 
 from .imports import ReportsPreviewStore, preview_limits
 from .repository import ReportsRepository
-from .validators import parse_date, prepare_work_log, soft_work_log_source
+from .validators import (
+    match_section,
+    migration_placeholders,
+    parse_date,
+    prepare_work_log,
+    soft_work_log_source,
+)
 
 
 class WorkLogService:
@@ -36,6 +42,70 @@ class WorkLogService:
                 strict_references=self.strict_reference_validation,
             )
         return self.repository.insert_work_log(row, author=self.audit_author())
+
+    def update_work_log(self, log_id: int, data: dict[str, Any]) -> None:
+        self._require_write()
+        with connect(self.repository.db_path) as db:
+            row = prepare_work_log(
+                data,
+                references=self.repository.reference_sets(db),
+                strict_references=self.strict_reference_validation,
+            )
+        self.repository.update_work_log(int(log_id), row, author=self.audit_author())
+
+    def delete_work_log(self, log_id: int) -> None:
+        self._require_write()
+        self.repository.delete_work_log(int(log_id), author=self.audit_author())
+
+    def _known_sections(self) -> dict[str, str]:
+        from inventory.reports.validators import _normalize
+
+        with connect(self.repository.db_path) as db:
+            names = [
+                str(row["name"])
+                for row in db.execute(
+                    "SELECT name FROM reference_values "
+                    "WHERE kind = 'work_log_section' AND is_active = 1"
+                )
+            ]
+        return {_normalize(name): name for name in names}
+
+    def resolve_import_sections(
+        self, rows: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Match each row's section to a known value, flagging unmatched rows.
+
+        Migrated data is never dropped: an unmatched section is kept verbatim and
+        the row is marked `needs_review` so it can be corrected in the UI later.
+        """
+        known = self._known_sections()
+        resolved: list[dict[str, Any]] = []
+        for source in rows:
+            row = migration_placeholders(source)
+            matched, needs_review = match_section(str(row.get("section", "")), known)
+            row["section"] = matched
+            if needs_review:
+                row["needs_review"] = 1
+            resolved.append(row)
+        return resolved
+
+    def preview_xlsx_import(
+        self, data: bytes, *, sheet_name: str, filename: str
+    ) -> dict[str, Any]:
+        """Read a work-log sheet from an XLSX file and produce an import preview."""
+        from inventory.importing import xlsx_rows_to_records
+        from inventory.shared.xlsx import MAX_XLSX_BYTES, XlsxError, read_sheet
+
+        self._require_write()
+        if len(data) > MAX_XLSX_BYTES:
+            raise WarehouseError("XLSX-файл превышает допустимый размер 50 МБ")
+        try:
+            raw_rows = read_sheet(data, sheet_name)
+        except XlsxError as error:
+            raise WarehouseError(str(error)) from error
+        records = xlsx_rows_to_records(raw_rows)
+        rows = self.resolve_import_sections(records)
+        return self.preview_work_log_import(rows, filename=filename, soft=True)
 
     def create_work_logs(self, rows: Iterable[dict[str, Any]]) -> int:
         self._require_write()
