@@ -1,64 +1,101 @@
-# Техническая документация ODE
+# Target ODE 0.13 Architecture Documentation
 
-Этот каталог содержит актуальные архитектурные контракты текущего исходного
-кода ODE Stage 0.13.2 и исторические карты миграции. Runtime-метаданные и
-target package builder остаются `0.12.17.1 RC2`, но последний фактически
-собранный Windows ZIP содержит `ODE 0.12.17 RC1`; ZIP RC2/Stage 0.13.2 не
-создавался. Пользовательские сценарии описаны в корневом `README.md`, запуск
-на Windows — в `README_WINDOWS.md`.
+Статус комплекта ODE 0.13: **APPROVED architecture; Stage 0.13.1 REVIEW_READY**.
+Нормативная дата комплекта: 2026-07-15.
 
-## Основные документы
+Этот файл — индекс target ODE 0.13 architecture track. Текущее состояние всего
+repository, включая рабочий Warehouse source/runtime track, находится в
+[`project/README.md`](project/README.md). Архитектурный baseline утверждён;
+реализация Platform Stage 0.13.1 ожидает финальный post-fix independent review.
+Остальные Platform Stage не считаются реализованными или разрешёнными
+автоматически.
 
-- [Контекст приложения](APPLICATION_CONTEXT.md)
-- [Архитектура backend](BACKEND_ARCHITECTURE.md)
-- [Модульная архитектура](MODULE_ARCHITECTURE.md)
-- [Владение таблицами БД](DATABASE_OWNERSHIP.md)
-- [Границы безопасности](SECURITY_BOUNDARIES.md)
-- [Контракты frontend](FRONTEND_CONTRACTS.md)
-- [Компоненты интерфейса](UI_COMPONENTS.md)
-- [Тестовая база и тестовый контур](TEST_DATABASE_GUIDE.md)
-- [Ручная проверка 0.12.17.1 RC2](MANUAL_TESTING_0_12_17_1.md)
-- [Ручная проверка массового Inventory Number, Stage 0.13.2](MANUAL_TESTING_0_13_2.md)
-- [Codebase memory MCP (developer tooling)](CODEBASE_MEMORY_MCP.md)
-- [Release Review Stage 0.13.2](../RELEASE_REPORT_ODE_0_13_2.md)
+## Порядок чтения ODE 0.13
 
-## Предметные модули
+1. [Архитектурный обзор](architecture/overview.md)
+2. [Границы модулей](architecture/module-boundaries.md)
+3. [Доменная модель](architecture/domain-model.md)
+4. [Логическая модель данных](architecture/data-model.md)
+5. [Жизненный цикл инвентаризации](architecture/inventory-lifecycle.md)
+6. [Импорт, Preview и Publish](architecture/import-preview-publish.md)
+7. [Складской ledger](architecture/warehouse-ledger.md)
+8. [Проекция баланса](architecture/balance-projection.md)
+9. [Транзакционная модель](architecture/transaction-model.md)
+10. [Справочники и catalog](architecture/references-catalog.md)
+11. [API](architecture/api-contract.md), [UI](architecture/ui-contract.md),
+    [безопасность](architecture/security.md) и
+    [производительность](architecture/performance.md)
+12. [Стратегия миграции](migration/0.12-to-0.13-strategy.md)
+13. [Открытые решения](architecture/OPEN_DECISIONS.md)
+14. [Versioned DDL review artifacts](architecture/ddl/README.md) и
+    [field-level migration mapping](migration/source-to-target-field-mapping.md)
 
-- [Складской API](WAREHOUSE_API_MIGRATION.md)
-- [Складские события](WAREHOUSE_EVENTS.md)
-- [Приход](WAREHOUSE_RECEIPT_ARCHITECTURE.md)
-- [Массовое назначение Inventory Number](INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md)
-- [Расход](WAREHOUSE_ISSUE_ARCHITECTURE.md)
-- [Кабели](WAREHOUSE_CABLE_ARCHITECTURE.md)
-- [Импорт поставок](DELIVERY_IMPORT_ARCHITECTURE.md)
-- [Приемка поставок](DELIVERY_ACCEPTANCE_ARCHITECTURE.md)
-- [Отчеты](REPORTS_ARCHITECTURE.md)
-- [Администрирование](ADMINISTRATION_ARCHITECTURE.md)
-- [Мониторинг](MONITORING_MODULE_BOUNDARIES.md)
+Результат независимой внутренней проверки:
+[SELF_REVIEW.md](architecture/SELF_REVIEW.md).
 
-## Карты миграции
+Диаграммы находятся в [architecture/diagrams](architecture/diagrams/).
+Утверждённые архитектурные решения находятся в [decisions](decisions/),
+включая cutoff, FULL/PARTIAL и projection ADR-010..012.
 
-Файлы `*_MIGRATION.md` и `*_MIGRATION_PLAN.md` фиксируют переход от legacy-слоя
-к модульным фасадам. Они являются технической историей и контрольными списками,
-а не пользовательскими инструкциями. План целевой модели данных ODE 0.13
-находится в [DATA_MODEL_ODE_013.md](DATA_MODEL_ODE_013.md).
+## Нормативность
 
-В репозитории нет отдельной OpenAPI/Swagger schema: ODE использует локальный
-session-based HTTP API. Для Stage 0.13.2 нормативным описанием endpoints,
-request/response и ошибок является
-[INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md](INVENTORY_NUMBER_IMPORT_ARCHITECTURE.md),
-а исполняемый contract фиксируют API tests.
+При конфликте документов применяется следующий приоритет:
 
-## Правила актуализации
+1. утвержденные бизнес-инварианты в [overview.md](architecture/overview.md);
+2. ADR в [decisions](decisions/);
+3. профильный архитектурный контракт;
+4. migration и operations runbooks;
+5. исходный review;
+6. документы ODE 0.12 и stage-specific документы.
 
-- изменение пользовательского поведения отражается в `README.md` и
-  `CHANGELOG.md`;
-- изменение публичного API или границы модуля отражается в соответствующем
-  архитектурном документе;
-- локальные backup, release-каталоги, экспорты, скриншоты и QA-архивы не
-  коммитятся;
-- перед публикацией запускаются syntax checks, module/frontend audits, полный
-  unittest suite, clean-test-DB dry-run, headless smoke, SQLite checks и
-  `git diff --check`;
-- commit запрещён, пока code/tests/README/CHANGELOG/API/security/data/event/
-  diagram documentation не синхронизированы и не прошли self-review.
+Термины MUST, MUST NOT, SHOULD и MAY означают обязательное требование,
+запрет, рекомендуемое решение и допустимую опцию.
+
+## Исходная ревизия
+
+[ODE 0.13 Architecture Review](architecture/ODE_0_13_ARCHITECTURE_REVIEW.md)
+сохранена как доказательная ревизия текущего состояния. Она не является
+самостоятельной спецификацией реализации. Уникальные факты из нее разнесены по
+профильным документам; найденные уточнения перечислены в
+[overview.md](architecture/overview.md#уточнения-исходного-review).
+
+## Migration и разработка
+
+- [Стратегия 0.12 → 0.13](migration/0.12-to-0.13-strategy.md)
+- [Source-to-target mapping](migration/source-to-target-mapping.md)
+- [Legacy mapping](migration/legacy-history-mapping.md)
+- [Verification gates](migration/verification-gates.md)
+- [Rollback](migration/rollback-plan.md)
+- [Порядок реализации](development/implementation-order.md)
+- [Stage 0.13.1 foundation evidence](development/STAGE_0_13_1.md)
+- [Cleanup plan](development/cleanup-plan.md)
+- [Стандарты кода](development/coding-standards.md)
+- [Стратегия тестирования](development/testing-strategy.md)
+- [Documentation gate](development/documentation-gate.md)
+
+## Operations
+
+- [Жизненный цикл БД](operations/database-lifecycle.md)
+- [Backup и restore](operations/backup-restore.md)
+- [Разделение релиза и данных](operations/release-data-separation.md)
+
+## Существующие документы ODE 0.12
+
+Все остальные Markdown-файлы в корне и docs/ описывают текущий код, отдельные
+stage, review или миграционные эксперименты. До cutover они сохранены на месте,
+но **не являются целевой спецификацией ODE 0.13**. Их точная дальнейшая судьба
+описана в [cleanup-plan.md](development/cleanup-plan.md). Документ нельзя
+архивировать или удалить, пока его уникальная информация не перенесена и не
+проверена.
+
+## Статусы документов
+
+- **PROPOSED** — спроектировано, но не разрешено к реализации;
+- **APPROVED** — архитектурно утверждено;
+- **IMPLEMENTED** — подтверждено кодом и тестами;
+- **OPERATING** — подтверждено production/runbook-процедурой;
+- **ARCHIVED** — исторический материал, не нормативный;
+- **OPEN** — требуется решение из OPEN_DECISIONS.
+
+Фактический статус указан в каждом документе; Stage implementation status не
+изменяет утверждённый ADR/DDL contract и не разрешает следующий Stage.

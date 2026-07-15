@@ -2,7 +2,8 @@
 
 Stage 0.12.12 moved equipment/component receipt write and import flows behind
 `WarehouseFacade`; this living contract includes Inventory Number extensions
-through source Stage 0.13.2.
+through Stage 0.13.2 and the isolated migration pilot through source Stage
+0.13.3A.5.
 
 ## Public Contract
 
@@ -31,6 +32,8 @@ service.
 - `inventory/warehouse/validators.py`
 - `inventory/warehouse/naming.py`
 - `inventory/warehouse/previews.py`
+- `inventory/warehouse/migration_pilot.py` — exact pilot-only repository writer
+- `inventory/warehouse/migration_pilot_review.py` — marker-guarded read adapter
 
 The repository writes `stock_receipts`, creates soft references when allowed,
 and publishes audit through the shared audit adapter. Balance is still computed
@@ -116,3 +119,42 @@ Reports consume receipts only through the event reader.
 Inventory Number assignment is shown by Equipment Card Timeline from the
 existing audit log. It is not a new `WarehouseEventReader` event type and does
 not create a parallel event table.
+
+## Preservation-Aware Pilot Receipt — Stage 0.13.3A.5
+
+**PILOT ONLY / NOT PRODUCTION:** ordinary receipt methods above remain
+unchanged. They are intentionally not called for historical source S/N because
+`prepare_receipt` applies `strip().upper()`. Instead, the dedicated
+`MigrationPilotReceiptWriter` accepts an already classified plain mapping and a
+caller-owned SQLite transaction.
+
+It requires:
+
+- `decision=IMPORT`;
+- exact non-empty Python `str` `source_serial_value`;
+- `serial_preservation_status=TEXT_EXACT`;
+- independent non-empty `normalized_match_value`;
+- serialized `quantity=1`;
+- proven source receipt date and non-empty canonical item name supplied by the
+  validated builder.
+
+The writer passes exact source S/N directly to
+`ReceiptRepository.insert_one_in_transaction`, disables soft reference
+collection, uses migration audit action and never commits/rolls back the caller
+connection. It then sets `is_opening_balance=1` and verifies SQLite text type,
+exact string equality, quantity, marker and absence of legacy equipment link.
+
+Duplicate/conflict/quarantine rows do not invoke this writer. One normalized
+identity may link several provenance rows but only one receipt. Different shelf
+values are historical placement and never create a second receipt.
+
+Pilot receipts remain visible to pilot balance/card, while
+`WarehouseEventReader` excludes opening-balance rows from current Reports
+events. Equipment Card Timeline combines the historical receipt with
+allowlisted `MIGRATION_*` audit actions and source provenance. Full event list
+and semantics are in [WAREHOUSE_EVENTS.md](WAREHOUSE_EVENTS.md).
+
+The pilot review adapter resolves a card by the stored target receipt ID and
+rechecks exact S/N. It does not prove preservation using ordinary NOCASE S/N
+lookup. Current production uniqueness still uses `COLLATE NOCASE`; a
+case-sensitive production identity migration requires a separate ADR.

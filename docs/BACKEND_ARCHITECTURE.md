@@ -1,6 +1,16 @@
 # BACKEND_ARCHITECTURE
 
-Дата актуализации: 2026-07-14. Current source: Stage 0.13.2.
+## FULL Inventory 0.14
+
+Backend является единственным источником system state. До baseline он
+возвращает `NOT_INITIALIZED`/`INVENTORY_*`, `authoritative=false`,
+`balance_kind=HISTORICAL_CALCULATION`, `baseline_timestamp=null` и блокирует
+posting через `PostingPolicy`. Preview evidence живёт во внешнем versioned
+SQLite workspace; operational DB открывается только read-only. Resolutions
+append-only и применяются при новом deterministic Preview run. Admin-only
+rehearsal создаёт отдельную target DB; реального publish endpoint нет.
+
+Дата актуализации: 2026-07-16. Current source/runtime: `0.14.0`.
 
 ## Цель refactoring
 
@@ -34,7 +44,32 @@ inventory/
     balance.py
     history.py
     references.py
+  migration/                    # Offline-only reference/staging contour
+    models.py                   # Immutable reference/alias contracts
+    reference_data.py           # 16 controlled domains и alias safety
+    canonical_naming.py         # Пересчитываемые display names
+    xlsx_cells.py               # Read-only OOXML и text-only XLSX writer
+    serial_preservation.py      # S/N provenance без float/coercion
+    staging_schema.py           # 9 candidate-only SQLite tables
+    candidate_db.py             # Safe disposable bundle builder/exports
+    validation.py               # Source/candidate invariants
+    pilot_models.py             # Fixed pilot decisions/marker/selection contracts
+    pilot_selector.py           # Deterministic 200-row source selector
+    pilot_schema.py             # 6 pilot-only SQLite tables
 ```
+
+Тонкий entry point offline-контура —
+`scripts/migration_reference_data.py`. Его команды `inspect-sources`,
+`build-candidate`, `validate-candidate` и `report` не подключены к Web/API,
+`ApplicationContext` или runtime CLI `inventory/cli.py`.
+`report` повторяет полный source/output inode guard и регенерирует только
+allowlisted JSON; существующий report никогда не читается и не merge-ится.
+
+Stage 0.13.3A.5 adds a second thin offline entry point,
+`scripts/migration_pilot.py`, which may orchestrate `inventory/migration` and
+inject `inventory/warehouse/migration_pilot.py`. Runtime Warehouse does not
+import the offline package. Marker-guarded review is implemented by
+`inventory/warehouse/migration_pilot_review.py` behind `WarehouseFacade`.
 
 ## Facade
 
@@ -63,6 +98,24 @@ assignment в карточке и bulk Preview/Confirm с Stage 0.13.1/0.13.2 и
 receipt boundary `WarehouseFacade`; старое физическое inventory compare,
 прочие legacy inventory operations, Administration write и backup/restore
 остаются переходными compatibility flows.
+
+**IMPLEMENTED (Stage 0.13.3A):** offline `inventory/migration` не является
+новым Warehouse endpoint и не обходит facade для production writes: модуль
+вообще не пишет в production. Он читает immutable migration sources, проверяет
+`data/warehouse.db` через read-only SQLite и строит только disposable
+candidate в ignored `migration_inputs/workspace`.
+
+**IMPLEMENTED / PILOT ONLY (Stage 0.13.3A.5):** a deterministic selector
+classifies exactly 200 receipt rows and the dedicated migration writer sends
+only 130 preserved primaries directly to the existing transaction-aware
+`ReceiptRepository`. It bypasses ordinary `strip().upper()` validators but
+does not duplicate repository/audit/card infrastructure. The resulting DB is a
+separate marker-guarded disposable artifact; review GET routes and card reads go
+through `ApplicationContext -> WarehouseFacade`. Operational POST routes are
+denied in pilot mode. After the marker/integrity guard, the web entry point
+constructs `WarehouseService(..., initialize_database=False)` so ordinary
+startup schema initialization cannot rewrite the pilot; the default remains
+`True` for every production/test call site.
 
 ## Сервисы
 
@@ -211,7 +264,7 @@ receipt repository transaction contract, существующий S/N тольк
 
 `WarehouseCore` содержит старую реализацию на переходном этапе. Это временный compatibility core, а не целевая архитектура.
 
-Текущее состояние Stage 0.13.2:
+Текущее состояние Stage 0.13.3A:
 
 - `WarehouseCore` остается допустимым legacy-core;
 - часть сервисов остаётся фасадами/делегатами над `WarehouseCore`, а receipt,
@@ -221,13 +274,26 @@ receipt repository transaction contract, существующий S/N тольк
 - публичный Python API `WarehouseService` не менялся;
 - существующие generic HTTP API расширяются только через документированные
   kind/action contracts;
-- схема SQLite и рабочая БД не менялись;
+- production-схема SQLite, плоский runtime `reference_values` и рабочая БД не
+  менялись;
 - бизнес-логика не переписывалась.
+
+**IMPLEMENTED:** отдельный offline-контур формализует 16 reference domains,
+безопасные aliases, canonical naming и точное извлечение S/N. Девять таблиц
+`migration_*`/`*_v2` создаются только в disposable candidate DB. Candidate
+может содержать security snapshot (`users`, роли, password hashes без вывода),
+но production operational tables остаются пустыми; исторические приходы и
+расходы не импортируются.
+
+**PROPOSED/FUTURE STAGE:** перенос утверждённых справочников в runtime,
+исторических операций и замена рабочей БД требуют отдельного решения,
+backup/reset gate и явного подтверждения. Candidate DB Stage 0.13.3A не
+является production replacement.
 
 Причина такого состояния: безопасные доменные разрезы должны фиксировать
 границы ответственности без массового rewrite. Следующие переносы должны быть
-маленькими и покрываться текущими 227 regression/contract/API тестами, smoke
-UI, module/frontend audits и SQLite integrity-check.
+маленькими и покрываться полным обнаруженным набором regression/contract/API
+тестов, smoke UI, module/frontend audits и SQLite integrity-check.
 
 ## Зависимости
 
@@ -245,6 +311,21 @@ webapp.py / tests
         +--> compat WarehouseService --> specialized services/WarehouseCore
 
 cli.py --> compatibility WarehouseService --> SQLite
+
+scripts/migration_reference_data.py
+        --> inventory/migration (offline only)
+        --> immutable migration_inputs/raw
+        --> ignored migration_inputs/workspace/candidate DB
+        -X-> data/warehouse.db writes / Web/API / WarehouseFacade
+
+scripts/migration_pilot.py
+        --> inventory/migration selector/builder
+        --> injected inventory/warehouse migration writer
+        --> ignored warehouse_pilot_candidate.db
+
+pilot Web GET --> ApplicationContext --> WarehouseFacade
+        --> migration_pilot_review --> marker-validated pilot DB read
+        -X-> operational POST / data/warehouse.db
 ```
 
 ## Правила следующего этапа

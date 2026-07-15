@@ -58,6 +58,39 @@ new write path is:
 
 `ApplicationContext -> WarehouseFacade -> ReceiptWriteService -> ReceiptRepository`.
 
+## Stage 0.13.3A.5 Migration Pilot
+
+Pilot review is wired through the existing `ApplicationContext.warehouse`, not
+through a second application context or a direct `inventory/migration` import:
+
+```text
+HTTP GET
+ -> ApplicationContext
+ -> WarehouseFacade
+ -> MigrationPilotReviewService
+ -> marker-validated pilot DB (read-only projection)
+```
+
+`WarehouseFacade` exposes `list_migration_pilot_rows(...)` and
+`get_migration_pilot_card(selection_id)`. The latter resolves the linked exact
+receipt ID and delegates the ordinary card read through the actor provider.
+Only plain allowlisted data returns to Web/API.
+
+Before `ApplicationContext` is created, `inventory/webapp.py` validates the
+explicit `ODE_MIGRATION_PILOT=1` request, exact DB marker/name/stage/status,
+required tables, integrity/FK and no-sidecar condition. This prevents a
+partially initialized runtime from opening an arbitrary or production DB as a
+pilot. The validated pilot then constructs the compatibility service with
+`initialize_database=False`, preventing normal schema initialization from
+touching the review artifact. This override is not accepted from HTTP and the
+constructor default remains `True`; without pilot mode, existing composition
+and behavior are unchanged.
+
+`inventory/migration` remains offline and is never imported by
+`ApplicationContext`. The dedicated build script is the only orchestration
+point allowed to combine offline selector/builder with the Warehouse pilot
+writer.
+
 ## Feature Flags
 
 Central flags:

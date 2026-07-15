@@ -1,5 +1,14 @@
 # TECH_DEBT
 
+## ODE 0.14 follow-up
+
+- target Equipment Query Port и безопасный link-existing workflow;
+- grouped Catalog resolution UI для production-scale (50k) inventory;
+- controlled approval/cutover с external backup, writer stop, sibling candidate,
+  atomic publish и rollback drill;
+- снизить peak RSS 50k XLSX Preview (~708 MiB) потоковым writer/parser этапом;
+- correction/reversal operations после active baseline.
+
 Дата проверки: 2026-07-10
 
 ## Долг
@@ -43,6 +52,15 @@
 
    Stage 0.12.16 migrated physical acceptance, but `close_delivery` and any
    destructive override/admin correction remain legacy or future work.
+
+10. 291 карточки (0.58% из 50000 промоутнутых) имеют `item_name = '#N/A'`.
+
+    Excel-артефакт из исходника исторической миграции (S/N и другие поля у
+    этих карточек валидны, но наименование не восстановить без исходника).
+    Найдено при финальной стабилизации 2026-07-14. Правка production data
+    требует отдельного data-correction этапа: внешний byte-copy + SQLite
+    `.backup`, доказательства provenance, транзакция, audit,
+    post-check integrity/FK — не одноразовая правка внутри code review.
 
 ## Рекомендации после стабилизации
 

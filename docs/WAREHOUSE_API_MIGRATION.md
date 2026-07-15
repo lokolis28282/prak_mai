@@ -12,6 +12,8 @@ Stage 0.12.7 migrates read-only Warehouse API calls from direct compatibility se
 | `/api/delivery` | GET | `service.delivery(id)` | `warehouse.get_delivery(id)` | `deliveries`, `delivery_lines` | Delivery card | delivery dict | medium: bad id handling |
 | `/api/position-search` | GET | `service.search_stock_positions(query)` | `warehouse.search_warehouse(query)` | balance source tables | Issue/Card search | `{"rows": list}` | low |
 | `/api/position-card` | GET | `service.position_card(...)` | `warehouse.get_position_card(filters)` | receipts, issues, balance | Position card modal | position/history/problem JSON | medium |
+| `/api/migration-pilot` | GET, pilot only | marker-guarded review service | `warehouse.list_migration_pilot_rows(...)` | `migration_pilot_selection` + allowlisted provenance | Pilot review | rows/counts/decision buckets | low write risk; sensitive source projection |
+| `/api/position-card?pilot_selection_id=...` | GET, pilot only | exact linked receipt ID | `warehouse.get_migration_pilot_card(...)` | pilot selection/provenance, receipts, audit | Pilot Equipment Card | position/history/migration JSON | medium: exact S/N and role boundary |
 | `/api/scan-serial` | GET | `service.scan_receipt_serial/scan_issue_serial` | unchanged | stock/balance | Receipt/Issue scanner | JSON validation | write-flow adjacent, not migrated |
 | `/export/balance.csv` | GET | `service.stock_balance(**filters)` | `warehouse.export_balance_rows(filters)` | balance source tables | Balance export | CSV, same filename/BOM/headers | low |
 | `/export/delivery.csv` | GET | `service.delivery(id)["lines"]` | `warehouse.get_delivery(id)["lines"]` | delivery tables | Delivery export | CSV, same filename | low |
@@ -47,6 +49,31 @@ Stage 0.12.7 migrates read-only Warehouse API calls from direct compatibility se
 ## Contract Rule
 
 The facade delegates to the compatibility service and returns plain `dict`/`list` values. Semantic comparison tests compare old service results to facade results without storing large snapshots.
+
+## Stage 0.13.3A.5 Pilot Read Contract
+
+These routes are active only after startup validates
+`ODE_MIGRATION_PILOT=1` and the exact pilot DB marker/name/stage/status,
+integrity/FK and no-sidecar contract. Ordinary production runtime returns no
+pilot data and does not treat an arbitrary query parameter as activation.
+
+`GET /api/migration-pilot` accepts bounded `limit`/`offset`, free-text query and
+one closed filter: `IMPORT`, `QUARANTINE`, `CONFLICT` or `CORRUPTED`. It returns
+only allowlisted source/naming/preservation fields, logical basename/sheet/row,
+counts and decisions. Raw XML/payload, password hashes, absolute paths and
+internal receipt IDs are excluded.
+
+`GET /api/position-card?pilot_selection_id=<positive integer>` requires a
+selected row linked to the one imported primary identity. `IMPORT` and linked
+duplicate/conflict history rows may open that same card; quarantine,
+manual/corrupted/quantity rows cannot. The service resolves the stored target
+receipt ID, reads the card through Warehouse and verifies exact stored S/N
+against the primary source value. It returns a `migration` section containing
+source/canonical names, status, warnings and source rows.
+
+Both endpoints require authenticated `admin` or `engineer`; `viewer` is denied.
+Pilot mode denies operational POST mutations independently from frontend
+visibility. No pilot confirm/import/write endpoint exists.
 
 ## Verification
 

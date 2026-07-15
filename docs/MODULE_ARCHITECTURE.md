@@ -1,8 +1,17 @@
 # MODULE_ARCHITECTURE
 
+## 0.14 bounded rehearsal contour
+
+`baseline_rehearsal/` — ограниченный orchestration module между
+`inventory/warehouse/baseline` и ODE target infrastructure. Он не импортирует
+legacy `service`, `webapp`, Reports, Monitoring или offline migration package,
+не содержит production DB path и не используется `ode/`. Единственная runtime
+точка вызова — `FullInventoryService.build_candidate_rehearsal`; результат
+всегда disposable и имеет `publish_available=false`.
+
 Stage 0.12.6 introduced product module boundaries without removing
 `WarehouseCore` or legacy UI. This document includes subsequent migrations
-through source Stage 0.13.2.
+through source/runtime `0.14.0`. Last built ZIP remains `0.12.17 RC1`.
 
 ## Modules
 
@@ -41,6 +50,36 @@ Administration:
 
 - owns users, backup, restore, audit view and diagnostics;
 - must not contain warehouse or report business rules.
+
+Migration staging (offline tooling, not an application runtime module):
+
+- lives in `inventory/migration` with the thin
+  `scripts/migration_reference_data.py` CLI;
+- reads immutable `migration_inputs/raw` and may inspect the working DB only
+  through read-only SQLite;
+- owns 16 candidate reference domains, alias decisions, canonical-name
+  proposals, S/N provenance and nine candidate-only staging tables;
+- writes generated artifacts only below ignored
+  `migration_inputs/workspace`;
+- must not import `inventory/webapp.py`, call a facade, mutate production
+  references, or create warehouse operations.
+
+Migration pilot orchestration (offline, Stage 0.13.3A.5):
+
+- lives in a dedicated `scripts/migration_pilot.py` entry point;
+- may combine offline selector/builder with an injected Warehouse-owned exact
+  receipt writer only for the disposable pilot DB;
+- never makes `inventory/migration` a dependency of Web/API/runtime services;
+- creates no production operation and cannot target `data/warehouse.db`;
+- publishes ignored selection reports and a separately named marker DB.
+
+Warehouse pilot adapter:
+
+- `migration_pilot.py` owns exact repository writes during offline build;
+- `migration_pilot_review.py` owns marker validation and allowlisted runtime
+  reads;
+- public review goes through `WarehouseFacade`; no direct Web/API SQL or
+  `inventory/migration` import is allowed.
 
 ## Transitional State
 
@@ -136,6 +175,54 @@ Stage 0.13.2 reuses that boundary for bulk
 cards are Warehouse-owned rules. The older physical inventory comparison
 `kind=inventory` and remaining legacy inventory functions are not migrated by
 these stages.
+
+**IMPLEMENTED — Stage 0.13.3A:** the offline flow is deliberately parallel to
+the runtime dependency graph rather than another Web/API import:
+
+`migration_reference_data.py -> inventory/migration -> disposable candidate DB`
+
+The commands are `inspect-sources`, `build-candidate`, `validate-candidate`
+and `report`. Source S/N extraction retains the OOXML token, cell type, number
+format and provenance; normalized values exist only for matching. Candidate
+reference/model/catalog records and staging decisions do not enter
+`data/warehouse.db`.
+
+**FACT:** the production `reference_values(kind, name, is_active)` contract is
+unchanged. The nine richer tables (`migration_*`, `reference_*_v2` and
+`catalog_items_v2`) exist only in the disposable candidate. Historical
+receipt/issue import, a production reference migration and database reset are
+not implemented.
+
+**FUTURE STAGE / OPEN DECISION:** Stage 0.13.3B may consume only approved
+staging decisions after an explicit migration contract. Whether the richer
+reference model ever becomes a production schema is a separate ADR decision.
+
+**IMPLEMENTED / PILOT ONLY — Stage 0.13.3A.5:**
+
+```text
+offline:
+  raw + Stage A candidate
+    -> deterministic selector (200 rows)
+    -> pilot builder
+    -> injected Warehouse exact writer (130 primary receipts)
+    -> marker-guarded disposable pilot DB
+
+review runtime:
+  Web GET -> ApplicationContext -> WarehouseFacade
+    -> MigrationPilotReviewService -> allowlisted pilot DB reads
+```
+
+Ordinary receipt normalization, production schema/API and working DB remain
+unchanged. Duplicate/conflict rows share one imported identity/card; shelf is
+placement. Pilot review exposes no write/confirm method. A module-boundary audit
+keeps `migration_pilot_*` tables out of `inventory/db.py` and keeps runtime
+imports one-way. The marker-validated web entry point disables ordinary service
+DB initialization only for pilot startup; the compatibility constructor keeps
+`initialize_database=True` by default.
+
+**NOT PRODUCTION:** pilot approval does not authorize 0.13.3B, production
+references or database replacement. The current NOCASE S/N uniqueness model
+requires a separate ADR before case-distinct identities can be migrated.
 
 `WarehouseCore` must not be referenced directly by `inventory/webapp.py`. New read-only Warehouse endpoints must be added to `WarehouseFacade` first.
 

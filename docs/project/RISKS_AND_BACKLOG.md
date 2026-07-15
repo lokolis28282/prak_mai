@@ -10,9 +10,8 @@
 - смешивание candidate/test DB с production code release.
 - повторное добавление installation-owned `data/warehouse.db` в Git, source
   archive или release;
-- запуск текущего Windows package builder до удаления его зависимости от
-  локальной `data/warehouse.db`: builder и regression test пока ожидают DB в
-  ZIP и должны быть исправлены отдельным changeset.
+- включение runtime `data/warehouse.db` в Windows/source artifact. Закрыто в
+  0.14: builder включает только `data/README.md`, regression запрещает DB в ZIP.
 
 ## P1 — текущая стабилизация
 
@@ -25,6 +24,10 @@
   explicit personal bootstrap/recovery contract без default credentials.
 - Correction/reversal для ошибочных posted operations ограничен и требует
   отдельного бизнес-контракта.
+- Initial-baseline candidate rehearsal реализован, но реальный publish
+  отключён до отдельного cutover approval, backup и writer-stop gate.
+- `LINK_EXISTING_EQUIPMENT` не применяется до target Equipment Query Port;
+  автоматическое Vendor/Model matching запрещено.
 
 Закрыто 2026-07-15: тестовые raw `sqlite3.Connection` handles теперь явно
 закрываются; full suite 392/392 проходит без ResourceWarning.

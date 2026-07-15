@@ -1,5 +1,15 @@
 # Repository Map
 
+## ODE 0.14 additions
+
+- `inventory/warehouse/baseline/` — status/posting policy, external FULL
+  Inventory workspace, strict XLSX Preview and resolutions;
+- `baseline_rehearsal/` — restricted bridge that creates only disposable ODE
+  target-schema candidate DBs;
+- `scripts/benchmark_full_inventory.py` — temporary 1k/10k/50k benchmark;
+- `data/warehouse.db` — installation-owned runtime data, ignored and never a
+  source/release payload.
+
 ## Authoritative repository
 
 `~/Documents/prak_mai` — единственная рабочая копия.

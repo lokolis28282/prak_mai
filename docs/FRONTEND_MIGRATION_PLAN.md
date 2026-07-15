@@ -399,7 +399,15 @@ Smoke:
 
 ## Профиль
 
-Статус: legacy, кроме кнопок входа в профиль из Главной/Навигации.
+Статус: legacy, кроме входа в профиль из Главной.
+
+Stage 0.13.3A.5 stabilization: top bar больше не дублирует вход в профиль
+(кнопки `Профиль` и `Сменить пароль` в `.profile-actions` убраны вместе с DOM
+id `adminPassword`). Единственная точка входа — карточка `Профиль` в
+`.portal-grid` Главной (`onOpen -> openShiftProfile()`), рядом с карточкой
+`Мониторинг`. `openShiftProfile()` уже был role-aware (admin видит
+`profileForm`+смену пароля, инженер — `shiftProfileCard`), поэтому
+объединение точек входа не потеряло функциональность.
 
 Legacy-функции:
 
@@ -414,7 +422,6 @@ DOM id:
 - `profile`
 - `profileForm`
 - `passwordForm`
-- `adminPassword`
 - `currentUser`
 
 Компоненты:
@@ -426,7 +433,6 @@ DOM id:
 
 Smoke:
 
-- открыть `Профиль` через top bar;
-- открыть `Профиль` через карточку главной;
+- открыть `Профиль` через карточку главной (`[data-module-open="profile"]`);
 - кнопка ODE возвращает на главную;
 - форма профиля не создает JS errors.

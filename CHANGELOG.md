@@ -1,5 +1,411 @@
 # Changelog ODE
 
+## ODE 0.14.0 — Full Inventory safety workflow and baseline rehearsal
+
+- рабочий Warehouse переведён в fail-closed состояние `NOT_INITIALIZED`:
+  импортированные receipts/issues остаются доступной историей, но рассчитанный
+  по ним остаток явно помечен как исторический и не считается физическим;
+- реальные receipt/issue/scanner/delivery/inventory-number mutations блокируются
+  на backend и CLI стабильной ошибкой `WAREHOUSE_NOT_INITIALIZED`; тестовые
+  операции разрешены только в явно настроенном disposable demo contour;
+- добавлен внешний FULL Inventory workspace: строгий text-only XLSX template,
+  безопасный OOXML parser, provenance/source SHA, reference fingerprint,
+  paginated Preview rows/findings и неизменяемая activity history;
+- реализованы durable append-only manual resolutions, actor/reason/timestamp,
+  explicit supersede для конфликтов и deterministic revalidation; raw Excel
+  остаётся неизменным, corrected value хранится отдельно, старые Preview runs
+  сохраняются, а digest учитывает effective resolution set;
+- добавлен isolated `baseline_rehearsal/` contour: admin может собрать
+  отдельную ODE target DB по approved V001..V008, создать import commit,
+  approved snapshot и balance projection и доказать их равенство. Candidate
+  никогда не заменяет рабочую БД, а `publish_available=false`;
+- Catalog/Equipment automatic matching не выполняется: каждая включённая
+  строка требует явного `CHOOSE_CATALOG_ITEM`, serialized row — отдельного
+  equipment resolution; `LINK_EXISTING_EQUIPMENT` закрыт до Query Port;
+- Preview performance: 1 000 строк — 0.13 s, 10 000 — 1.28 s, 50 000 —
+  6.70 s на текущем MacBook; прогоны использовали temporary DB, исходная
+  fixture DB осталась byte-identical;
+- runtime metadata синхронизирована на `0.14.0`; Windows builder больше не
+  включает `data/warehouse.db`, runtime/candidate DB или credentials. Новый
+  Windows ZIP этой работой не создавался.
+
+## Warehouse Stabilization Reconciliation — 2026-07-15
+
+- устранены `ResourceWarning: unclosed database` полного regression gate:
+  семь raw SQLite test handles теперь используют явный `contextlib.closing`
+  при сохранении прежней commit/rollback семантики;
+- полный `unittest discover` вырос до 392 тестов и проходит под
+  `-W error::ResourceWarning` без SQLite ResourceWarning;
+- Python/JavaScript syntax, module/frontend audits и `git diff --check`
+  проходят;
+- ordinary headless Chrome smoke на временной byte-copy рабочей БД проходит
+  receipt/issue/balance/history/search/profile/administration и Inventory
+  Number workflow без console/window/resource/HTTP/API500 errors;
+- создан `docs/project/` как единый current-state hub; Warehouse source Stage
+  отделён от Target/Platform ODE delivery Stage без переписывания исторических
+  review/DDL evidence;
+- подготовлены отдельные focused prompts для независимого Warehouse review и
+  двухфазного repository cleanup audit; массовое удаление/`git clean` без
+  утверждённого hash manifest запрещено;
+- независимый Warehouse review завершён со статусом `PASS`; Phase 1 cleanup
+  audit не нашла кандидатов на удаление исходного кода и отделила безопасную
+  локальную гигиену от evidence/archive решений владельца;
+- выполнена минимальная безопасная Phase 2 cleanup: удалены только
+  регенерируемые `__pycache__` вне защищённых artifact-контуров, а 20
+  исторических корневых QA/release/review документов добавлены в единый
+  documentation index;
+- после прямого owner approval удалены byte-identical test ZIP, распакованный
+  дубль canonical RC1, disposable migration workspace DB/output и Platform
+  dev DB; локальная stabilization DB удалена только после `cmp` с целостным
+  внешним SQLite backup. Raw/provenance/reports, canonical RC1 ZIP и активная
+  рабочая БД сохранены; working tree уменьшен примерно с 2.2 GiB до 711 MiB;
+- post-cleanup regression повторно проходит 392 tests с восемью ожидаемыми
+  skip только для отсутствующих ignored full/pilot candidate DB; module/
+  frontend audits и clean-test-DB dry-run проходят;
+- `data/warehouse.db` не изменялась: финальный SHA-256
+  `73568a1c3eecbd4476473f064620d7f0a196b336ce8ea6d834c5b99359d4b010`,
+  `integrity_check=ok`, FK violations и sidecars отсутствуют.
+
+## ODE Warehouse Final Stabilization Pass — 2026-07-14
+
+- исправлен ложный «проблемы» KPI на Главной/Мониторинге: `incomplete_rows`
+  считал опциональное поле `project` обязательным, из-за чего после промоушна
+  исторических карточек счетчик показывал 50160 «проблем» из 50001 карточки
+  (100% данных, не имеющих смысла); теперь считаются только реально
+  обязательные для формы поля (`shelf`, `vendor`, `model`);
+- удалён подтвержденно мёртвый код `inventory/webapp.py`: константы
+  `UX_SCRIPT`, `WIZARD_SCRIPT`, `DELIVERY_JS` (149 строк) никогда не достигали
+  браузера (`_externalized_html()` вырезает инлайновые `<script>`/`<style>`) и
+  дублировали устаревшей версией то, что реально исполняет `static/js/ui.js`;
+  среди прочего убрал видимость hardcoded vendor/model списков, которые на
+  деле никогда не рендерились;
+- удалены неиспользуемые `renderWizard`/`renderHeader`/`renderSidebar` из
+  `static/js/components.js` (0 вызовов в кодовой базе);
+- Главная: карточки `Monitoring`/`Reports` переименованы в `Мониторинг`/
+  `Отчеты` для согласованности с остальным русскоязычным интерфейсом;
+- Главная: добавлена полноценная карточка `Профиль` в `.portal-grid` (рядом с
+  `Мониторинг`); top bar `.profile-actions` больше не дублирует вход в
+  профиль/смену пароля отдельными кнопками — `openShiftProfile()` остаётся
+  единственной role-aware точкой входа; `.portal-grid` переведена на 3 колонки,
+  чтобы 5–6 карточек не оставляли одинокую карточку на отдельной строке;
+- исправлена доказанная стороннняя regression этой же сессии: удаление
+  `renderToast` затронуло `static/js/components/notifications.js`
+  (`ReferenceError` на каждой загрузке страницы) — функция восстановлена,
+  проверено headless smoke;
+- исправлено устаревшее утверждение в `CLAUDE.md`/
+  `docs/REFERENCE_DATA_ARCHITECTURE.md`, что production `reference_values`
+  «остаётся плоским и неизменным»: после promotion полного historical
+  candidate `reference_domains_v2`/`reference_values_v2`/`reference_aliases_v2`
+  реально заполнены (20 доменов, 931 значение) и являются live источником
+  `ReferenceDataService` для форм UI;
+- найдено, но НЕ исправлено (требует отдельного data-correction этапа с
+  byte-copy/backup/provenance protocol): 291 карточка (0.58% от 50000
+  промоутнутых) имеет `item_name = '#N/A'` — Excel-артефакт из исходника
+  исторической миграции, не код-баг.
+
+## ODE Warehouse Stabilization — 2026-07-14
+
+- заменён runtime-источник dropdown на canonical `reference_*_v2`; добавлен
+  permission-gated редактор с pending/deactivate/rename/merge preview/audit;
+- active ЦОД ограничен `Ixcellerate`; shelf/supplier garbage исключён из форм
+  без изменения исторических raw значений;
+- vendors/models больше не hardcoded, модели ограничены выбранным вендором;
+- возвращена компактная module-card навигация; Monitoring и Reports показывают
+  только «В разработке»;
+- убран отдельный UX «режима администратора», backend role checks сохранены;
+- черновики прихода/расхода получили schema v3, user/DB isolation, TTL 14 дней
+  и явный Continue/Start over/Delete;
+- draft rows можно удалять по одной, выбранными или полностью до confirm;
+- global search получил cancellation/stale-response protection, canonical name/
+  source name/Part Number и быстрый exact-identifier short circuit;
+- доказанный ручной test receipt exact S/N `1` удалён атомарно после двух
+  внешних backup; создан audit `TEST_DATA_REMOVED_AFTER_MANUAL_REVIEW`.
+
+## Local Full Warehouse Promotion and Runtime Simplification
+
+Дата: 2026-07-14
+
+- `data/warehouse.db` стала единственной обычной локальной рабочей БД ODE;
+  full candidate опубликована через проверенную sibling `.next` и атомарный
+  `os.replace`, а старая тестовая БД сохранена byte-copy и SQLite `.backup`
+  вне репозитория;
+- ordinary `python3 app.py` принимает promoted marker DB как рабочую, печатает
+  путь/версию/число карточек/integrity и не включает read-only candidate landing;
+- повторный startup уже инициализированной full-marker БД не продвигает
+  `sqlite_sequence` no-op вставками и сохраняет SHA рабочей БД;
+- dashboard и карточки используют существующий `WarehouseFacade` и актуальные
+  `stock_receipts`/`stock_issues`/allocations; legacy 23-card source больше не
+  формирует KPI;
+- normal Equipment Card/Timeline скрывает migration-only события и показывает
+  opening state понятным термином «Начальный остаток»; migration review сохранён
+  только как административная диагностика;
+- scanner draft получил schema version, TTL и scope по пользователю и
+  fingerprint рабочей БД; несовместимый ODE draft старой тестовой БД безопасно
+  удаляется, ошибки localStorage не ломают UI;
+- browser/unit/contract проверки выполняются на временных копиях; candidate и
+  raw не редактируются, DB/backup/reports не готовятся к commit;
+- финальный gate: 309 unit tests, Python/JavaScript syntax, module/frontend
+  audits, ordinary и admin-review headless Chrome smoke; browser/HTTP/API500
+  error counters равны нулю, SQLite integrity/FK чисты;
+- серверный deployment, Kafka, release ZIP, commit и push не выполнялись.
+
+Процедуры эксплуатации и rollback:
+`docs/LOCAL_WORKING_DATABASE_RUNBOOK.md`.
+
+## Full Historical Warehouse Candidate Build (historical pre-promotion stage)
+
+Дата: 2026-07-14
+
+- весь staging прихода (51 003) и расхода (20 357) получил one-row/one-status
+  reconciliation в отдельной disposable `warehouse_full_candidate.db`;
+- S/N identity разделяет `TEXT_EXACT`, Decimal-expanded provisional numeric и
+  corrupted quarantine; полка не входит в identity, `БАЛАНС` не используется;
+- issue-only S/N получают explicit migration opening state, а source/target S/N,
+  conflicts, duplicates, warnings и provenance не теряются;
+- candidate строится атомарно из operationally-empty Stage A DB, сохраняет
+  только security/system/reference/staging contour и не копирует test operations
+  из `data/warehouse.db`;
+- добавлены full XLSX/Markdown migration и cleanliness reports, marker-guarded
+  read-only API/UI, Equipment Card/Timeline, macOS/Windows launchers и backend
+  запрет Inventory Number для provisional numeric identity;
+- focused candidate/contract tests и headless Chrome smoke подтверждают marker,
+  exact/leading-zero/numeric/opening behavior, clean contour, unchanged DB SHA,
+  нулевые browser/API errors и отсутствие SQLite sidecars;
+- production replacement, release ZIP, commit/push и server deployment не
+  выполнялись. Подробности: `docs/FULL_WAREHOUSE_MIGRATION.md`.
+
+## ODE 0.13, Stage 0.13.3A.5 — Preservation-Aware Pilot Migration Review
+
+Дата: 2026-07-14
+
+### Новые возможности
+
+- добавлен отдельный pilot-only путь исторического прихода, который сохраняет
+  `source_serial_value` символ в символ и использует
+  `normalized_match_value` только для группировки/поиска;
+- детерминированный selector с seed
+  `ODE-0.13.3A.5-PILOT-v1` выбирает ровно 200 реальных receipt staging rows и
+  сохраняет причину включения каждой строки;
+- фиксированное распределение решений: 130 `IMPORT`, 10 `QUARANTINE`,
+  7 `MANUAL_REVIEW`, 6 `EXACT_DUPLICATE`, 35
+  `CONFLICT_HISTORY_ONLY`, 10 `QUANTITY_POSITION_DEFERRED` и 2
+  `SOURCE_CORRUPTED_REJECTED`;
+- source-safe exact duplicate ограничен шестью группами: только у них literal
+  raw-equivalent row имеет primary с доказанной датой и безопасными
+  reference/alias решениями; седьмая группа заблокирована pending supplier
+  alias. Остальное duplicate coverage состоит из 26 identity-conflict groups и
+  9 date/shelf/order history-variation groups;
+- создаётся отдельная ignored DB
+  `migration_inputs/workspace/warehouse_pilot_candidate.db`; исходная
+  Stage 0.13.3A candidate и `data/warehouse.db` не перезаписываются;
+- selection публикуется в локальных ignored
+  `PILOT_RECEIPT_SELECTION.xlsx`/`.md`; identifier-поля XLSX сохраняются как
+  text и проходят round-trip check.
+
+### S/N, identity и canonical naming
+
+- migration writer обходит опасный обычный `strip().upper()` validator, но
+  переиспользует `ReceiptRepository`, caller-owned transaction, audit и
+  Equipment Card Timeline;
+- карточки создаются только для сохранных `TEXT_EXACT` rows с quantity `1`,
+  доказанной source date и решением `IMPORT`; numeric/unproven и
+  `SOURCE_CORRUPTED` никогда не создают карточку;
+- одна normalized identity создаёт не более одной pilot card; exact duplicates
+  и конфликтующие source rows сохраняются как provenance/history;
+- shelf остаётся необязательным placement attribute, не входит в identity и не
+  дробит serialized balance;
+- Stage 0.13.3A references/aliases и canonical-name proposals переиспользуются
+  без silent production reference creation; Huawei/xFusion и разные модели не
+  объединяются;
+- **FACT:** в фактическом source есть Vegman R220, но нет Vegman R200. Selector
+  фиксирует `VEGMAN_R200_UNAVAILABLE_FROM_SOURCE` и не создаёт синтетическую
+  source row; раздельность R200/R220 остаётся unit contract.
+
+### Pilot DB, audit и Timeline
+
+- pilot-only schema хранит marker, selection, одну identity на imported S/N,
+  provenance, quarantine и performance metrics;
+- pilot receipts помечаются `is_opening_balance=1`: они видны в pilot balance
+  и Equipment Card, но не выдаются Reports как текущие receipt events;
+- существующий `audit_log` используется для действий
+  `MIGRATION_RECEIPT_IMPORTED`, `MIGRATION_SOURCE_ROW_LINKED`,
+  `MIGRATION_CONFLICT_RECORDED`, `MIGRATION_EXACT_DUPLICATE_SKIPPED` и
+  `MIGRATION_SERIAL_QUARANTINED`; второй event store не создаётся;
+- Timeline отделяет исторический source date от времени миграции, показывает
+  logical source file/sheet/row, source/canonical names и warnings; абсолютные
+  локальные пути отфильтровываются.
+
+### API, UI и безопасность
+
+- marker-guarded review runtime требует `ODE_MIGRATION_PILOT=1`, точное имя DB,
+  stage/status/read-only marker, обязательные таблицы, integrity/FK и отсутствие
+  WAL/SHM/journal;
+- после guard pilot startup отключает обычный schema initializer сервиса;
+  production/default startup остаётся без изменений, а headless smoke проверяет
+  неизменность SHA runtime-копии pilot DB;
+- добавлены read-only `GET /api/migration-pilot` и pilot-вариант Equipment Card
+  по `pilot_selection_id`; доступ разрешён только `admin`/`engineer`;
+- pilot UI показывает permanent banner, selection, фильтры
+  `IMPORT`/`QUARANTINE`/`CONFLICT`/`CORRUPTED` и migration section карточки;
+  imported values рендерятся как text DOM nodes;
+- все operational POST mutations в pilot mode запрещены backend; browser не
+  получает raw XML, password hashes или абсолютные пути;
+- безопасные macOS/Windows launcher'ы валидируют уже существующую pilot DB,
+  ничего не пересобирают и никогда не подменяют production DB.
+
+### БД и миграции
+
+- production schema и `data/warehouse.db` не изменяются;
+- Stage 0.13.3A candidate-only reference/staging schema сохраняется, а шесть
+  `migration_pilot_*` tables существуют только в disposable pilot DB;
+- лист `БАЛАНС`, исторический расход и оставшиеся receipt rows не импортируются;
+- case-distinct S/N остаются несовместимы с текущим production
+  `COLLATE NOCASE`; тяжёлая schema migration намеренно отложена до отдельного
+  ADR/Stage.
+
+### Тесты и документация
+
+- добавлены selector/date/raw-source, exact writer/rollback, duplicate/conflict,
+  marker/schema/security, read-only API/UI, launcher, identifier/XLSX round-trip
+  и headless pilot scenarios;
+- полный regression gate включает обычный UI smoke и отдельный pilot smoke на
+  временной копии candidate DB; `unittest discover` проходит 292 теста с
+  `-W error::ResourceWarning`;
+- добавлены architecture, reviewer guide и manual QA; актуализированы S/N,
+  reference, naming, staging, database ownership, security, API, events и
+  Mermaid diagrams.
+
+### Breaking changes
+
+- для production runtime отсутствуют: обычный receipt/API/UI flow не меняет
+  поведение, пока process не запущен с pilot flag и marker DB.
+
+### Известные ограничения
+
+- это 200-row review pilot, а не Stage 0.13.3B и не массовый import 51 003
+  receipt rows;
+- numeric S/N, corrupted values, quantity positions и unresolved references
+  остаются вне складских карточек;
+- реальный Vegman R200 отсутствует в источнике и не может быть проверен на
+  source-driven pilot card;
+- approval pilot review не разрешает production DB reset/replacement;
+- окончательная case-sensitive production identity schema, reference approval
+  authority и обработка исторического расхода остаются open decisions.
+
+## ODE 0.13, Stage 0.13.3A — Reference Data Foundation, Canonical Naming and Migration Staging
+
+Дата: 2026-07-14
+
+### Новые возможности
+
+- добавлен отдельный offline migration-слой для справочников,
+  aliases, канонических наименований, точного извлечения S/N и
+  migration staging;
+- формализованы controlled domains для классификации объекта,
+  оборудования, компонентов, кабелей, catalog data, поставщиков,
+  локаций и операционных атрибутов;
+- для aliases введены provenance, normalized source key, confidence,
+  resolution status и поля ручного утверждения;
+- каноническое имя строится детерминированно из типа, vendor,
+  model/Part Number и основной характеристики; имя не является
+  identity и может быть пересчитано;
+- создаётся disposable candidate DB в ignored migration workspace с
+  чистой актуальной production-схемой, candidate-справочниками и
+  staging-таблицами только для review;
+- проверенный candidate snapshot содержит 71 360 staging rows
+  (51 003 receipt-source и 20 357 issue-source), 91 717 S/N-role cells,
+  893 reference values, 916 aliases и 358 catalog proposals; все production
+  operational tables пусты;
+- добавлен validation/reporting CLI для проверки source SHA,
+  identifier preservation, candidate schema, foreign keys и счётчиков.
+
+### S/N preservation
+
+- source S/N хранится отдельно от normalized match key; match key
+  никогда не подменяет исходный identifier;
+- XLSX extraction сохраняет файл/лист/строку/колонку, coordinate,
+  cell type, number format, raw XML token, display/source value, warning,
+  preservation status и source hash;
+- numeric cells не проходят как безусловно безопасные: raw token
+  анализируется без float, leading zeros могут быть восстановлены
+  только при однозначном custom number format;
+- все непустые numeric S/N требуют manual review и получают пустой
+  match key; exponent token сохраняется буквально, а decimal display
+  служит только подсказкой review;
+- потерявшие точность длинные numeric identifiers отмечаются
+  `SOURCE_CORRUPTED` и не допускаются к созданию ложной карточки;
+- на фактическом warehouse source exact extractor нашёл четыре
+  `SOURCE_CORRUPTED` cells: `ПРИХОД!L19513`, `ПРИХОД!L19580`,
+  `РАСХОД!J4826`, `РАСХОД!J4866`; это два повторяющихся
+  повреждённых значения, их match key пуст;
+- CSV/XLSX preview пинит identifiers как text; round-trip тесты
+  покрывают leading zeros, Unicode, internal spaces, long text, custom
+  zero format и exponent notation.
+
+### API, UI и безопасность
+
+- HTTP endpoints, runtime UI и роли ODE не изменялись;
+- будущий receipt UX с dependent references зафиксирован как
+  `FUTURE STAGE`, а не как текущее поведение;
+- candidate/staging tooling не принимает production DB как output,
+  не печатает password hashes и не создаёт production references;
+- команда `report` применяет тот же path/inode guard ко всем output,
+  полностью регенерирует allowlisted JSON из candidate и никогда не
+  доверяет/не объединяет содержимое старого report-файла;
+- raw sources, reports, normalized previews, workspace DB и SQLite sidecars
+  считаются local-only artifacts и не входят в commit/release ZIP.
+
+### БД и миграция
+
+- production schema `data/warehouse.db` не изменена; staging-таблицы
+  не добавлены в `inventory/db.py`;
+- текущая `reference_values(kind, name, is_active)` в runtime ODE не
+  заменена; candidate-модель не считается production integration;
+- исходный `БАЛАНС` не загружается и не считается источником
+  операций;
+- исторические receipt/issue rows не загружены ни в production,
+  ни в операционные таблицы candidate DB;
+- план будущего reset описывает byte-copy + SQLite backup,
+  сохранение security identity, проверку candidate и отдельное
+  явное подтверждение перед заменой рабочей БД; reset на этом Stage
+  не выполнялся.
+
+### Тесты и документация
+
+- добавлены unit/integration тесты serial preservation, XLSX raw-cell
+  extraction, identifier round-trip, reference normalization, alias safety,
+  canonical naming, candidate DB, source/working-DB immutability и
+  schema/security boundaries;
+- focused migration suite содержит 39 тестов, включая regression cases для
+  secret-bearing stale report и report path equal/hardlinked с source DB;
+- актуализированы source review и основная архитектура; добавлены
+  отдельные reference, naming, S/N, staging, reset и manual-testing
+  contracts;
+- полный gate после Stage проходит: 266 тестов (`OK` под
+  `-W error::ResourceWarning`); baseline до Stage составлял 227 тестов.
+- syntax и Node checks, module/frontend audits и clean-test-DB dry-run
+  проходят; headless smoke посетил все маршруты, включая Inventory Number,
+  и подтвердил ноль console/window/unhandled/resource/HTTP/API-500 errors;
+- raw hashes и рабочая БД остались неизменными; рабочая SHA-256 —
+  `eaab698c0bb8fd5de1ebd86a5999ee29d2a89e96b59e7fbaa171b0d38a26e8db`.
+
+### Breaking changes
+
+- отсутствуют: production API, UI, schema и warehouse behavior не
+  изменены.
+
+### Известные ограничения
+
+- candidate package есть предложение для review, а не утверждённый
+  production master-data set;
+- semantic aliases, legal supplier/vendor variants, неоднозначные
+  models и locations требуют ручного решения;
+- повреждённые Excel numeric S/N нельзя восстановить без независимого
+  authoritative источника;
+- DCIM source остаётся пустым, Inventory Number source отсутствует;
+- Stage 0.13.3B historical receipt migration требует отдельного
+  review/approval и не запускается автоматически.
+
 ## ODE 0.13, Stage 0.13.2 — Bulk Inventory Number Import
 
 Дата: 2026-07-14

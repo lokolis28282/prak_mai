@@ -95,6 +95,73 @@ This action is deliberately not added to the `WarehouseEventReader` Event
 Types list above and is not a Reports business event. No second event publisher
 or event table is introduced; Timeline reuses the existing audit reader.
 
+## Migration Pilot Timeline — Stage 0.13.3A.5
+
+**PILOT ONLY / NOT PRODUCTION:** historical pilot receipts reuse existing
+`audit_log` and Equipment Card Timeline. They do not add a parallel event store
+or a new Reports `WarehouseEvent` type.
+
+The migration actions are:
+
+- `MIGRATION_RECEIPT_IMPORTED` — one preserved primary created a pilot receipt;
+- `MIGRATION_SOURCE_ROW_LINKED` — source provenance linked to the card;
+- `MIGRATION_CONFLICT_RECORDED` — conflicting vendor/model/item/shelf history
+  retained without a second receipt;
+- `MIGRATION_EXACT_DUPLICATE_SKIPPED` — duplicate source row linked/skipped;
+- `MIGRATION_SERIAL_QUARANTINED` — non-importable identity retained outside
+  stock.
+
+Actions linked to a receipt use `entity_type=stock_receipt` and its pilot
+receipt ID. Quarantine uses `entity_type=migration_staging_row`. Details are a
+closed projection of logical source filename, sheet/row, source/canonical item
+names and warnings; absolute paths are redacted.
+
+Pilot receipts are stored with `is_opening_balance=1`. The current
+`WarehouseEventReader` excludes them, so daily/weekly Reports do not announce a
+historical reconstruction as `RECEIPT_CREATED`. Equipment Card still reads the
+receipt plus related audit entries and relabels the card history as
+`Исторический приход (миграция)`.
+
+The source historical receipt date is displayed from migration provenance. The
+audit timestamp is the actual pilot build/migration time; one must not be
+rewritten to impersonate the other. A duplicate/conflict source row may add
+provenance/audit history but never another business receipt or balance unit.
+
+**FUTURE 0.13.3B / OPEN DECISION:** a production historical-event vocabulary
+and report policy require a separate contract. Pilot actions must not be
+promoted to production event semantics automatically.
+
+## Full Historical Candidate and Promoted Timeline
+
+The full build reuses `audit_log`; it does not add an event table or publisher.
+The exact candidate exposes the closed action set below only in read-only
+review. The promoted local working DB preserves the same provenance, but normal
+Equipment Card filters `MIGRATION_%` audit rows from the user Timeline and
+derives understandable receipt/issue history through the existing Warehouse
+facade. Its closed migration action set is:
+
+- `MIGRATION_RECEIPT_IMPORTED`;
+- `MIGRATION_SOURCE_ROW_LINKED`;
+- `MIGRATION_EXACT_DUPLICATE_SKIPPED`;
+- `MIGRATION_CONFLICT_RECORDED`;
+- `MIGRATION_NUMERIC_IDENTITY_PROVISIONAL`;
+- `MIGRATION_OPENING_STATE_CREATED`;
+- `MIGRATION_ISSUE_IMPORTED`;
+- `MIGRATION_SERIAL_QUARANTINED`.
+
+A proven historical operation date is passed through the existing optional
+audit `event_date`; an unproven date falls back to the deterministic Stage A
+candidate timestamp and retains `SOURCE_DATE_UNPROVEN`. Logical filename,
+sheet/row/hash, source/canonical names, preservation status, final status,
+warnings and conflicts remain details. Absolute local paths are redacted.
+
+Opening state is relabelled `Начальный остаток` in ordinary Equipment Card and
+never presented as a supplier receipt. Its user explanation is: «Восстановлено
+начальное состояние до доступной истории операций». Detailed source/status
+wording remains available only in admin migration review. Candidate audit may
+form a future outbox source only after a separate production design; this build
+adds neither outbox nor Kafka.
+
 ## Ordering
 
 Events are ordered by date/time and stable source priority. For reports, the
