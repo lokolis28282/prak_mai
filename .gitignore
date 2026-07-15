@@ -1,17 +1,53 @@
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .DS_Store
 .idea/
 .vscode/
+
+# Runtime databases. Keep this scoped to data/: test fixtures elsewhere may be
+# intentionally versioned. SQLite sidecars are never repository content.
+/data/*.db
+/data/*.db-*
+/data/*.sqlite
+/data/*.sqlite-*
+/data/*.sqlite3
+/data/*.sqlite3-*
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Database backups and disposable candidates.
 data/backups/
+/data/candidates/
+*.backup.db
+*.candidate.db
 /data/warehouse_test_clean.db
 /data/warehouse_test_clean.db-*
 /data/.warehouse_test_clean.db.*.tmp
 backups/
 acceptance_backups/
 release_backups/
+
+# Local verification evidence.
+/.stabilization/
+
+# Generated release and runtime artifacts.
 release/
+/release/*.zip
 exports/
 screenshots/
 ODE_windows_*.zip
 ode_qa_reports.zip
+
+# Local immutable migration inputs, analytical outputs and disposable DBs.
+# `migration_inputs/README.md` remains tracked documentation.
+/migration_inputs/raw/
+/migration_inputs/normalized/
+/migration_inputs/reports/
+/migration_inputs/workspace/
+
+# Disposable ODE 0.13 development databases.
+/.local/
