@@ -260,7 +260,7 @@ class CreateCleanTestDbTest(unittest.TestCase):
         macos = (ROOT / "start_test_macos.command").read_text(encoding="utf-8")
         windows = (ROOT / "start_test_windows.bat").read_text(encoding="utf-8")
         self.assertIn(
-            "ODE_TEST_MODE=1 python3 app.py web --db data/warehouse_test_clean.db",
+            "ODE_TEST_MODE=1 python3 app.py web --db data/warehouse_test_clean.db --warehouse-contour demo",
             macos,
         )
         self.assertNotIn("export ODE_TEST_MODE", macos)

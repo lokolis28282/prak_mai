@@ -15,7 +15,9 @@ class WarehouseIssueWriteContractTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         self.today = "2026-07-11"
 
     def tearDown(self) -> None:
@@ -99,11 +101,18 @@ class WarehouseIssueWriteContractTest(unittest.TestCase):
         with self.service.user_context("lokolis"):
             for index in range(3):
                 self.context.warehouse.create_receipt(self.receipt(f"ISS-B3-{index}"))
+            before_unknown = self.count("stock_issues")
+            with self.assertRaisesRegex(WarehouseError, "не найдена"):
+                self.context.warehouse.create_issue_by_serials(
+                    {**self.issue(""), "source_serial_number": ""},
+                    ["ISS-B3-0", "ISS-B3-1", "UNKNOWN-B3"],
+                )
+            self.assertEqual(self.count("stock_issues"), before_unknown)
             result = self.context.warehouse.create_issue_by_serials(
                 {**self.issue(""), "source_serial_number": ""},
-                ["ISS-B3-0", "ISS-B3-1", "UNKNOWN-B3"],
+                ["ISS-B3-0", "ISS-B3-1"],
             )
-            self.assertEqual(result, {"imported": 3, "unmatched": 1})
+            self.assertEqual(result, {"imported": 2, "unmatched": 0})
             with self.assertRaisesRegex(WarehouseError, "повторяющиеся"):
                 self.context.warehouse.create_issue_by_serials({**self.issue(""), "source_serial_number": ""}, ["DUP", "dup"])
             before = self.count("stock_issues")

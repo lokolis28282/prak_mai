@@ -22,7 +22,9 @@ class WarehouseIssueWriteApiTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         self.handler_class = make_handler(self.context)
         self.today = "2026-07-11"
         with self.service.user_context("lokolis"):
@@ -109,8 +111,8 @@ class WarehouseIssueWriteApiTest(unittest.TestCase):
             "common_fields": {**self.issue(""), "action": "", "source_serial_number": ""},
             "serial_numbers": ["API-ISS-2", "API-UNKNOWN"],
         })
-        self.assertEqual(status, 200)
-        self.assertEqual(payload, {"ok": True, "imported": 2, "unmatched": 1})
+        self.assertEqual(status, 400)
+        self.assertIn("не найдена", payload["error"])
         with self.service.user_context("lokolis"):
             self.context.warehouse.create_receipt(self.receipt("API-ENG-1"))
         status, payload = self.action(self.issue("API-ENG-1"), email="engineer-issue@test")
@@ -118,6 +120,73 @@ class WarehouseIssueWriteApiTest(unittest.TestCase):
         status, payload = self.action(self.issue("NOPE"), email="viewer-issue-api@test")
         self.assertEqual(status, 400)
         self.assertIn("Недостаточно прав", payload["error"])
+
+    def test_scanned_issue_pairs_are_strict_and_atomic(self) -> None:
+        with self.service.user_context("lokolis"):
+            self.context.warehouse.create_receipt({
+                **self.receipt("PAIR-COMP-1"),
+                "category": "Компоненты", "item_type": "Трансивер",
+                "equipment_type": "", "component_type": "Трансивер",
+            })
+            self.context.warehouse.create_receipt(self.receipt("PAIR-SERVER-1"))
+        common = {**self.issue(""), "action": "", "source_serial_number": ""}
+        status, payload = self.action({
+            "action": "CONFIRM_SCANNED_ISSUE_PAIRS",
+            "common_fields": common,
+            "pairs": [{
+                "source_serial_number": "PAIR-COMP-1",
+                "target_serial_number": "PAIR-SERVER-1",
+            }],
+        })
+        self.assertEqual(payload, {"ok": True, "imported": 1})
+        self.assertEqual(status, 200)
+
+        with self.service.user_context("lokolis"):
+            self.context.warehouse.create_receipt({
+                **self.receipt("PAIR-COMP-2"),
+                "category": "Компоненты", "item_type": "Трансивер",
+                "equipment_type": "", "component_type": "Трансивер",
+            })
+        before = len(self.service.stock_issue_rows())
+        status, payload = self.action({
+            "action": "CONFIRM_SCANNED_ISSUE_PAIRS",
+            "common_fields": common,
+            "pairs": [
+                {"source_serial_number": "PAIR-COMP-2", "target_serial_number": "PAIR-SERVER-1"},
+                {"source_serial_number": "PAIR-UNKNOWN", "target_serial_number": "PAIR-SERVER-1"},
+            ],
+        })
+        self.assertEqual(status, 400)
+        self.assertIn("не найдена", payload["error"])
+        self.assertEqual(len(self.service.stock_issue_rows()), before)
+
+    def test_scanned_issue_pairs_process_one_hundred_component_server_links(self) -> None:
+        pairs = []
+        with self.service.user_context("lokolis"):
+            for index in range(10):
+                self.context.warehouse.create_receipt(self.receipt(f"LOAD-SERVER-{index:03d}"))
+            for index in range(100):
+                source = f"LOAD-TRANSCEIVER-{index:03d}"
+                target = f"LOAD-SERVER-{index % 10:03d}"
+                self.context.warehouse.create_receipt({
+                    **self.receipt(source),
+                    "category": "Компоненты", "item_type": "Трансивер",
+                    "equipment_type": "", "component_type": "Трансивер",
+                })
+                pairs.append({
+                    "source_serial_number": source,
+                    "target_serial_number": target,
+                })
+        common = {**self.issue(""), "action": "", "source_serial_number": ""}
+        status, payload = self.action({
+            "action": "CONFIRM_SCANNED_ISSUE_PAIRS",
+            "common_fields": common,
+            "pairs": pairs,
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(payload, {"ok": True, "imported": 100})
+        for serial in ("LOAD-TRANSCEIVER-000", "LOAD-TRANSCEIVER-050", "LOAD-TRANSCEIVER-099"):
+            self.assertEqual(self.service.search_stock_positions(serial)[0]["balance"], 0)
 
     def test_malformed_empty_large_unknown_required_and_insufficient(self) -> None:
         for body in (b"{", b""):

@@ -28,7 +28,9 @@ class ReportsReadApiContractTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         self.today = "2026-07-11"
         self.service.add_work_log(
             self.today, "ЗНР", "ПНР", "RPT-1",

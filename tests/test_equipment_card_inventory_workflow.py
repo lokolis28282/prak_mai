@@ -19,7 +19,9 @@ class EquipmentCardInventoryWorkflowTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -187,7 +189,9 @@ class EquipmentCardInventoryApiTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         self.handler_class = make_handler(self.context)
         with self.service.user_context("lokolis"):
             self.context.warehouse.create_receipt(

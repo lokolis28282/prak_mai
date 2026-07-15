@@ -32,7 +32,9 @@ class WarehouseEventReaderTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         self.reader = self.context.reports.warehouse_events
 
     def tearDown(self) -> None:

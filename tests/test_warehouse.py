@@ -127,7 +127,8 @@ class WarehouseServiceTest(unittest.TestCase):
             self.assertIn("ODE/start_test_windows.bat", names)
             self.assertIn("ODE/start_test_macos.command", names)
             self.assertIn("ODE/scripts/create_clean_test_db.py", names)
-            self.assertIn("ODE/data/warehouse.db", names)
+            self.assertIn("ODE/data/README.md", names)
+            self.assertNotIn("ODE/data/warehouse.db", names)
             self.assertFalse(any("backups" in name.casefold() for name in names))
             self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
 
@@ -624,6 +625,23 @@ class WarehouseServiceTest(unittest.TestCase):
         changed = self.service.authenticate("lokolis", "changed-password")
         self.assertFalse(changed["must_change_password"])
 
+    def test_read_only_authentication_does_not_write_login_audit(self) -> None:
+        with closing(sqlite3.connect(self.db_path)) as db:
+            before = db.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'LOGIN'"
+            ).fetchone()[0]
+        self.assertEqual(
+            self.service.authenticate(
+                "lokolis", "lokolis", record_login=False
+            )["email"],
+            "lokolis",
+        )
+        with closing(sqlite3.connect(self.db_path)) as db:
+            after = db.execute(
+                "SELECT COUNT(*) FROM audit_log WHERE action = 'LOGIN'"
+            ).fetchone()[0]
+        self.assertEqual(after, before)
+
     def test_password_change_uses_current_user_from_context(self) -> None:
         self.service.create_user(
             "Иван", "Инженеров", "Инженер", "engineer", "secret1", "engineer"
@@ -830,23 +848,23 @@ class WarehouseServiceTest(unittest.TestCase):
             self.service.confirm_scanned_receipts(common, ["SCAN-NEW-3", "SCAN-NEW-1"])
         self.assertEqual(len(self.service.stock_receipts()), before)
 
-    def test_scanned_issue_saves_unknown_as_problem(self) -> None:
+    def test_scanned_issue_rejects_unknown_and_rolls_back(self) -> None:
         self.service.add_stock_receipt(**self.new_receipt(
             serial_number="SCAN-ISSUE-1", inventory_number="SCAN-INV-1"
         ))
         self.assertTrue(self.service.scan_issue_serial("scan-issue-1")["found"])
-        self.assertFalse(self.service.scan_issue_serial("scan-unknown")["found"])
-        result = self.service.confirm_scanned_issues({
-            "issue_date": date.today().isoformat(), "responsible": "Инженер",
-            "task_type": "ПНР", "task_number": "SCAN-1",
-            "target_serial_number": "", "target_hostname": "host-1",
-            "comment": "Сканирование",
-        }, ["SCAN-ISSUE-1", "SCAN-UNKNOWN"])
-        self.assertEqual(result, {"imported": 2, "unmatched": 1})
-        self.assertTrue(any(
-            row["serial_number"] == "SCAN-UNKNOWN"
-            for row in self.service.data_quality_problems()["unmatched_issues"]
-        ))
+        unknown = self.service.scan_issue_serial("scan-unknown")
+        self.assertFalse(unknown["found"])
+        self.assertFalse(unknown["valid"])
+        before = len(self.service.stock_issue_rows())
+        with self.assertRaises(WarehouseError):
+            self.service.confirm_scanned_issues({
+                "issue_date": date.today().isoformat(), "responsible": "Инженер",
+                "task_type": "ПНР", "task_number": "SCAN-1",
+                "target_serial_number": "", "target_hostname": "host-1",
+                "comment": "Сканирование",
+            }, ["SCAN-ISSUE-1", "SCAN-UNKNOWN"])
+        self.assertEqual(len(self.service.stock_issue_rows()), before)
 
     def test_scanned_issue_rolls_back_whole_list_on_invalid_position(self) -> None:
         self.service.add_stock_receipt(**self.new_receipt(

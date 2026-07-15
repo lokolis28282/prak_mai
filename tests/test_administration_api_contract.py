@@ -40,7 +40,9 @@ class AdministrationReadApiContractTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         self.service.create_user("Иван", "Инженеров", "Инженер", "engineer", "secret1", "engineer")
         self.service.create_user("Вера", "Просмотр", "Наблюдатель", "viewer", "secret2", "viewer")
         self.backup_dir = self.db_path.parent / "backups"

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 from inventory.core.application import create_application_context
 from inventory.service import WarehouseService
@@ -28,7 +31,9 @@ class WarehouseReadApiContractTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         receipt = {
             "receipt_date": "2026-07-11", "responsible": "Тестов Инженер",
             "item_name": "Сервер тестовый", "project": "Digital",
@@ -97,6 +102,39 @@ class WarehouseReadApiContractTest(unittest.TestCase):
         self.assertIn("SN", text)
         self.assertIn("API-CONTRACT-1", text)
 
+    def test_balance_combined_filters_sort_and_pagination(self) -> None:
+        self.service.add_stock_receipt(**{
+            "receipt_date": "2026-07-12", "responsible": "Тестов Инженер",
+            "item_name": "SSD тестовый", "project": "Digital",
+            "serial_number": "API-CONTRACT-2", "inventory_number": "INV-API-2",
+            "supplier": "Поставщик", "vendor": "Samsung", "model": "PM1733",
+            "shelf": "A-02", "object_name": "Склад", "datacenter": "Ixcellerate",
+            "equipment_type": "", "component_type": "SSD", "cable_type": "",
+            "unit": "шт", "quantity": "1",
+        })
+        query = urlencode({
+            "query": "SSD", "project": "Digital", "supplier": "Поставщик",
+            "vendor": "Samsung", "category": "Компоненты", "item_type": "SSD",
+            "stock_state": "positive", "sort_by": "model", "sort_dir": "desc",
+            "limit": "1", "offset": "0",
+        })
+        status, payload, _ = self._call_get("/api/balance?" + query)
+        self.assertEqual(status, 200)
+        self.assertEqual([row["serial_number"] for row in payload["rows"]], ["API-CONTRACT-2"])
+        self.assertEqual(payload["offset"], 0)
+        self.assertFalse(payload["has_previous"])
+        self.assertFalse(payload["has_more"])
+
+        status, first, _ = self._call_get(
+            "/api/balance?" + urlencode({"limit": "1", "offset": "0", "sort_by": "serial_number"})
+        )
+        status, second, _ = self._call_get(
+            "/api/balance?" + urlencode({"limit": "1", "offset": "1", "sort_by": "serial_number"})
+        )
+        self.assertTrue(first["has_more"])
+        self.assertTrue(second["has_previous"])
+        self.assertNotEqual(first["rows"][0]["serial_number"], second["rows"][0]["serial_number"])
+
     def test_delivery_contract_empty_and_unknown_id(self) -> None:
         status, payload, _ = self._call_get("/api/deliveries")
         self.assertEqual(status, 200)
@@ -116,6 +154,18 @@ class WarehouseReadApiContractTest(unittest.TestCase):
         self.assertIn("position", card)
         self.assertIn("history", card)
         self.assertEqual(card["position"]["serial_number"], "API-CONTRACT-1")
+
+    def test_legacy_serial_outer_whitespace_is_searchable_without_mutation(self) -> None:
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            db.execute(
+                "UPDATE stock_receipts SET serial_number=' API-CONTRACT-1 ' "
+                "WHERE serial_number='API-CONTRACT-1'"
+            )
+        status, card, _ = self._call_get(
+            "/api/position-card?serial_number=API-CONTRACT-1"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(card["position"]["serial_number"], " API-CONTRACT-1 ")
 
 
 if __name__ == "__main__":

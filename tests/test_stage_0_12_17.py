@@ -29,7 +29,9 @@ class Stage01217Test(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "warehouse.db"
         self.service = WarehouseService(self.db_path)
-        self.context = create_application_context(self.db_path, service=self.service)
+        self.context = create_application_context(
+            self.db_path, service=self.service, warehouse_contour="demo"
+        )
         self.handler_class = make_handler(self.context)
 
     def tearDown(self) -> None:
@@ -120,6 +122,19 @@ class Stage01217Test(unittest.TestCase):
         self.assertEqual(card["position"]["hostname"], "ode-prod-17")
         self.assertTrue(any(row["event_type"] == "Установлен компонент" for row in card["history"]))
 
+    def test_exact_serial_search_uses_an_identifier_index(self) -> None:
+        self.service.add_stock_receipt(**self.receipt())
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            plan = " ".join(str(row[3]) for row in db.execute(
+                """EXPLAIN QUERY PLAN SELECT id FROM stock_receipts
+                   WHERE trim(serial_number)<>'' AND serial_number=? COLLATE NOCASE LIMIT 30""",
+                ("ODE-17-SRV",),
+            ))
+        self.assertIn("INDEX", plan.upper())
+        result = self.service.global_search("ODE-17-SRV")
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["position"]["serial_number"], "ODE-17-SRV")
+
     def test_warehouse_categories_are_aggregated_without_position_materialization(self) -> None:
         self.service.add_stock_receipt(**self.receipt())
         self.service.add_stock_receipt(**self.receipt(
@@ -138,6 +153,41 @@ class Stage01217Test(unittest.TestCase):
         self.assertEqual(categories["Сетевое оборудование"], 1)
         self.assertEqual(categories["Кабели"], 25)
 
+    def test_warehouse_type_summary_and_balance_type_filter_use_full_dataset(self) -> None:
+        self.service.add_stock_receipt(**self.receipt())
+        self.service.add_stock_receipt(**self.receipt(
+            serial_number="ODE-17-SRV-2", inventory_number="ODE-17-SRV-2-INV",
+            model="R750", quantity=1,
+        ))
+        self.service.add_stock_receipt(**self.receipt(
+            serial_number="ODE-17-SFP", inventory_number="ODE-17-SFP-INV",
+            item_name="Трансивер 100G", equipment_type="Трансивер",
+            vendor="Cisco", model="QSFP-100G", quantity=1,
+        ))
+        self.service.add_stock_receipt(**self.receipt(
+            serial_number="ODE-17-RAM", inventory_number="ODE-17-RAM-INV",
+            item_name="Модуль памяти", equipment_type="", component_type="RAM",
+            model="64 GB", quantity=1,
+        ))
+
+        summary = {
+            (row["category"], row["item_type"]): row
+            for row in self.service.warehouse_type_summary()
+        }
+        self.assertEqual(summary[("Оборудование", "Сервер")]["positions"], 2)
+        self.assertEqual(summary[("Оборудование", "Трансивер")]["positions"], 1)
+        self.assertEqual(summary[("Компоненты", "RAM")]["quantity"], 1)
+
+        # Filtering is performed in SQL before LIMIT, so a type outside the
+        # first unfiltered row remains discoverable in a large warehouse.
+        filtered = self.service.stock_balance(item_type="Трансивер", limit=1)
+        self.assertEqual([row["serial_number"] for row in filtered], ["ODE-17-SFP"])
+        sorted_rows = self.service.stock_balance(sort_by="item_type", sort_dir="asc")
+        self.assertEqual(
+            [row["item_type"] for row in sorted_rows],
+            sorted([row["item_type"] for row in sorted_rows], key=str.casefold),
+        )
+
     def test_problem_summary_combines_bounded_rows_and_exact_counts(self) -> None:
         self.service.add_stock_receipt(**self.receipt(project="", shelf=""))
         self.service.import_stock_issue_rows([self.issue(
@@ -150,6 +200,17 @@ class Stage01217Test(unittest.TestCase):
         self.assertEqual(summary["problems"], rows)
         self.assertEqual(summary["counts"]["unmatched_issues"], 1)
         self.assertEqual(summary["counts"]["incomplete_rows"], 1)
+
+    def test_missing_project_alone_is_not_an_incomplete_row(self) -> None:
+        # project is an optional operational tag (Digital/Tech/HGX), not a
+        # required field in either receipt form; historical/migrated stock
+        # never carries it. Counting it toward incompleteness previously made
+        # "problems" flag effectively every receipt.
+        self.service.add_stock_receipt(**self.receipt(
+            serial_number="ODE-17-NOPROJECT", project="",
+        ))
+        counts = self.service.data_quality_problem_counts()
+        self.assertEqual(counts["incomplete_rows"], 0)
 
     def test_invalid_numeric_queries_are_400_and_never_leak_trace_details(self) -> None:
         for path in (
