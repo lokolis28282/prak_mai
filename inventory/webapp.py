@@ -22,9 +22,21 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from . import __version__
 from .core.application import ApplicationContext, create_application_context, ensure_application_context
+from .core.context import RuntimeConfig
 from .db import DEFAULT_DB_PATH
 from .importing import parse_csv_bytes, unknown_csv_headers
 from .service import WarehouseError, WarehouseService
+from .warehouse.migration_full_review import (
+    full_migration_requested,
+    validate_full_migration_database,
+)
+from .warehouse.migration_pilot_review import (
+    migration_pilot_requested,
+    validate_migration_pilot_database,
+)
+from .warehouse.baseline.posting_policy import PostingPolicy, WarehousePostingBlocked
+from .warehouse.baseline.workspace import WorkspaceError
+from .warehouse.baseline.xlsx_parser import FullInventoryXlsxError
 
 
 CURRENT_DATACENTER = "Ixcellerate"
@@ -32,18 +44,14 @@ STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
 PRODUCT_NAME = "ODE"
 PRODUCT_VERSION = __version__
 
-LOGIN_HTML = r'''<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Вход — ODE</title>
-<style>body{margin:0;background:#f4f7fb;color:#172033;font:14px system-ui;display:grid;place-items:center;min-height:100vh}.card{width:min(390px,calc(100% - 32px));padding:28px;background:white;border:1px solid #dce3ec;border-radius:14px;box-shadow:0 8px 24px #1720330d}h1{margin:0 0 5px}p{color:#667085}label{display:block;margin-top:15px;font-weight:650}input{width:100%;box-sizing:border-box;margin-top:6px;padding:12px;border:1px solid #cbd5e1;border-radius:8px}button{width:100%;margin-top:20px;padding:12px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:700;cursor:pointer}.link{background:none;color:#475569;font-weight:500}.error{color:#991b1b}.admin{display:none}.admin.show{display:block}</style></head><body><form class="card" id="login"><h1>ODE</h1><p>Укажите, кто работает с системой</p><div id="engineer"><label>ФИО инженера<input name="full_name" autocomplete="name" required autofocus placeholder="Иванов Иван Иванович"></label></div><div class="admin" id="admin"><label>Логин<input name="email" autocomplete="username"></label><label>Пароль<input name="password" type="password" autocomplete="current-password"></label></div><button id="submit">Продолжить</button><button class="link" type="button" id="mode">Режим администратора</button><p class="error" id="error"></p></form><script>let admin=false;document.getElementById('mode').onclick=()=>{admin=!admin;document.getElementById('admin').classList.toggle('show',admin);document.getElementById('engineer').style.display=admin?'none':'block';document.querySelector('[name=full_name]').required=!admin;document.querySelector('[name=email]').required=admin;document.querySelector('[name=password]').required=admin;document.getElementById('submit').textContent=admin?'Войти как администратор':'Продолжить';document.getElementById('mode').textContent=admin?'Обычный вход':'Режим администратора'};document.getElementById('login').onsubmit=async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));data.mode=admin?'admin':'engineer';const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const x=await r.json();if(r.ok)location.href='/';else document.getElementById('error').textContent=x.error||'Ошибка входа'};</script></body></html>'''
-
-
-LOGIN_HTML = (LOGIN_HTML
-    .replace("<title>Вход — ODE</title>", f"<title>Начало смены — {PRODUCT_NAME} {PRODUCT_VERSION}</title>")
-    .replace("<h1>ODE</h1><p>Укажите, кто работает с системой</p>",
-             f"<h1>Кто сегодня работает?</h1><p>{PRODUCT_NAME} {PRODUCT_VERSION}. Операции смены будут записаны под выбранным именем.</p>")
-    .replace(">Продолжить</button>", ">Начать работу</button>")
-    .replace(">Режим администратора</button>", ">Вход администратора</button>")
-)
+LOGIN_HTML = f'''<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Начало смены — {PRODUCT_NAME} {PRODUCT_VERSION}</title>
+<style>body{{margin:0;background:#f4f7fb;color:#172033;font:14px system-ui;display:grid;place-items:center;min-height:100vh}}.card{{width:min(410px,calc(100% - 32px));padding:28px;background:white;border:1px solid #dce3ec;border-radius:14px;box-shadow:0 8px 24px #1720330d}}h1{{margin:0 0 5px}}p,small{{color:#667085}}label{{display:block;margin-top:15px;font-weight:650}}input{{width:100%;box-sizing:border-box;margin-top:6px;padding:12px;border:1px solid #cbd5e1;border-radius:8px}}button{{width:100%;margin-top:20px;padding:12px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:700;cursor:pointer}}details{{margin-top:18px;padding-top:12px;border-top:1px solid #dce3ec}}summary{{cursor:pointer;color:#475569}}.error{{color:#991b1b}}</style></head><body>
+<form class="card" id="login"><h1>Кто сегодня работает?</h1><p>{PRODUCT_NAME} {PRODUCT_VERSION}. Операции смены будут записаны под выбранным именем.</p>
+<label>ФИО инженера<input name="full_name" autocomplete="name" autofocus placeholder="Иванов Иван Иванович"></label>
+<details><summary>Учётная запись ODE</summary><small>Заполните, если вам назначены дополнительные backend-права.</small><label>Логин<input name="email" autocomplete="username"></label><label>Пароль<input name="password" type="password" autocomplete="current-password"></label></details>
+<button>Начать работу</button><p class="error" id="error"></p></form>
+<script>document.getElementById('login').onsubmit=async e=>{{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));const credentials=Boolean(data.email.trim()||data.password);if(credentials&&(!data.email.trim()||!data.password)){{document.getElementById('error').textContent='Укажите логин и пароль полностью';return}}if(!credentials&&!data.full_name.trim()){{document.getElementById('error').textContent='Укажите ФИО инженера';return}}data.mode=credentials?'admin':'engineer';const r=await fetch('/api/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});const x=await r.json();if(r.ok)location.href='/';else document.getElementById('error').textContent=x.error||'Ошибка входа'}};</script></body></html>'''
 
 HTML = r'''<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -118,7 +126,7 @@ document.getElementById('referenceFilter').oninput=renderReferences;
 const balanceFilterMap={balanceProject:'project',balanceObject:'object_name',balanceEquipmentType:'equipment_type',balanceComponentType:'component_type',balanceCableType:'cable_type',balanceUnit:'unit',balanceDatacenter:'datacenter'};
 function activeBalanceFilters(){return Object.fromEntries(Object.entries(balanceFilterMap).map(([id,key])=>[key,document.getElementById(id)?.value||'']).filter(x=>x[1]))}
 function rowMatchesQuery(x,q){return !q||['serial_number','inventory_number','item_name','model','vendor','project','object_name','shelf'].some(k=>String(x[k]||'').toLocaleLowerCase().includes(q))}
-function renderBalance(){const filters=activeBalanceFilters();const query=document.getElementById('balanceQuery').value.trim().toLocaleLowerCase();const matched=state.balance.filter(x=>Object.entries(filters).every(([k,v])=>x[k]===v)&&rowMatchesQuery(x,query));const rows=matched.slice(0,500);document.getElementById('balanceLimit').textContent=matched.length>500?'Показаны первые 500 строк. Уточните поиск или скачайте баланс целиком.':`Показано строк: ${matched.length}`;document.getElementById('balanceBody').innerHTML=rows.map(x=>{const key=encodeURIComponent(x.position_key);const type=x.equipment_type||x.component_type||x.cable_type;return `<tr><td>${esc(x.item_name)}</td><td>${esc(x.model)}</td><td>${esc(x.serial_number)}</td><td>${esc(x.inventory_number)}</td><td>${Number(x.balance).toLocaleString('ru-RU')}</td><td>${esc(x.unit)}</td><td>${esc(x.project)}</td><td>${esc(x.datacenter)}</td><td>${esc(x.shelf)}</td><td>${esc(x.object_name)}</td><td>${esc(type)}</td><td>${esc(x.vendor)}</td><td><button class="button" onclick="openPositionCard('${key}')">Открыть карточку</button> <button class="button" ${Number(x.balance)<=0?'disabled':''} onclick="selectForIssue('${key}')">Списать</button></td></tr>`}).join('')||'<tr><td class="empty" colspan="13">Нет данных</td></tr>';document.getElementById('balanceExport').href='/export/balance.csv?'+new URLSearchParams({...filters,query:document.getElementById('balanceQuery').value.trim()})}
+function renderBalance(){const filters=activeBalanceFilters();const query=document.getElementById('balanceQuery').value.trim().toLocaleLowerCase();const rows=state.balance.filter(x=>Object.entries(filters).every(([k,v])=>x[k]===v)&&rowMatchesQuery(x,query));document.getElementById('balanceLimit').textContent=`Показано строк: ${rows.length}`;document.getElementById('balanceBody').innerHTML=rows.map(x=>{const key=encodeURIComponent(x.position_key);const type=x.equipment_type||x.component_type||x.cable_type;return `<tr><td>${esc(x.item_name)}</td><td>${esc(x.model)}</td><td>${esc(x.serial_number)}</td><td>${esc(x.inventory_number)}</td><td>${Number(x.balance).toLocaleString('ru-RU')}</td><td>${esc(x.unit)}</td><td>${esc(x.project)}</td><td>${esc(x.datacenter)}</td><td>${esc(x.shelf)}</td><td>${esc(x.object_name)}</td><td>${esc(type)}</td><td>${esc(x.vendor)}</td><td><button class="button" onclick="openPositionCard('${key}')">Открыть карточку</button> <button class="button" ${Number(x.balance)<=0?'disabled':''} onclick="selectForIssue('${key}')">Списать</button></td></tr>`}).join('')||'<tr><td class="empty" colspan="13">Нет данных</td></tr>';document.getElementById('balanceExport').href='/export/balance.csv?'+new URLSearchParams({...filters,query:document.getElementById('balanceQuery').value.trim()})}
 function renderOperations(){const names={ADD:'Карточка',RECEIPT:'Приход',ISSUE:'Расход',MOVE:'Перемещение'};document.getElementById('operationBody').innerHTML=state.operations.map(x=>`<tr><td>${esc(x.operation_date)}</td><td>${names[x.operation_type]||x.operation_type}</td><td>${esc(x.inventory_number)}</td><td>${esc(x.model)}</td><td>${x.quantity}</td><td>${esc(x.basis)}</td><td>${esc(x.responsible)}</td><td>${esc(x.from_location||'—')} → ${esc(x.to_location||'—')}</td></tr>`).join('')}
 function renderProblems(){const labels={unmatched_issues:'Не сопоставлено',duplicate_serials:'Дубли S/N',negative_balances:'Отрицательные остатки',incomplete_rows:'Неполные строки'};document.getElementById('problemCards').innerHTML=Object.entries(labels).map(([k,v])=>`<div class="card"><span>${v}</span><strong>${state.problem_counts[k]||0}</strong></div>`).join('');document.getElementById('problemDetails').innerHTML=Object.entries(labels).map(([k,v])=>`<div class="box" style="margin-top:12px"><h3>${v}</h3><div class="table-wrap"><table><thead><tr><th>Дата</th><th>S/N</th><th>Наименование</th><th>Количество</th><th>Комментарий</th></tr></thead><tbody>${(state.problems[k]||[]).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.serial_number)}</td><td>${esc(x.item_name)}</td><td>${esc(x.unmatched_quantity??x.balance??x.count??x.quantity)}</td><td>${esc(x.comment)}</td></tr>`).join('')||'<tr><td class="empty" colspan="5">Нет данных</td></tr>'}</tbody></table></div></div>`).join('');document.getElementById('problemIssueBody').innerHTML=(state.problems.unmatched_issues||[]).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.serial_number)}</td><td>${esc(x.item_name)}</td><td>${esc(x.quantity)}</td><td>${esc(x.unmatched_quantity)}</td><td>${esc(x.responsible)}</td><td>${esc(x.comment)}</td></tr>`).join('')||'<tr><td class="empty" colspan="7">Проблемных списаний нет</td></tr>'}
 function renderRecentReceipts(){document.getElementById('recentReceiptBody').innerHTML=(state.recent_receipts||[]).map(x=>`<tr><td>${esc(x.receipt_date)}</td><td>${esc(x.item_name)}</td><td>${esc(x.model)}</td><td>${esc(x.serial_number)}</td><td>${esc(x.inventory_number)}</td><td>${Number(x.quantity).toLocaleString('ru-RU')}</td><td>${esc(x.unit)}</td><td>${esc(x.project)}</td><td>${esc(x.responsible)}</td></tr>`).join('')||'<tr><td class="empty" colspan="9">Приходов пока нет</td></tr>'}
@@ -155,6 +163,19 @@ const today=new Date().toISOString().slice(0,10);document.querySelector('[name=w
 HTML = HTML.replace(
     "ODE 0.12 — учет работ и склада",
     f"{PRODUCT_NAME} {PRODUCT_VERSION} — учет работ и склада",
+)
+
+HTML = HTML.replace(
+    '<main class="main">',
+    '<main class="main"><div id="warehouseSystemBanner" '
+    'class="warehouse-system-banner" role="status" aria-live="polite" hidden></div>',
+    1,
+)
+HTML = HTML.replace(
+    '<section class="view panel" id="inventory">',
+    '<section class="view panel" id="inventory"><div id="fullInventoryApp" '
+    'class="full-inventory-app" aria-live="polite"></div>',
+    1,
 )
 RECEIPT_SCANNER_HTML = '''<div class="scanner-box"><h2>Приемка сканером</h2><p class="hint">Заполните общие поля партии, затем сканируйте S/N. Запись в базу выполняется только после подтверждения.</p><form class="form" id="scanReceiptForm"><label>Дата</label><input name="receipt_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Поставщик</label><input name="supplier" class="ref-input" data-kind="supplier" list="ref-supplier" required><label>Вендор</label><input name="vendor" class="ref-input" data-kind="vendor" list="ref-vendor" required><label>Модель</label><input name="model" class="ref-input" data-kind="model" list="ref-model"><label>Наименование</label><input name="item_name" class="ref-input" data-kind="item_name" list="ref-item_name" required><label>Проект</label><input name="project" class="ref-input" data-kind="project" list="ref-project"><label>ЦОД</label><input name="datacenter" class="ref-input" data-kind="datacenter" list="ref-datacenter" value="Ixcellerate" required><label>Стеллаж/Полка</label><input name="shelf" class="ref-input" data-kind="shelf" list="ref-shelf"><label>Объект</label><input name="object_name" class="ref-input" data-kind="object" list="ref-object" required><label>Тип оборудования</label><input name="equipment_type" class="ref-input" data-kind="equipment_type" list="ref-equipment_type"><label>Тип компонента</label><input name="component_type" class="ref-input" data-kind="component_type" list="ref-component_type"><label>Тип кабеля</label><input name="cable_type" class="ref-input" data-kind="cable_type" list="ref-cable_type"><label>Единица учета</label><input name="unit" class="ref-input" data-kind="unit" list="ref-unit" value="шт" required></form><input class="scanner-input" id="receiptScanner" placeholder="Сканируйте S/N или QR" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th><input id="selectAllScannedReceipts" type="checkbox" aria-label="Выбрать все строки прихода"></th><th>S/N</th><th>Результат проверки</th><th>Действие</th></tr></thead><tbody id="scanReceiptBody"><tr><td class="scanner-empty" colspan="4">Список сканирования пуст</td></tr></tbody></table></div><div class="actions scanner-actions"><span class="scanner-count" id="scanReceiptCount" role="status" aria-live="polite">0 позиций</span><button class="button" id="deleteSelectedReceipts" type="button" hidden disabled>Удалить выбранные</button><button class="button" id="clearScannedReceipts" type="button" disabled>Очистить список</button><button class="button primary" id="confirmScanReceipts" type="button" disabled>Принять всё на склад</button></div></div>'''
 ISSUE_SCANNER_HTML = '''<div class="scanner-box"><h2>Списание сканером</h2><p class="hint">Сканер работает как клавиатура. Неизвестные S/N отмечаются и после подтверждения попадают в проблемные строки.</p><form class="form" id="scanIssueForm"><label>Дата</label><input name="issue_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Тип задачи</label><select name="task_type" id="scanIssueTaskType" required></select><label>Номер задачи</label><input name="task_number" required><label>S/N целевого оборудования</label><input name="target_serial_number"><label>Hostname</label><input name="target_hostname"><label>Комментарий</label><textarea name="comment"></textarea></form><input class="scanner-input" id="issueScanner" placeholder="Сканируйте S/N списываемого оборудования" autocomplete="off"><div class="table-wrap scanner-table"><table><thead><tr><th><input id="selectAllScannedIssues" type="checkbox" aria-label="Выбрать все строки расхода"></th><th>S/N</th><th>Наименование</th><th>Модель</th><th>Полка</th><th>Остаток</th><th>Результат</th><th>Действие</th></tr></thead><tbody id="scanIssueBody"><tr><td class="scanner-empty" colspan="8">Список сканирования пуст</td></tr></tbody></table></div><div class="actions scanner-actions"><span class="scanner-count" id="scanIssueCount" role="status" aria-live="polite">0 позиций</span><button class="button" id="deleteSelectedIssues" type="button" hidden disabled>Удалить выбранные</button><button class="button" id="clearScannedIssues" type="button" disabled>Очистить список</button><button class="button primary" id="confirmScanIssues" type="button" disabled>Списать всё</button></div></div>'''
@@ -382,28 +403,6 @@ HTML = HTML.replace(
     "fillSelects();renderBalance();", "fillSelects();renderWarehouseCategories();renderBalance();",
 )
 
-DELIVERY_JS = r'''
-let currentDelivery=0;
-function renderWarehouseCategories(){const target=document.getElementById('warehouseCategories');if(target)target.innerHTML=(state.warehouse_categories||[]).map((x,i)=>`<div class="card" style="border-top:4px solid ${['#2563eb','#0ea5e9','#8b5cf6','#14b8a6','#f59e0b','#64748b'][i]}"><span>${esc(x.name)}</span><strong>${Number(x.quantity).toLocaleString('ru-RU')}</strong></div>`).join('')}
-async function loadDeliveries(){try{const q=document.getElementById('deliverySearch')?.value||'';const rows=q?(await request('/api/deliveries?query='+encodeURIComponent(q))).deliveries:(state.deliveries||[]);document.getElementById('deliveryList').innerHTML=rows.map(x=>`<tr><td>${esc(x.delivery_number||'Без номера')}</td><td>${esc(x.supplier)}</td><td>${esc(x.source_filename)}</td><td><span class="badge">${esc(x.status)}</span></td><td>${x.accepted||0} из ${x.total||0}</td><td>${x.problems||0}</td><td><button class="button primary" onclick="openDelivery(${x.id})">Открыть поставку</button></td></tr>`).join('')||'<tr><td class="empty" colspan="7">Поставок пока нет</td></tr>'}catch(e){notify(e.message,true)}}
-async function openDelivery(id){try{currentDelivery=id;const r=await request('/api/delivery?id='+id),d=r.delivery,summary={total:r.lines.length,accepted:r.lines.filter(x=>x.state==='Принято').length,existing:r.lines.filter(x=>x.state==='Уже на складе').length,errors:r.lines.filter(x=>['Ошибка','Дубль в файле'].includes(x.state)).length,waiting:r.lines.filter(x=>x.state==='Ожидается').length};document.getElementById('deliveryCard').innerHTML=`<div class="box"><div class="modal-head"><div><h2>Поставка ${esc(d.delivery_number||'#'+d.id)}</h2><p class="hint">${esc(d.supplier)} · ${esc(d.status)}</p></div><div><a class="button" href="/export/delivery.csv?id=${id}">Скачать результат</a> <button class="button" onclick="closeDelivery(${id})">Закрыть поставку</button></div></div><div class="cards" style="margin-bottom:14px">${[['Всего',summary.total],['Принято',summary.accepted],['Уже на складе',summary.existing],['Ошибки',summary.errors],['Ожидается',summary.waiting]].map(([k,v])=>`<div class="card"><span>${k}</span><strong>${v}</strong></div>`).join('')}</div><div class="box" style="margin-bottom:14px;background:#eff6ff"><h3>Приемка сканером</h3><input id="deliveryScanner" style="width:100%;font-size:22px;padding:15px;border:2px solid #2563eb;border-radius:9px" placeholder="Сканируйте S/N или QR" onkeydown="if(event.key==='Enter'){event.preventDefault();scanDelivery()}"><div id="deliveryScanResult" class="hint" style="margin-top:10px"></div></div><div class="import-actions" style="margin-bottom:10px"><select id="deliveryFillField"><option value="datacenter">ЦОД</option><option value="shelf">Стеллаж/полка</option><option value="object_name">Объект</option><option value="equipment_type">Тип оборудования</option><option value="component_type">Тип компонента</option><option value="cable_type">Тип кабеля</option><option value="vendor">Вендор</option><option value="model">Модель</option><option value="item_name">Наименование</option></select><input id="deliveryFillValue" placeholder="Значение"><button class="button" onclick="fillDelivery(false)">Заполнить выбранные строки</button><button class="button" onclick="fillDelivery(true)">Заполнить пустые ниже этим значением</button><button class="button primary" onclick="acceptSelectedDelivery()">Принять выбранные строки</button></div><div class="table-wrap"><table><thead><tr><th></th><th>S/N</th><th>Состояние</th><th>Наименование</th><th>Модель</th><th>Вендор</th><th>ЦОД</th><th>Полка</th><th>Объект</th><th>Тип</th><th>Кол-во</th></tr></thead><tbody id="deliveryLines">${r.lines.map(x=>`<tr><td><input class="delivery-check" type="checkbox" value="${x.id}" ${x.state==='Принято'?'disabled':''}></td><td>${esc(x.serial_number)}</td><td>${esc(x.state)}${x.error_text?' · '+esc(x.error_text):''}</td><td>${esc(x.item_name)}</td><td>${esc(x.model)}</td><td>${esc(x.vendor)}</td><td>${esc(x.datacenter)}</td><td>${esc(x.shelf)}</td><td>${esc(x.object_name)}</td><td>${esc(x.equipment_type||x.component_type||x.cable_type)}</td><td>${x.quantity}</td></tr>`).join('')}</tbody></table></div></div>`;document.getElementById('deliveryScanner').focus()}catch(e){notify(e.message,true)}}
-function selectedDeliveryLineIds(){return [...document.querySelectorAll('.delivery-check:checked')].map(x=>Number(x.value))}
-function promptUnplannedValues(serial){const supplier=prompt(`Поставщик для ${serial}`,'');if(!supplier)return null;const vendor=prompt('Вендор','');if(!vendor)return null;const model=prompt('Модель','')||'';const equipment_type=prompt('Тип оборудования или компонента','');if(!equipment_type)return null;const project=prompt('Проект','')||'';const datacenter=prompt('ЦОД','Ixcellerate');if(!datacenter)return null;const shelf=prompt('Стеллаж/полка','');if(!shelf)return null;const item_name=[equipment_type,vendor,model].filter(Boolean).join(' ');return{supplier,vendor,model,equipment_type,project,datacenter,shelf,item_name}}
-async function scanDelivery(){const input=document.getElementById('deliveryScanner'),serial=input.value.trim(),box=document.getElementById('deliveryScanResult');if(!serial)return;try{const info=await actionJson({action:'INSPECT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial});box.innerHTML=`S/N ${esc(info.serial_number)} · ${info.found_in_delivery?'найден в документе':'не найден в документе'} · ${info.exists_in_warehouse?'уже на складе':'новый'}`;let r=null;if(info.allowed_actions.includes('blocked_already_accepted'))throw new Error('Этот S/N уже принят');if(info.allowed_actions.includes('accept_new')){if(!confirm(`Принять S/N ${info.serial_number} на склад?`)){input.value='';input.focus();return}r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial})}else if(info.allowed_actions.includes('fill_empty_existing')){const conflicts=Object.keys(info.conflicting_fields||{});if(!confirm(`S/N уже есть на складе. Дополнить только пустые поля?${conflicts.length?' Конфликты не будут перезаписаны: '+conflicts.join(', '):''}`)){input.value='';input.focus();return}r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial})}else if(info.allowed_actions.includes('accept_unplanned')){if(!confirm('S/N не найден в поставке. Принять как внеплановую позицию?')){input.value='';input.focus();return}const values=promptUnplannedValues(info.serial_number);if(!values){input.value='';input.focus();return}r=await actionJson({action:'ACCEPT_DELIVERY_SERIAL',delivery_id:currentDelivery,serial_number:serial,unplanned:true,values})}if(r&&r.accepted){notify('Позиция обработана');input.value='';await loadAll();await openDelivery(currentDelivery)}else notify('Позиция пропущена')}catch(e){notify(e.message,true);input.focus()}}
-async function acceptSelectedDelivery(){const ids=selectedDeliveryLineIds();if(!ids.length)return notify('Выберите строки',true);try{const r=await actionJson({action:'ACCEPT_DELIVERY_BATCH',delivery_id:currentDelivery,line_ids:ids,common_values:{}});notify(`Принято: ${r.accepted_new||0}, связано: ${r.linked_existing||0}`);await loadAll();await openDelivery(currentDelivery)}catch(e){notify(e.message,true)}}
-async function fillDelivery(only_empty){const ids=[...document.querySelectorAll('.delivery-check:checked')].map(x=>Number(x.value)),field=document.getElementById('deliveryFillField').value,value=document.getElementById('deliveryFillValue').value;try{await actionJson({action:'UPDATE_DELIVERY_LINES',delivery_id:currentDelivery,line_ids:ids,values:{[field]:value},only_empty});notify('Строки обновлены');await openDelivery(currentDelivery)}catch(e){notify(e.message,true)}}
-async function saveDeliveryCell(line_id,field,value){try{await actionJson({action:'UPDATE_DELIVERY_LINES',delivery_id:currentDelivery,line_ids:[line_id],values:{[field]:value}});notify('Ячейка сохранена')}catch(e){notify(e.message,true)}}
-async function closeDelivery(id){if(!confirm('Закрыть поставку? Приемка после закрытия будет недоступна.'))return;try{await actionJson({action:'CLOSE_DELIVERY',delivery_id:id});await loadAll();await loadDeliveries();document.getElementById('deliveryCard').innerHTML=''}catch(e){notify(e.message,true)}}
-async function actionJson(data){return request('/api/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)})}
-document.getElementById('deliveryCsv').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const r=await request('/api/preview-csv?kind=delivery',{method:'POST',headers:{'Content-Type':'text/csv','X-Filename':encodeURIComponent(file.name)},body:file}),s=r.summary||{};const stats=[['Строк файла',s.source_rows??r.total],['Получено S/N',s.serials??r.total],['Новые S/N',s.new_serials??r.new],['Уже на складе',s.existing_stock??r.updated],['Дубли',s.duplicates??r.duplicates],['Без S/N',s.rows_without_serial??0],['Ошибки',s.errors??r.errors],['Предупреждения',s.warnings??0]];document.getElementById('deliveryPreview').innerHTML=`<div class="box"><h3>Проверка файла</h3><div class="cards">${stats.map(([name,value])=>`<div class="card"><span>${name}</span><strong>${value||0}</strong></div>`).join('')}</div>${r.unknown_columns.length?`<p class="hint">Нераспознанные столбцы: ${r.unknown_columns.map(esc).join(', ')}</p>`:'<p class="hint">Все столбцы распознаны.</p>'}<div style="margin-top:12px"><button class="button primary" ${r.can_confirm?'':'disabled'} onclick="confirmDelivery('${r.preview_id}')">Подтвердить импорт</button></div></div>`}catch(x){notify(x.message,true)}finally{e.target.value=''}};
-async function confirmDelivery(preview_id){try{const r=await actionJson({action:'CONFIRM_DELIVERY',preview_id});notify('Поставка загружена');document.getElementById('deliveryPreview').innerHTML='';await loadAll();await loadDeliveries();await openDelivery(r.delivery_id)}catch(e){notify(e.message,true)}}
-'''
-for _field in ("item_name", "model", "vendor", "datacenter", "shelf", "object_name"):
-    DELIVERY_JS = DELIVERY_JS.replace(
-        f'<td>${{esc(x.{_field})}}</td>',
-        f'<td contenteditable="true" onblur="saveDeliveryCell(${{x.id}},\'{_field}\',this.innerText)">${{esc(x.{_field})}}</td>',
-    )
-HTML = HTML.replace("const today=new Date()", DELIVERY_JS + "\nconst today=new Date()")
 HTML = HTML.replace(
     "problem_rows:'Проблемные строки'}",
     "problem_rows:'Проблемные строки',loaded_deliveries:'Загруженные поставки',accepted_delivery_items:'Принятые позиции поставок',delivery_problem_rows:'Проблемные строки поставок'}",
@@ -434,7 +433,7 @@ HTML = HTML.replace(
     '<button class="section-button" data-section="profile">Профиль</button>',
 ).replace(
     '<header class="top"><div><h1 id="pageTitle">Склад</h1><span class="hint">Отдел дежурных инженеров · Ixcellerate</span></div><div><label class="hint" style="display:inline">Проверка файла: <select id="importMode"><option value="soft">Обычная</option><option value="strict">Строгая</option></select></label> <span id="currentUser"></span> <button class="button" onclick="showProfile()">Профиль</button> <button class="button" onclick="loadAll()">Обновить</button> <button class="button" onclick="logout()">Выйти</button></div></header>',
-    '<header class="top"><div><h1 id="pageTitle">Главная</h1><span class="hint">Отдел дежурных инженеров · Ixcellerate</span></div><div class="profile-actions"><span id="currentUser"></span><button class="button" id="adminPassword" hidden onclick="showProfile()">Сменить пароль</button><button class="button" onclick="loadAll()">Обновить</button><button class="button" onclick="logout()">Сменить инженера / выйти</button><select id="importMode" hidden><option value="soft">Обычная</option><option value="strict">Полная</option></select></div></header>',
+    '<header class="top"><div><h1 id="pageTitle">Главная</h1><span class="hint">Отдел дежурных инженеров · Ixcellerate</span></div><div class="profile-actions"><span id="currentUser"></span><button class="button" onclick="loadAll()">Обновить</button><button class="button" onclick="logout()">Сменить инженера / выйти</button><select id="importMode" hidden><option value="soft">Обычная</option><option value="strict">Полная</option></select></div></header>',
 ).replace(
     '</main></div><div class="status" id="status">',
     HOME_SECTION + '</main></div><div class="status" id="status">',
@@ -511,133 +510,6 @@ HTML = HTML.replace(
     1,
 )
 
-# Финальный UX-слой сохраняет старые API и таблицы БД, но показывает инженеру
-# предметные формы вместо набора технических полей.
-UX_SCRIPT = r'''
-const RECEIPT_TYPES={
- 'Оборудование':['Сервер','Коммутатор','СХД','ИБП','Другое оборудование'],
- 'Компоненты':['RAM','SSD','HDD','CPU','RAID','NIC','PSU','Трансивер','Другое комплектующее'],
- 'Кабели':['Оптика','Медь','DAC','AOC','Другое']};
-const TYPE_VENDORS={
- 'Сервер':['Dell','HPE','Lenovo','Supermicro','Другое'],
- 'RAM':['Samsung','Hynix','Micron','Kingston','Другое'],
- 'SSD':['Samsung','Intel','Micron','Toshiba','Seagate','WD','Другое'],
- 'HDD':['Samsung','Intel','Micron','Toshiba','Seagate','WD','Другое']};
-function refsOf(kind){return state.references.filter(x=>x.kind===kind&&x.is_active).map(x=>x.name)}
-function setOptions(select,values,placeholder='Выберите'){select.innerHTML=option('',placeholder)+values.map(x=>option(x)).join('')}
-function receiptCategoryChanged(){const f=document.getElementById('simpleReceiptForm'),category=f.category.value;setOptions(f.item_type,RECEIPT_TYPES[category]||[]);f.item_type.disabled=!category;updateReceiptFields()}
-function updateReceiptFields(){const f=document.getElementById('simpleReceiptForm'),category=f.category.value,type=f.item_type.value,isCable=category==='Кабели';setOptions(f.vendor,TYPE_VENDORS[type]||(isCable?['Не указан']:refsOf('vendor').concat('Другое')),'Не указан');f.vendor.value=isCable?'Не указан':'';f.vendor.closest('.ux-field').hidden=isCable;f.model.closest('.ux-field').hidden=isCable;f.serial_number.closest('.ux-field').hidden=isCable;f.inventory_number.closest('.ux-field').hidden=isCable;f.quantity.closest('.ux-field').hidden=!isCable;f.serial_number.required=!isCable;f.quantity.value=isCable?f.quantity.value||1:1;updateReceiptSuggestions()}
-function updateReceiptSuggestions(){const f=document.getElementById('simpleReceiptForm'),type=selectedOrCustom(f.item_type,f.custom_type),vendor=selectedOrCustom(f.vendor,f.custom_vendor),model=f.model.value.trim();const rows=(state.recent_receipts||[]).filter(x=>(!type||(x.equipment_type||x.component_type||x.cable_type)===type)&&(!vendor||vendor==='Не указан'||x.vendor===vendor));const models=[...new Set(rows.map(x=>x.model).filter(Boolean))],names=[...new Set(rows.filter(x=>!model||x.model===model).map(x=>x.item_name).filter(Boolean))];for(const [id,values] of [['ref-model',[...models,...refsOf('model')]],['ref-item_name',[...names,...refsOf('item_name')]]]){let list=document.getElementById(id);if(!list){list=document.createElement('datalist');list.id=id;document.body.appendChild(list)}list.innerHTML=[...new Set(values)].map(x=>option(x)).join('')}}
-function selectedOrCustom(select,custom){return select.value==='Другое'?(custom.value.trim()||'Другое'):select.value}
-function toggleCustom(select,custom){custom.hidden=select.value!=='Другое';if(!custom.hidden)custom.focus()}
-function receiptPayload(form){const d=formData(form),category=d.category,type=selectedOrCustom(form.item_type,form.custom_type);return {action:'STOCK_RECEIPT',receipt_date:d.receipt_date,responsible:d.responsible,supplier:selectedOrCustom(form.supplier,form.custom_supplier)||'Не указан',item_name:d.item_name,project:d.project||'',serial_number:d.serial_number||'',inventory_number:d.inventory_number||'',vendor:selectedOrCustom(form.vendor,form.custom_vendor)||'Не указан',model:d.model||'',shelf:d.shelf||'',object_name:d.object_name||'Не указано',datacenter:'Ixcellerate',equipment_type:category==='Оборудование'?type:'',component_type:category==='Компоненты'?type:'',cable_type:category==='Кабели'?type:'',unit:'шт',quantity:category==='Кабели'?d.quantity:1,order_date:'',request_number:'',order_number:'',plu:''}}
-async function saveSimpleReceipt(e){e.preventDefault();try{await actionJson(receiptPayload(e.currentTarget));notify('Приход сохранен');e.currentTarget.reset();setReceiptMode('Оборудование');await loadAll()}catch(x){notify(x.message,true)}}
-function setReceiptMode(category){const f=document.getElementById('simpleReceiptForm');f.category.value=category;receiptCategoryChanged();document.querySelectorAll('[data-receipt-mode]').forEach(x=>x.classList.toggle('primary',x.dataset.receiptMode===category));document.getElementById('simpleReceiptTitle').textContent=category==='Кабели'?'Приход кабелей':'Приход оборудования и компонентов'}
-function cableIssuePayload(form){const d=formData(form);return {action:'STOCK_ISSUE',issue_date:d.issue_date,responsible:d.responsible,source_cable_type:selectedOrCustom(form.source_cable_type,form.custom_cable_type),source_item_name:d.source_item_name,quantity:d.quantity,task_type:d.task_type||'',task_number:d.task_number||'',target_serial_number:'',target_hostname:'',comment:[d.project?`Проект: ${d.project}`:'',d.comment||''].filter(Boolean).join('; ')}}
-async function saveCableIssue(e){e.preventDefault();try{await actionJson(cableIssuePayload(e.currentTarget));notify('Кабель списан');e.currentTarget.reset();e.currentTarget.issue_date.value=today;await loadAll()}catch(x){notify(x.message,true)}}
-function dailyRow(){const sources=['Rooms','Outlook','ITSM','Zabbix','DCIM','Склад','Другое'],types=['ЗНР','ПНР','ИЗМ','ЗНО','ИНЦ','Другое'],statuses=['Выполнено','В работе','Ожидание','Отложено'];return `<tr><td><select name="task_source" required>${sources.map(x=>option(x)).join('')}</select></td><td><select name="task_type" required>${types.map(x=>option(x)).join('')}</select></td><td><input name="task_number" required></td><td><textarea name="description" required></textarea></td><td><select name="status" required>${statuses.map(x=>option(x)).join('')}</select></td><td><textarea name="comment"></textarea></td><td><button type="button" class="button" onclick="this.closest('tr').remove()">Удалить</button></td></tr>`}
-function addDailyRow(){document.getElementById('dailyLogRows').insertAdjacentHTML('beforeend',dailyRow())}
-async function saveDailyLogs(){const date=document.getElementById('dailyLogDate').value,rows=[...document.querySelectorAll('#dailyLogRows tr')].map(tr=>Object.fromEntries(new FormData(Object.assign(document.createElement('form'),{innerHTML:tr.innerHTML})).entries()));/* form clone loses textarea state, collect directly */const clean=[...document.querySelectorAll('#dailyLogRows tr')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[name]')].map(x=>[x.name,x.value]))).map(x=>({...x,work_date:date}));if(!date||clean.some(x=>!x.task_number.trim()||!x.description.trim())){notify('Заполните дату, номер задачи и выполненные работы',true);return}try{const r=await actionJson({action:'WORK_LOGS',rows:clean});notify(`Сохранено задач: ${r.saved}`);document.getElementById('dailyLogRows').innerHTML=dailyRow();await buildDaily()}catch(x){notify(x.message,true)}}
-function balanceCategory(x){return x.category||x.cable_type?'Кабели':x.component_type?'Компоненты':'Оборудование'}
-function renderSimpleBalance(){const q=document.getElementById('balanceQuery').value.trim().toLocaleLowerCase(),category=document.getElementById('uxBalanceCategory').value,type=document.getElementById('uxBalanceType').value,project=document.getElementById('uxBalanceProject').value;const rows=state.balance.filter(x=>(!category||x.category===category)&&(!type||x.item_type===type)&&(!project||x.project===project)&&rowMatchesQuery(x,q));document.getElementById('balanceBody').innerHTML=rows.slice(0,500).map(x=>`<tr><td>${esc(x.category)}</td><td>${esc(x.item_type)}</td><td>${esc(x.item_name)}</td><td>${esc(x.supplier)}</td><td>${esc(x.vendor)}</td><td>${esc(x.model)}</td><td>${esc(x.serial_number)}</td><td>${Number(x.balance).toLocaleString('ru-RU')}</td><td>${esc(x.project)}</td><td>${esc(x.shelf)}</td><td>${esc(x.object_name)}</td><td><button class="button" onclick="openPositionCard('${encodeURIComponent(x.position_key)}')">Открыть карточку</button> <button class="button" onclick="selectForIssue('${encodeURIComponent(x.position_key)}')">Списать</button></td></tr>`).join('')||'<tr><td class="empty" colspan="12">Ничего не найдено</td></tr>';document.getElementById('balanceLimit').textContent=`Показано строк: ${rows.length}`}
-function initEngineerUX(){
- const receipt=document.getElementById('receipt');receipt.querySelectorAll(':scope > .scanner-box,:scope > .import-box,:scope > .preview,:scope > h2,:scope > p,:scope > form.form').forEach(x=>x.hidden=true);receipt.insertAdjacentHTML('afterbegin',`<div class="mode-tabs"><button class="button primary" data-receipt-mode="Оборудование" onclick="setReceiptMode('Оборудование')">Принять оборудование</button><button class="button" data-receipt-mode="Компоненты" onclick="setReceiptMode('Компоненты')">Принять компоненты</button><button class="button" data-receipt-mode="Кабели" onclick="setReceiptMode('Кабели')">Приход кабелей</button></div><h2 id="simpleReceiptTitle">Приход оборудования и компонентов</h2><form class="ux-form" id="simpleReceiptForm"><div class="ux-field"><label>Дата</label><input name="receipt_date" type="date" required value="${today}"></div><div class="ux-field"><label>ФИО</label><input name="responsible" required></div><div class="ux-field"><label>Поставщик</label><select name="supplier" onchange="toggleCustom(this,this.form.custom_supplier)"></select><input name="custom_supplier" hidden placeholder="Новый поставщик"></div><div class="ux-field"><label>Что приехало?</label><select name="category" onchange="receiptCategoryChanged()" required></select></div><div class="ux-field"><label>Тип</label><select name="item_type" onchange="toggleCustom(this,this.form.custom_type);updateReceiptFields()" required></select><input name="custom_type" hidden placeholder="Укажите свой тип"></div><div class="ux-field"><label>Вендор</label><select name="vendor" onchange="toggleCustom(this,this.form.custom_vendor)"></select><input name="custom_vendor" hidden placeholder="Укажите вендора"></div><div class="ux-field"><label>Модель</label><input name="model" list="ref-model"></div><div class="ux-field"><label>Наименование</label><input name="item_name" list="ref-item_name" required></div><div class="ux-field"><label>Проект</label><select name="project"><option value="">Не указан</option><option>Digital</option><option>Tech</option><option>HGX</option></select></div><div class="ux-field"><label>Стеллаж/полка</label><input name="shelf" list="ref-shelf"></div><div class="ux-field"><label>S/N</label><input name="serial_number"></div><div class="ux-field"><label>Инвентарный №</label><input name="inventory_number"></div><div class="ux-field"><label>Количество</label><input name="quantity" type="number" min="0.001" step="0.001" value="1"></div><details class="ux-more"><summary>Дополнительно</summary><div class="ux-field"><label>Объект размещения</label><input name="object_name" list="ref-object"></div></details><div class="actions"><button class="button primary">Принять на склад</button></div></form>`);const rf=document.getElementById('simpleReceiptForm');setOptions(rf.supplier,['Не указан',...refsOf('supplier'),'Другое']);setOptions(rf.category,Object.keys(RECEIPT_TYPES));rf.onsubmit=saveSimpleReceipt;setReceiptMode('Оборудование');
- const issue=document.getElementById('issue');issue.insertAdjacentHTML('afterbegin',`<div class="box cable-process"><h2>Списание кабелей</h2><p class="hint">Кабель списывается по типу и наименованию. S/N, задача и целевое оборудование не требуются.</p><form class="ux-form" id="cableIssueForm"><div class="ux-field"><label>Дата</label><input name="issue_date" type="date" required value="${today}"></div><div class="ux-field"><label>ФИО</label><input name="responsible" required></div><div class="ux-field"><label>Тип кабеля</label><select name="source_cable_type" onchange="toggleCustom(this,this.form.custom_cable_type)" required>${RECEIPT_TYPES.Кабели.map(x=>option(x)).join('')}</select><input name="custom_cable_type" hidden placeholder="Укажите тип"></div><div class="ux-field"><label>Наименование</label><input name="source_item_name" list="ref-item_name" required></div><div class="ux-field"><label>Количество</label><input name="quantity" type="number" min="0.001" step="0.001" required value="1"></div><div class="ux-field"><label>Проект</label><select name="project"><option value="">Не указан</option><option>Digital</option><option>Tech</option><option>HGX</option></select></div><div class="ux-field"><label>Тип задачи (необязательно)</label><select name="task_type"><option value="">Не указана</option>${['ЗНР','ПНР','ИЗМ','ЗНО','ИНЦ','Другое'].map(x=>option(x)).join('')}</select></div><div class="ux-field"><label>Номер задачи (необязательно)</label><input name="task_number"></div><div class="ux-field wide"><label>Комментарий</label><textarea name="comment"></textarea></div><div class="actions"><button class="button primary">Списать кабель</button></div></form></div>`);document.getElementById('cableIssueForm').onsubmit=saveCableIssue;
- const daily=document.getElementById('daily');daily.querySelector('h2').textContent='Ежедневный отчет';daily.insertAdjacentHTML('afterbegin',`<div class="box daily-entry"><h2>Задачи за день</h2><div class="report-actions"><label>Дата <input id="dailyLogDate" type="date" value="${today}"></label><button class="button" onclick="addDailyRow()">+ Добавить задачу</button><button class="button primary" onclick="saveDailyLogs()">Сохранить отчет</button></div><div class="table-wrap daily-grid"><table><thead><tr><th>Источник задачи</th><th>Тип задачи</th><th>Номер задачи</th><th>Выполненные работы</th><th>Статус работ</th><th>Комментарий</th><th></th></tr></thead><tbody id="dailyLogRows">${dailyRow()}</tbody></table></div></div>`);daily.querySelectorAll(':scope > .box').forEach((x,i)=>{if(i>0&&x.textContent.includes('Загрузить готовый'))x.hidden=true});
- const filters=document.querySelector('#balance .filters');filters.innerHTML='<input id="balanceQuery" placeholder="S/N, инвентарный №, модель, наименование, поставщик или полка"><select id="uxBalanceCategory"></select><select id="uxBalanceType"></select><select id="uxBalanceProject"></select>';setOptions(document.getElementById('uxBalanceCategory'),['Оборудование','Компоненты','Кабели'],'Что это: всё');setOptions(document.getElementById('uxBalanceType'),[...new Set(state.balance.map(x=>x.item_type).filter(Boolean))],'Все типы');setOptions(document.getElementById('uxBalanceProject'),[...new Set(state.balance.map(x=>x.project).filter(Boolean))],'Все проекты');document.querySelector('#balance thead').innerHTML='<tr><th>Что это</th><th>Тип</th><th>Наименование</th><th>Поставщик</th><th>Вендор</th><th>Модель</th><th>S/N</th><th>Остаток</th><th>Проект</th><th>Полка</th><th>Объект размещения</th><th>Действия</th></tr>';filters.querySelectorAll('input,select').forEach(x=>x.oninput=renderSimpleBalance);renderSimpleBalance();
- const home=document.querySelector('.home-actions');if(home)home.innerHTML=`<button class="home-action primary" onclick="openTask('warehouse','receipt');setReceiptMode('Оборудование')"><strong>Принять оборудование</strong></button><button class="home-action" onclick="openTask('warehouse','issue')"><strong>Списать оборудование</strong></button><button class="home-action" onclick="openTask('warehouse','receipt');setReceiptMode('Кабели')"><strong>Принять кабели</strong></button><button class="home-action" onclick="openTask('warehouse','issue');document.getElementById('cableIssueForm').scrollIntoView()"><strong>Списать кабели</strong></button><button class="home-action" onclick="openTask('warehouse','balance')"><strong>Посмотреть баланс</strong></button><button class="home-action" onclick="openTask('reports','daily')"><strong>Сделать отчет</strong></button><button class="home-action" onclick="openTask('warehouse','deliveries')"><strong>Поставки</strong></button>`;
-}
-function scenarioCards(rootId,items){const root=document.getElementById(rootId),bar=document.createElement('div'),stage=document.createElement('div'),hint=document.createElement('p');bar.className='scenario-cards';stage.className='scenario-stage';hint.className='scenario-hint';hint.textContent='Выберите, как выполнить операцию. На экране будет только нужная форма.';root.prepend(stage);root.prepend(hint);root.prepend(bar);const all=[...new Set(items.flatMap(x=>x.nodes||[]).filter(Boolean))];all.forEach(x=>{x.hidden=true;stage.appendChild(x)});function close(){all.forEach(x=>x.hidden=true);stage.hidden=true;bar.hidden=false;hint.hidden=false;items.forEach(x=>x.button?.classList.remove('selected'))}items.forEach(item=>{const button=document.createElement('button');button.type='button';button.className='scenario-card';button.innerHTML=`<strong>${item.title}</strong><span>${item.help}</span>`;button.onclick=()=>{all.forEach(x=>x.hidden=true);bar.hidden=true;hint.hidden=true;stage.hidden=false;item.nodes.filter(Boolean).forEach(x=>x.hidden=false);stage.querySelector('.scenario-back')?.remove();const back=document.createElement('button');back.type='button';back.className='button scenario-back';back.textContent=`Назад к способам ${rootId==='receipt'?'прихода':'расхода'}`;back.onclick=close;stage.prepend(back);item.focus?.()};item.button=button;bar.appendChild(button)});root.showScenario=title=>items.find(x=>x.title===title)?.button.click();close()}
-const previewErrors={};const baseRenderPreview=renderPreview;renderPreview=function(kind,result){previewErrors[kind]=result.errors||[];baseRenderPreview(kind,result);const target=document.getElementById(`${kind}Preview`),actions=target?.lastElementChild;if(actions&&previewErrors[kind].length){const button=document.createElement('button');button.type='button';button.className='button';button.textContent='Скачать ошибки';button.onclick=()=>downloadPreviewErrors(kind);actions.appendChild(button)}};
-function downloadPreviewErrors(kind){const rows=previewErrors[kind]||[];if(!rows.length){notify('Ошибок в файле нет');return}const quote=value=>`"${String(value??'').replaceAll('"','""')}"`,csv='\ufeffСтрока;Ошибка\r\n'+rows.map(x=>[x.line,x.reason].map(quote).join(';')).join('\r\n'),link=document.createElement('a');link.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));link.download=`${kind}_errors.csv`;link.click();URL.revokeObjectURL(link.href)}
-function initScenarios(){const receiptScanner=document.getElementById('receiptScanner').closest('.scanner-box'),receiptImport=document.getElementById('receiptCsv').closest('.import-box'),receiptPreview=document.getElementById('receiptPreview'),simpleReceipt=document.getElementById('simpleReceiptForm'),manualReceipt=document.getElementById('stockReceiptForm'),deliveryHelp=document.createElement('div');deliveryHelp.className='box';deliveryHelp.innerHTML='<h2>Принять из поставки</h2><p class="hint">Загрузите файл снабжения и принимайте позиции сканером.</p><button type="button" class="button primary" onclick="openTask(\'warehouse\',\'deliveries\')">Открыть поставки</button>';scenarioCards('receipt',[{title:'Принять сканером',help:'Для партии серверов или компонентов',nodes:[receiptScanner],focus:()=>document.getElementById('receiptScanner').focus()},{title:'Принять из файла',help:'Для большого Excel/CSV',nodes:[receiptImport,receiptPreview]},{title:'Принять из поставки',help:'Через файл снабжения',nodes:[deliveryHelp]},{title:'Принять кабели',help:'Без серийных номеров',nodes:[simpleReceipt],focus:()=>setReceiptMode('Кабели')},{title:'Ручной ввод',help:'Запасной режим',nodes:[manualReceipt]}]);const issueScanner=document.getElementById('issueScanner').closest('.scanner-box'),bulk=document.getElementById('bulkIssueForm').closest('.box'),cable=document.getElementById('cableIssueForm').closest('.box'),search=document.getElementById('issueSearchForm').closest('.box'),manualIssue=document.getElementById('stockIssueForm');scenarioCards('issue',[{title:'Списать сканером',help:'Для партии серверов или компонентов',nodes:[issueScanner],focus:()=>document.getElementById('issueScanner').focus()},{title:'Списать из файла',help:'Для большого Excel/CSV',nodes:[bulk]},{title:'Списать кабели',help:'Без серийных номеров',nodes:[cable]},{title:'Найти и списать из баланса',help:'Поиск в текущем балансе',nodes:[search]},{title:'Ручной ввод',help:'Запасной режим',nodes:[manualIssue]}]);document.querySelector('[data-section="profile"]')?.remove();document.querySelectorAll('[name="responsible"]').forEach(x=>{x.readOnly=true;x.title='ФИО задано при входе'})}
-const originalLoadAll=loadAll;loadAll=async function(){await originalLoadAll();if(document.getElementById('simpleReceiptForm')){const t=document.getElementById('uxBalanceType'),p=document.getElementById('uxBalanceProject');setOptions(t,[...new Set(state.balance.map(x=>x.item_type).filter(Boolean))],'Все типы');setOptions(p,[...new Set(state.balance.map(x=>x.project).filter(Boolean))],'Все проекты');renderSimpleBalance()}const fullName=`${state.current_user.last_name||''} ${state.current_user.first_name||''}`.trim();document.getElementById('currentUser').textContent=`${fullName} · ${state.current_user.position||'Инженер'}`;document.getElementById('adminPassword').hidden=state.current_user.role!=='admin';document.querySelectorAll('[name="responsible"]').forEach(x=>x.value=fullName)};
-try{initEngineerUX()}catch(error){console.error('Engineer UX initialization failed',error)}
-try{initScenarios()}catch(error){console.error('Scenario initialization failed',error)}
-loadAll().catch(error=>console.error('Initial data loading failed',error));
-'''
-HTML = HTML.replace('</script></body></html>', UX_SCRIPT + '</script></body></html>')
-HTML = HTML.replace(
-    'name="vendor" onchange="toggleCustom(this,this.form.custom_vendor)"',
-    'name="vendor" onchange="toggleCustom(this,this.form.custom_vendor);updateReceiptSuggestions()"',
-).replace(
-    'name="model" list="ref-model"',
-    'name="model" list="ref-model" oninput="updateReceiptSuggestions()"',
-)
-HTML = HTML.replace('</style></head>', r'''
-.mode-tabs,#simpleReceiptTitle{display:none!important}.scenario-hint{margin:-8px 0 18px;color:var(--muted);font-size:16px}.scenario-stage>.scenario-back{margin-bottom:16px}
-.mode-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}.ux-form{display:grid;grid-template-columns:repeat(2,minmax(240px,1fr));gap:14px;max-width:920px}.ux-field{display:flex;flex-direction:column;gap:6px}.ux-field label{font-weight:700}.ux-field input,.ux-field select,.ux-field textarea,.daily-grid input,.daily-grid select,.daily-grid textarea{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff}.ux-field.wide,.ux-more,.ux-form>.actions{grid-column:1/-1}.ux-more{padding:12px;border:1px solid var(--line);border-radius:9px}.ux-more summary{cursor:pointer;font-weight:700}.cable-process{margin-bottom:20px;border:2px solid #93c5fd}.daily-entry{margin-bottom:18px}.daily-grid{margin-top:14px}.daily-grid textarea{min-width:220px;min-height:60px}.daily-grid select{min-width:130px}.scenario-cards{display:grid;grid-template-columns:repeat(5,minmax(145px,1fr));gap:12px;margin-bottom:22px}.scenario-card{min-height:112px;padding:16px;border:2px solid var(--line);border-radius:12px;background:#fff;text-align:left;cursor:pointer}.scenario-card:hover,.scenario-card.selected{border-color:var(--blue);background:#eff6ff}.scenario-card strong,.scenario-card span{display:block}.scenario-card strong{font-size:17px}.scenario-card span{margin-top:8px;color:var(--muted)}@media(max-width:1050px){.scenario-cards{grid-template-columns:repeat(2,1fr)}}@media(max-width:720px){.ux-form{grid-template-columns:1fr}.ux-field.wide,.ux-more,.ux-form>.actions{grid-column:1}.scenario-cards{grid-template-columns:1fr}.scenario-card{min-height:84px}}
-</style></head>''')
-
-
-WIZARD_SCRIPT = r'''
-const WIZARD_MODELS={
- 'Dell':['PowerEdge R650','PowerEdge R750','PowerEdge R760'],
- 'Huawei':['FusionServer 2288H V5','FusionServer 2288H V6'],
- 'Lenovo':['ThinkSystem SR650','ThinkSystem SR650 V2'],
- 'Supermicro':['SuperServer'],
- 'Samsung':['M393A8G40AB2-CWE','PM893','PM9A3'],
- 'Hynix':['HMAA8GR7AJR4N-XN'], 'Micron':['7400 PRO','9300 MAX']};
-function warehouseLanding(){
- const home=document.querySelector('.home-screen');
- if(!home)return;
- const icon=name=>`<svg aria-hidden="true" viewBox="0 0 24 24"><path d="${({warehouse:'M4 9l8-5 8 5v11H4V9zm4 11v-7h8v7M8 9h8',report:'M6 3h9l3 3v15H6V3zm3 5h6M9 12h6M9 16h4',monitor:'M3 12h4l2-5 4 10 2-5h6',profile:'M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9c.8-4 3.1-6 7-6s6.2 2 7 6'})[name]}"></path></svg>`;
- home.innerHTML=`<div class="landing-head"><p class="eyebrow">Рабочее пространство</p><h2>Добро пожаловать в ODE</h2><p>Выберите направление — на следующем экране будут только относящиеся к нему действия.</p></div><div class="portal-grid">
- <article class="portal-card"><div class="portal-icon">${icon('warehouse')}</div><h3>Склад</h3><p>Работа со складом</p><ul><li>Приемка и выдача</li><li>Баланс и поставки</li><li>Инвентаризация</li></ul><button onclick="openWarehouseHub()">Открыть</button></article>
- <article class="portal-card"><div class="portal-icon">${icon('report')}</div><h3>Отчеты</h3><p>Работа смены</p><ul><li>Ежедневный отчет</li><li>Еженедельный отчет</li><li>История работ</li></ul><button onclick="openTask('reports','daily')">Открыть</button></article>
- <article class="portal-card"><div class="portal-icon">${icon('monitor')}</div><h3>Мониторинг</h3><p>Состояние системы</p><ul><li>Проблемы</li><li>События</li><li>Мониторинг</li></ul><button onclick="openMonitoringHub()">Открыть</button></article>
- <article class="portal-card"><div class="portal-icon">${icon('profile')}</div><h3>Профиль</h3><p>Инженер смены</p><ul><li>Текущий инженер</li><li>Настройки смены</li><li>Смена инженера</li></ul><button onclick="openShiftProfile()">Открыть</button></article></div>`;
-}
-function openWarehouseHub(){showSection('warehouse');if(!byId('overview'))return;setHtml('overview',`<div class="landing-head compact"><p class="eyebrow">Склад</p><h2>Что нужно сделать?</h2><p>Выберите одну операцию для продолжения.</p></div><div class="action-grid"><button onclick="openTask('warehouse','receipt')"><strong>Принять оборудование</strong><span>Сканирование, поставка, кабели или ручной ввод</span></button><button onclick="openTask('warehouse','issue')"><strong>Выдать оборудование</strong><span>Сканирование, баланс или списание кабелей</span></button><button onclick="openTask('warehouse','deliveries')"><strong>Поставки</strong><span>Документы снабжения и приемка</span></button><button onclick="openTask('warehouse','balance')"><strong>Баланс</strong><span>Остатки, поиск и фильтры</span></button><button onclick="openTask('warehouse','inventory')"><strong>Инвентаризация</strong><span>Сверка фактического наличия</span></button></div>`);showView('overview')}
-function openMonitoringHub(){showSection('monitoring');if(!byId('monitoring'))return;setHtml('monitoring',`<div class="landing-head compact"><p class="eyebrow">Мониторинг</p><h2>Контроль системы</h2></div><div class="action-grid"><button onclick="showView('problems')"><strong>Проблемы</strong><span>Ошибки и несопоставленные операции</span></button><button onclick="openTask('warehouse','journal')"><strong>События</strong><span>Журнал складских операций</span></button><button><strong>Мониторинг</strong><span>Состояние ЦОД Ixcellerate</span></button></div>`);showView('monitoring')}
-function openShiftProfile(){showSection('profile');const root=byId('profile'),name=byId('currentUser')?.textContent||'Инженер смены';if(!root)return;setHtml('profile',`<div class="profile-card"><div class="portal-icon"><svg viewBox="0 0 24 24"><path d="M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9c.8-4 3.1-6 7-6s6.2 2 7 6"></path></svg></div><p class="eyebrow">Инженер смены</p><h2>${esc(name)}</h2><p>Все новые операции записываются под этим ФИО.</p><button class="button primary" onclick="logout()">Сменить инженера</button></div>`)}
-function choiceButton(label,value,onpick){const b=document.createElement('button');b.type='button';b.className='wizard-choice';b.innerHTML=`<strong>${label}</strong><span>Продолжить →</span>`;b.onclick=()=>onpick(value);return b}
-function startReceiptWizard(){
- const root=document.getElementById('receipt'),stage=root.querySelector('.scenario-stage'),scanner=document.getElementById('receiptScanner').closest('.scanner-box');
- root.appendChild(scanner);stage.innerHTML='';stage.hidden=false;const data={};let step=0;
- const steps=[
-  {title:'Что приехало?',key:'category',values:()=>Object.keys(RECEIPT_TYPES)},
-  {title:'Выберите тип',key:'type',values:()=>RECEIPT_TYPES[data.category]||[]},
-  {title:'Выберите вендора',key:'vendor',values:()=>TYPE_VENDORS[data.type]||refsOf('vendor').filter(x=>x!=='Не указан').slice(0,12).concat('Другое')},
-  {title:'Выберите модель',key:'model',values:()=>WIZARD_MODELS[data.vendor]||[...new Set((state.recent_receipts||[]).filter(x=>x.vendor===data.vendor).map(x=>x.model).filter(Boolean))].slice(0,12),input:true},
-  {title:'Параметры партии',key:'common',common:true}
- ];
- function render(){const s=steps[step];stage.innerHTML=`<div class="wizard-shell"><button class="wizard-back" type="button">← ${step?'Назад':'К способам приемки'}</button><div class="wizard-progress"><i style="width:${(step+1)/steps.length*100}%"></i></div><p>Шаг ${step+1} из ${steps.length}</p><h2>${s.title}</h2><div class="wizard-content"></div></div>`;stage.querySelector('.wizard-back').onclick=()=>{if(step){step--;render()}else root.showScenario&&root.showScenario('__none__')};const content=stage.querySelector('.wizard-content');
-  if(s.common){const opts=(xs,label)=>`<option value="">${label}</option>${[...new Set(xs.filter(Boolean))].map(x=>option(x)).join('')}`;content.innerHTML=`<div class="common-grid"><label>Проект<select id="wProject">${opts(['digital','tech'],'Неизвестно')}</select></label><label>Полка<select id="wShelf" required>${opts(refsOf('shelf'),'Выберите полку')}</select></label><label>ЦОД<select id="wDc" required>${opts(refsOf('datacenter').length?refsOf('datacenter'):['Ixcellerate'],'Выберите ЦОД')}</select></label><label>Поставщик <small>необязательно</small><select id="wSupplier">${opts(refsOf('supplier'),'Не указан')}</select></label></div><button class="wizard-next" type="button">Перейти к сканированию</button>`;document.getElementById('wDc').value='Ixcellerate';content.querySelector('button').onclick=()=>showScanner();return}
-  const values=s.values();const grid=document.createElement('div');grid.className='wizard-choices';values.forEach(v=>grid.appendChild(choiceButton(v,v,pick)));content.appendChild(grid);if(s.input||!values.length){content.insertAdjacentHTML('beforeend',`<div class="wizard-custom"><input placeholder="${s.key==='model'?'Введите модель':'Введите наименование'}"><button type="button">Продолжить</button></div>`);const input=content.querySelector('.wizard-custom input');content.querySelector('.wizard-custom button').onclick=()=>{if(input.value.trim())pick(input.value.trim())};input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();content.querySelector('.wizard-custom button').click()}}}
-  function pick(value){data[s.key]=value;if(value==='Другое'&&!s.input){const v=prompt('Введите значение');if(!v)return;data[s.key]=v}step++;render()}
- }
- function showScanner(){data.project=document.getElementById('wProject').value;data.shelf=document.getElementById('wShelf').value;data.datacenter=document.getElementById('wDc').value;data.supplier=document.getElementById('wSupplier').value||'Не указан';data.item_name=[data.type,data.vendor,data.model].filter(Boolean).join(' ')||`${data.category} без модели`;if(!data.shelf||!data.datacenter){notify('Выберите полку и ЦОД',true);return}const f=document.getElementById('scanReceiptForm');if(!f){notify('Форма сканирования недоступна. Вернитесь в приход.',true);return}const responsible=[...document.querySelectorAll('[name="responsible"]')].map(x=>x.value.trim()).find(Boolean)||'Инженер смены';Object.entries({receipt_date:today,responsible,supplier:data.supplier,vendor:data.vendor,model:data.model,item_name:data.item_name,project:data.project,datacenter:data.datacenter,shelf:data.shelf,object_name:'Склад',equipment_type:data.category==='Оборудование'?data.type:'',component_type:data.category==='Компоненты'?data.type:'',cable_type:'',unit:'шт'}).forEach(([k,v])=>{const field=f.elements.namedItem(k);if(field)field.value=v});stage.innerHTML=`<div class="wizard-shell scan-step"><button class="wizard-back" type="button">← Параметры партии</button><p class="eyebrow">${esc(data.item_name)}</p><h2>Сканируйте S/N</h2><p>Каждый Enter добавляет позицию во временный список. В базе пока ничего не меняется.</p></div>`;stage.querySelector('.wizard-back').onclick=()=>{step=4;render()};stage.appendChild(scanner);scanner.hidden=false;f.hidden=true;document.getElementById('receiptScanner').focus()}
- render();
-}
-function rebuildScenarioCards(){const receipt=document.getElementById('receipt'),bar=receipt.querySelector('.scenario-cards');bar.innerHTML='';[['📷','Сканировать оборудование','Партия с серийными номерами',startReceiptWizard],['✍','Ручное добавление','Одна или несколько позиций',()=>receipt.showScenario('Ручной ввод')],['📦','Принять кабели','Быстро, без серийных номеров',()=>receipt.showScenario('Принять кабели')],['📁','Импорт поставки','Preview и подтверждение',()=>openTask('warehouse','deliveries')]].forEach(([icon,title,help,fn])=>{const b=document.createElement('button');b.className='scenario-card';b.innerHTML=`<b>${icon}</b><strong>${title}</strong><span>${help}</span>`;b.onclick=fn;bar.appendChild(b)});const issue=document.getElementById('issue'),ib=issue.querySelector('.scenario-cards');ib.innerHTML='';[['📷','Сканировать оборудование','Найти по S/N и собрать список','Списать сканером'],['📋','Найти в балансе и списать','Выберите позицию из остатков','Найти и списать из баланса'],['🧵','Списать кабели','Одна операция на всё количество','Списать кабели'],['✍','Ручное списание','Нестандартная операция','Ручной ввод']].forEach(([icon,title,help,target])=>{const b=document.createElement('button');b.className='scenario-card';b.innerHTML=`<b>${icon}</b><strong>${title}</strong><span>${help}</span>`;b.onclick=()=>issue.showScenario(target);ib.appendChild(b)})}
-function modernShell(){const top=document.querySelector('.top'),actions=top?.querySelector('.profile-actions');if(!top||!actions)return;const brand=top.querySelector('div:first-child');if(brand)brand.innerHTML='<button class="top-brand" type="button" onclick="showSection(\'home\');showView(\'home\');window.scrollTo(0,0)" aria-label="Вернуться на главную ODE"><strong>ODE</strong><span>Отдел дежурных инженеров</span><span id="pageTitle" hidden>Главная</span></button>';const refresh=actions.querySelector('[onclick="loadAll()"]');if(refresh)refresh.onclick=async()=>{try{await loadAll();notify('Данные обновлены')}catch(e){notify(e.message,true)}};if(!actions.querySelector('.shift-profile')){const profile=document.createElement('button');profile.className='button shift-profile';profile.textContent='Профиль';profile.onclick=openShiftProfile;actions.insertBefore(profile,refresh)}const logout=top.querySelector('[onclick="logout()"]');if(logout){logout.style.display='inline-block';logout.textContent='Сменить инженера'}const homeButton=document.querySelector('[data-section="home"]');if(homeButton)homeButton.textContent='Главная';}
-function balanceKind(row){const text=`${row.category||''} ${row.item_type||''} ${row.item_name||''} ${row.equipment_type||''} ${row.component_type||''} ${row.cable_type||''}`.toLocaleLowerCase();if(text.includes('кабел'))return 'Кабели';if(text.includes('ssd')||text.includes('диск'))return 'SSD';if(text.includes('ram')||text.includes('памят'))return 'RAM';if(text.includes('коммут')||text.includes('switch'))return 'Коммутаторы';if(text.includes('сервер'))return 'Серверы';return ''}
-function renderBalanceKpis(){let strip=document.getElementById('balanceKpis');if(!strip){strip=document.createElement('div');strip.id='balanceKpis';strip.className='kpi-strip';document.getElementById('balance').insertBefore(strip,document.querySelector('#balance .import-box'))}const totals={Серверы:0,SSD:0,RAM:0,Коммутаторы:0,Кабели:0};state.balance.forEach(x=>{const kind=balanceKind(x);if(kind)totals[kind]+=Number(x.balance)||0});strip.innerHTML=Object.entries(totals).map(([name,value])=>`<div class="kpi-card"><span>${name}</span><strong>${value.toLocaleString('ru-RU')}</strong></div>`).join('')}
-const stage5LoadAll=loadAll;loadAll=async function(){await stage5LoadAll();renderBalanceKpis()}
-warehouseLanding();
-try{modernShell()}catch(error){console.error('Application shell initialization failed',error)}
-try{rebuildScenarioCards()}catch(error){console.error('Wizard cards initialization failed',error)}
-let balanceCardFilter='';
-function balanceGroup(row){const text=`${row.item_name||''} ${row.equipment_type||''} ${row.component_type||''} ${row.cable_type||''}`.toLocaleLowerCase();if(row.cable_type||text.includes('кабел'))return 'Кабели';if(/ssd|hdd|диск/.test(text))return 'Диски';if(/ram|dimm|памят/.test(text))return 'Память';if(/nic|switch|коммут|сетев/.test(text))return 'Сеть';if(text.includes('сервер'))return 'Серверы';return 'Прочее'}
-function setBalanceCardFilter(name=''){balanceCardFilter=name;renderBalanceKpis();renderSimpleBalance()}
-renderBalanceKpis=function(){let strip=document.getElementById('balanceKpis');if(!strip){strip=document.createElement('div');strip.id='balanceKpis';strip.className='kpi-strip';document.getElementById('balance').prepend(strip)}const icons={Серверы:'▣',Диски:'◉',Память:'▤',Сеть:'⌁',Кабели:'〰',Прочее:'◆'},names=Object.keys(icons),totals=Object.fromEntries(names.map(x=>[x,0]));state.balance.forEach(x=>totals[balanceGroup(x)]+=Number(x.balance)||0);strip.innerHTML=names.map(name=>`<button type="button" class="kpi-card ${balanceCardFilter===name?'active':''}" onclick="setBalanceCardFilter('${name}')"><b>${icons[name]}</b><span>${name}</span><strong>${totals[name].toLocaleString('ru-RU')}</strong></button>`).join('')+`<button type="button" class="button reset-balance" onclick="setBalanceCardFilter()">Сбросить фильтр</button>`}
-const filteredBalanceRender=renderSimpleBalance;renderSimpleBalance=function(){if(!balanceCardFilter)return filteredBalanceRender();const input=document.getElementById('balanceQuery'),saved=input.value;input.value='';const original=state.balance;state.balance=original.filter(x=>balanceGroup(x)===balanceCardFilter);try{filteredBalanceRender()}finally{state.balance=original;input.value=saved}}
-function renderWarehouseHistory(){const body=document.getElementById('operationBody');if(!body)return;document.querySelector('#journal strong').textContent='История склада';document.querySelector('#journal p').textContent='Приходы, расходы, поставки и изменения данных.';document.querySelector('#journal thead').innerHTML='<tr><th>Дата и время</th><th>Инженер</th><th>Действие</th><th>S/N</th><th>Наименование</th><th>Количество</th><th>Комментарий</th></tr>';body.innerHTML=(state.warehouse_history||[]).map(x=>`<tr><td>${esc(x.event_date)}</td><td>${esc(x.engineer)}</td><td>${esc(x.action)}</td><td>${esc(x.serial_number)}</td><td>${esc(x.item_name)}</td><td>${esc(x.quantity)}</td><td>${esc(x.comment)}</td></tr>`).join('')||'<tr><td class="empty" colspan="7">Операций пока нет</td></tr>'}
-function saveScanDraft(kind,rows){const key=`ode_${kind}_draft`,form=document.getElementById(kind==='receipt'?'scanReceiptForm':'scanIssueForm');if(rows.length)localStorage.setItem(key,JSON.stringify({rows,fields:form?formData(form):{}}));else localStorage.removeItem(key);renderDraftPanel()}
-function restoreScanDraft(kind){const draft=JSON.parse(localStorage.getItem(`ode_${kind}_draft`)||'null');if(!draft)return;openTask('warehouse',kind==='receipt'?'receipt':'issue');const root=document.getElementById(kind==='receipt'?'receipt':'issue');root.showScenario(kind==='receipt'?'Принять сканером':'Списать сканером');const form=document.getElementById(kind==='receipt'?'scanReceiptForm':'scanIssueForm');Object.entries(draft.fields||{}).forEach(([k,v])=>{const field=form.elements.namedItem(k);if(field)field.value=v});if(kind==='receipt'){scannedReceipts=draft.rows;renderScannedReceipts()}else{scannedIssues=draft.rows;renderScannedIssues()}}
-function clearScanDraft(kind){localStorage.removeItem(`ode_${kind}_draft`);if(kind==='receipt'){scannedReceipts=[];renderScannedReceipts()}else{scannedIssues=[];renderScannedIssues()}renderDraftPanel()}
-function renderDraftPanel(){let panel=document.getElementById('activeDrafts');if(!panel){panel=document.createElement('aside');panel.id='activeDrafts';panel.className='active-drafts';document.body.appendChild(panel)}panel.innerHTML=[['receipt','Черновик приемки'],['issue','Черновик расхода']].map(([kind,title])=>{const d=JSON.parse(localStorage.getItem(`ode_${kind}_draft`)||'null');return d?`<div><strong>${title}</strong><span>${d.rows.length} строк</span><button onclick="restoreScanDraft('${kind}')">Вернуться</button><button onclick="clearScanDraft('${kind}')">Очистить</button></div>`:''}).join('');panel.hidden=!panel.innerHTML}
-const baseReceiptRender=renderScannedReceipts;renderScannedReceipts=function(){baseReceiptRender();saveScanDraft('receipt',scannedReceipts)};const baseIssueRender=renderScannedIssues;renderScannedIssues=function(){baseIssueRender();saveScanDraft('issue',scannedIssues)};
-const finalLoadAll=loadAll;loadAll=async function(){await finalLoadAll();renderWarehouseHistory();renderBalanceKpis();renderDraftPanel()};renderDraftPanel();
-'''
-HTML = HTML.replace('</script></body></html>', WIZARD_SCRIPT + '</script></body></html>')
-HTML = HTML.replace('</style></head>', r'''
-.sidebar{display:none}.app{display:block}.main{padding:0 36px 48px;max-width:1440px;margin:auto}.top{height:78px;margin:0 -36px 30px;padding:0 36px;border-bottom:1px solid var(--line);background:#fff}.top-brand{display:flex;align-items:center;gap:16px}.top-brand strong{font-size:25px}.top-brand span{padding-left:16px;border-left:1px solid var(--line);color:var(--muted)}.subnav{max-width:1100px}.panel{box-shadow:none;border:0;background:transparent;padding:0}.landing-head{max-width:700px;margin:70px 0 36px}.landing-head.compact{margin:35px 0 28px}.landing-head h2{font-size:38px;margin:4px 0 10px}.landing-head p{font-size:17px;color:var(--muted)}.eyebrow{color:var(--blue)!important;font-weight:750;text-transform:uppercase;letter-spacing:.08em;font-size:12px!important}.portal-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}.portal-card{display:flex;min-height:360px;padding:28px;flex-direction:column;border:1px solid var(--line);border-radius:20px;background:#fff;box-shadow:0 10px 35px #1720330a}.portal-icon{display:grid;width:52px;height:52px;place-items:center;border-radius:14px;background:#eaf1ff;color:var(--blue)}.portal-icon svg{width:28px;height:28px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.portal-card h3{margin:22px 0 3px;font-size:23px}.portal-card p{margin:0;color:var(--muted)}.portal-card ul{margin:22px 0;padding-left:19px;color:#475569;line-height:1.9}.portal-card button{width:100%;margin-top:auto;padding:12px;border:0;border-radius:10px;background:#172033;color:#fff;font-weight:750;cursor:pointer}.action-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.action-grid button{min-height:160px;padding:28px;border:1px solid var(--line);border-radius:18px;background:#fff;text-align:left;cursor:pointer;box-shadow:0 8px 30px #17203309;transition:.15s}.action-grid button:hover{border-color:#93c5fd;transform:translateY(-2px);box-shadow:0 14px 36px #17203312}.action-grid b,.scenario-card b{display:block;font-size:30px;margin-bottom:20px}.action-grid strong{display:block;font-size:20px}.action-grid span{display:block;margin-top:9px;color:var(--muted);font-size:15px}.scenario-cards{grid-template-columns:repeat(4,1fr);max-width:1100px}.scenario-card{min-height:170px;padding:24px;border-radius:16px}.scenario-card b{margin-bottom:15px}.kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}.kpi-card{padding:20px;border:1px solid var(--line);border-radius:15px;background:#fff}.kpi-card span{display:block;color:var(--muted)}.kpi-card strong{display:block;margin-top:9px;font-size:30px}.table-wrap{max-height:62vh}.table-wrap th{position:sticky;top:0;z-index:2}.profile-card{max-width:560px;margin:70px auto;padding:42px;border:1px solid var(--line);border-radius:20px;background:#fff;text-align:center}.profile-card .portal-icon{margin:0 auto 24px}.profile-card h2{font-size:27px}.profile-card>p:not(.eyebrow){color:var(--muted);margin:12px 0 28px}#deliveries.active{display:grid;grid-template-columns:minmax(360px,42%) 1fr;gap:18px}#deliveries>.task-hint,#deliveries>.import-box,#deliveries>#deliveryPreview,#deliveries>.filters{grid-column:1/-1}#deliveries>#deliveryCard{grid-column:2;grid-row:5;margin-top:0!important}#deliveries>.table-wrap{grid-column:1;grid-row:5;max-height:68vh}#deliveryCard>.box{height:68vh;overflow:auto}.wizard-shell{max-width:920px;margin:20px auto;padding:30px}.wizard-shell>p{text-align:center;color:var(--muted)}.wizard-shell h2{text-align:center;font-size:32px;margin:14px 0 34px}.wizard-back{border:0;background:none;color:var(--muted);cursor:pointer;font-weight:700}.wizard-progress{height:5px;margin:24px 0 10px;border-radius:9px;background:#e2e8f0;overflow:hidden}.wizard-progress i{display:block;height:100%;background:var(--blue)}.wizard-choices{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.wizard-choice{min-height:105px;padding:20px;border:1px solid var(--line);border-radius:13px;background:#fff;text-align:left;cursor:pointer}.wizard-choice:hover{border-color:var(--blue);background:#eff6ff}.wizard-choice strong,.wizard-choice span{display:block}.wizard-choice strong{font-size:18px}.wizard-choice span{margin-top:12px;color:var(--muted)}.wizard-custom{display:flex;gap:10px;max-width:600px;margin:22px auto}.wizard-custom input,.common-grid input{width:100%;padding:14px;border:1px solid #cbd5e1;border-radius:9px}.wizard-custom button,.wizard-next{padding:13px 22px;border:0;border-radius:9px;background:var(--blue);color:#fff;font-weight:700;cursor:pointer}.common-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.common-grid label{font-weight:700}.common-grid small{font-weight:400;color:var(--muted)}.common-grid input{display:block;margin-top:7px}.wizard-next{display:block;margin:28px auto}.scan-step{padding-bottom:5px}.scan-step+ .scanner-box{max-width:920px;margin:auto}.scan-step+ .scanner-box>h2,.scan-step+ .scanner-box>.hint{display:none}.scanner-input{font-size:28px;padding:24px;text-align:center}.profile-actions #currentUser{font-weight:700}@media(max-width:1050px){.portal-grid{grid-template-columns:1fr 1fr}.kpi-strip{grid-template-columns:repeat(3,1fr)}#deliveries.active{display:block}#deliveryCard>.box{height:auto}}@media(max-width:800px){.main{padding:0 16px 30px}.top{height:auto;min-height:76px;margin:0 -16px 20px;padding:12px 16px;gap:12px}.top-brand span{display:none}.portal-grid,.action-grid,.wizard-choices,.common-grid{grid-template-columns:1fr}.portal-card{min-height:300px}.action-grid button{min-height:130px}.scenario-cards{grid-template-columns:1fr 1fr}.kpi-strip{grid-template-columns:1fr 1fr}.wizard-shell{padding:15px}.profile-actions .button{display:none}}
-</style></head>''')
-HTML = HTML.replace('</style></head>', r'''
-.top-brand{border:0;background:transparent;cursor:pointer;color:var(--text)}.kpi-card{cursor:pointer;text-align:left}.kpi-card.active{border-color:var(--blue);background:#eaf1ff;box-shadow:0 0 0 2px #bfdbfe}.kpi-card b{display:block;font-size:22px;color:var(--blue)}.reset-balance{align-self:center}.active-drafts{position:fixed;z-index:30;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:10px;padding:10px;border:1px solid #bfdbfe;border-radius:12px;background:#fff;box-shadow:0 12px 35px #17203333}.active-drafts[hidden]{display:none}.active-drafts div{display:flex;align-items:center;gap:10px}.active-drafts span{color:var(--muted)}.active-drafts button{padding:7px 10px;border:1px solid var(--line);border-radius:7px;background:#fff;cursor:pointer}
-</style></head>''', 1)
 
 
 def _externalized_html(html: str) -> str:
@@ -651,10 +523,12 @@ def _externalized_html(html: str) -> str:
             "core/context.js", "core/errors.js", "core/api.js", "core/router.js", "core/app.js",
             "warehouse/index.js", "warehouse/balance.js", "warehouse/history.js",
             "warehouse/receipt.js", "warehouse/issue.js", "warehouse/deliveries.js", "warehouse/inventory.js",
+            "warehouse/full_inventory.js",
+            "warehouse/migration_pilot.js",
             "reports/index.js", "reports/work_logs.js", "reports/daily.js", "reports/weekly.js",
             "monitoring/index.js",
             "administration/index.js", "administration/profile.js", "administration/users.js",
-            "administration/backup.js", "administration/diagnostics.js",
+            "administration/backup.js", "administration/diagnostics.js", "administration/references.js",
             "product.js",
         )
     )
@@ -705,6 +579,52 @@ def _validate_test_mode_database(db_path: str | Path) -> None:
             "ODE_TEST_MODE=1 нельзя использовать с рабочей data/warehouse.db; "
             "укажите отдельную тестовую базу через --db"
         )
+
+
+ODE_MIGRATION_PILOT = migration_pilot_requested()
+ODE_FULL_MIGRATION_CANDIDATE = full_migration_requested()
+if ODE_MIGRATION_PILOT and ODE_FULL_MIGRATION_CANDIDATE:
+    raise RuntimeError("Pilot и full migration review нельзя включать одновременно")
+if ODE_FULL_MIGRATION_CANDIDATE:
+    _FULL_BANNER = (
+        '<div class="migration-pilot-banner migration-full-banner" role="status">'
+        '<strong>ПОЛНАЯ КАНДИДАТНАЯ БАЗА СКЛАДА</strong>'
+        '<span>Только просмотр · не production</span>'
+        '<span id="migrationPilotDatabase"></span></div>'
+    )
+    HTML = HTML.replace(
+        '<div class="interface-error" id="interfaceError" hidden></div>',
+        '<div class="interface-error" id="interfaceError" hidden></div>' + _FULL_BANNER,
+        1,
+    )
+    LOGIN_HTML = LOGIN_HTML.replace(
+        "<body>",
+        '<body><div style="position:fixed;top:0;left:0;right:0;z-index:1000;'
+        'padding:9px 14px;background:#1e3a5f;color:#fff;font-weight:700;'
+        'text-align:center;font-size:13px">ПОЛНАЯ КАНДИДАТНАЯ БАЗА СКЛАДА '
+        '— только read-only review</div>',
+        1,
+    )
+elif ODE_MIGRATION_PILOT:
+    _PILOT_BANNER = (
+        '<div class="migration-pilot-banner" role="status">'
+        '<strong>МИГРАЦИОННЫЙ ПИЛОТ</strong>'
+        '<span>Только просмотр · не production</span>'
+        '<span id="migrationPilotDatabase"></span></div>'
+    )
+    HTML = HTML.replace(
+        '<div class="interface-error" id="interfaceError" hidden></div>',
+        '<div class="interface-error" id="interfaceError" hidden></div>' + _PILOT_BANNER,
+        1,
+    )
+    LOGIN_HTML = LOGIN_HTML.replace(
+        "<body>",
+        '<body><div style="position:fixed;top:0;left:0;right:0;z-index:1000;'
+        'padding:9px 14px;background:#7f1d1d;color:#fff;font-weight:700;'
+        'text-align:center;font-size:13px">МИГРАЦИОННЫЙ ПИЛОТ — только '
+        'disposable candidate DB</div>',
+        1,
+    )
 
 WORK_LOG_HEADERS = {
     "work_date": "Дата", "task_source": "Источник задачи", "task_type": "Тип задачи",
@@ -800,6 +720,12 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
     app_context = ensure_application_context(application)
     service = app_context.service_adapter()
     _validate_test_mode_database(service.db_path)
+    migration_full_status = validate_full_migration_database(service.db_path)
+    migration_pilot_status = validate_migration_pilot_database(service.db_path)
+    database_stat = service.db_path.stat()
+    database_fingerprint = migration_full_status.get("database_fingerprint") or (
+        f"local:{database_stat.st_dev:x}:{database_stat.st_ino:x}:{service.db_path.name}"
+    )
     sessions: dict[str, dict[str, str]] = {}
     sessions_lock = threading.Lock()
     session_ttl_seconds = 12 * 60 * 60
@@ -864,7 +790,75 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         "work_log_statuses": list(service.WORK_LOG_STATUSES),
                         "daily_report_uploads": app_context.reports.daily_report_uploads(),
                         "current_user": current_user,
+                        "runtime": {
+                            "database": service.db_path.name,
+                            "database_fingerprint": database_fingerprint,
+                            "working_database": not migration_full_status.get("read_only")
+                            and not migration_pilot_status.get("enabled"),
+                        },
+                        "migration_pilot": migration_pilot_status,
+                        "migration_full": migration_full_status,
+                        "warehouse_system": app_context.warehouse.get_system_status(),
                     })
+                elif path == "/api/warehouse/system-status":
+                    self._send_json(200, app_context.warehouse.get_system_status())
+                elif path == "/api/full-inventory/session":
+                    self._send_json(200, app_context.full_inventory.get_session(
+                        self._query(query, "session_id")
+                    ))
+                elif path == "/api/full-inventory/summary":
+                    self._send_json(200, app_context.full_inventory.preview_summary(
+                        self._query(query, "session_id")
+                    ))
+                elif path == "/api/full-inventory/rows":
+                    self._send_json(200, app_context.full_inventory.preview_rows(
+                        self._query(query, "session_id"),
+                        limit=self._query_int(query, "limit", default=100, minimum=1, maximum=500),
+                        offset=self._query_int(query, "offset", default=0, minimum=0),
+                        status=self._query(query, "status"),
+                    ))
+                elif path == "/api/full-inventory/findings":
+                    self._send_json(200, app_context.full_inventory.preview_findings(
+                        self._query(query, "session_id"),
+                        limit=self._query_int(query, "limit", default=100, minimum=1, maximum=500),
+                        offset=self._query_int(query, "offset", default=0, minimum=0),
+                        severity=self._query(query, "severity"),
+                        blocking=self._query(query, "blocking"),
+                    ))
+                elif path == "/api/full-inventory/resolutions":
+                    self._send_json(200, app_context.full_inventory.list_resolutions(
+                        self._query(query, "session_id")
+                    ))
+                elif path == "/api/full-inventory/template.xlsx":
+                    self._send_binary_download(
+                        "ODE_FULL_INVENTORY_v1.xlsx",
+                        app_context.full_inventory.template(),
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                elif path == "/api/migration-full":
+                    if not migration_full_status.get("enabled"):
+                        raise WarehouseError("Full migration review не включён")
+                    self._send_json(200, app_context.warehouse.list_migration_full_rows(
+                        filter_name=self._query(query, "filter"),
+                        query=self._query(query, "query"),
+                        vendor=self._query(query, "vendor"),
+                        model=self._query(query, "model"),
+                        limit=self._query_int(
+                            query, "limit", default=200, minimum=1, maximum=500
+                        ),
+                        offset=self._query_int(query, "offset", default=0, minimum=0),
+                    ))
+                elif path == "/api/migration-pilot":
+                    if not migration_pilot_status.get("enabled"):
+                        raise WarehouseError("Migration pilot review не включён")
+                    self._send_json(200, app_context.warehouse.list_migration_pilot_rows(
+                        filter_name=self._query(query, "filter"),
+                        query=self._query(query, "query"),
+                        limit=self._query_int(
+                            query, "limit", default=200, minimum=1, maximum=300
+                        ),
+                        offset=self._query_int(query, "offset", default=0, minimum=0),
+                    ))
                 elif path == "/api/delivery":
                     self._send_json(200, app_context.warehouse.get_delivery(
                         self._query_int(query, "id", minimum=1),
@@ -894,12 +888,19 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     balance_limit = self._query_int(
                         query, "limit", default=500, minimum=1, maximum=5_000
                     )
+                    balance_offset = self._query_int(
+                        query, "offset", default=0, minimum=0, maximum=1_000_000
+                    )
                     balance_rows = app_context.warehouse.get_balance(
-                        self._balance_filters(query), limit=balance_limit + 1
+                        self._balance_filters(query), limit=balance_limit + 1,
+                        offset=balance_offset,
                     )
                     self._send_json(200, {
                         "rows": balance_rows[:balance_limit],
                         "limit": balance_limit,
+                        "offset": balance_offset,
+                        "has_previous": balance_offset > 0,
+                        "has_more": len(balance_rows) > balance_limit,
                         "truncated": len(balance_rows) > balance_limit,
                     })
                 elif path == "/api/position-search":
@@ -918,23 +919,43 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         self._send_json(200, app_context.warehouse.validate_receipt_serial(serial))
                     elif kind == "issue":
                         self._send_json(200, app_context.warehouse.validate_issue_serial(serial))
+                    elif kind == "issue_target":
+                        self._send_json(200, app_context.warehouse.validate_issue_target(serial))
                     else:
                         raise WarehouseError("Неизвестный режим сканирования")
                 elif path == "/api/position-card":
-                    self._send_json(200, app_context.warehouse.get_position_card({
-                        "serial_number": self._query(query, "serial_number"),
-                        "item_name": self._query(query, "item_name"),
-                        "cable_type": self._query(query, "cable_type"),
-                        "project": self._query(query, "project"),
-                        "datacenter": self._query(query, "datacenter"),
-                    }))
+                    if (
+                        migration_full_status.get("enabled")
+                        and "full_reconciliation_id" in query
+                    ):
+                        self._send_json(200, app_context.warehouse.get_migration_full_card(
+                            self._query_int(query, "full_reconciliation_id", minimum=1)
+                        ))
+                    elif (
+                        migration_pilot_status.get("enabled")
+                        and "pilot_selection_id" in query
+                    ):
+                        self._send_json(200, app_context.warehouse.get_migration_pilot_card(
+                            self._query_int(query, "pilot_selection_id", minimum=1)
+                        ))
+                    else:
+                        self._send_json(200, app_context.warehouse.get_position_card({
+                            "serial_number": self._query(query, "serial_number"),
+                            "item_name": self._query(query, "item_name"),
+                            "cable_type": self._query(query, "cable_type"),
+                            "project": self._query(query, "project"),
+                            "datacenter": self._query(query, "datacenter"),
+                        }))
                 elif path == "/api/weekly-report":
                     self._send_json(200, app_context.reports.get_weekly_report(
                         self._query(query, "start_date"), self._query(query, "end_date")
                     ))
                 elif path == "/api/admin":
                     self._require_admin_session()
-                    self._send_json(200, app_context.administration.get_administration_overview())
+                    if self._query(query, "section") == "references":
+                        self._send_json(200, app_context.warehouse.get_reference_editor())
+                    else:
+                        self._send_json(200, app_context.administration.get_administration_overview())
                 elif path == "/api/uploaded-daily-report":
                     self._send_json(200, {"rows": app_context.reports.get_uploaded_report(
                         self._query_int(query, "id", minimum=1)
@@ -1039,7 +1060,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_template("daily_report_template.csv", USER_CSV_TEMPLATES["daily_report"])
                 else:
                     self._send_json(404, {"error": "Страница не найдена"})
-            except WarehouseError as error:
+            except (WarehouseError, WorkspaceError, FullInventoryXlsxError) as error:
                 self._send_json(400, {"error": str(error)})
             except Exception:
                 self._send_json(500, {"error": "Внутренняя ошибка сервера"})
@@ -1060,21 +1081,106 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             if not email:
                 self._send_json(401, {"error": "Требуется вход"})
                 return
+            if (
+                migration_pilot_status.get("enabled") and path != "/api/logout"
+            ) or (
+                migration_full_status.get("read_only") and path != "/api/logout"
+            ):
+                self._send_json(403, {
+                    "error": (
+                        "ПОЛНАЯ КАНДИДАТНАЯ БАЗА СКЛАДА работает только в режиме просмотра"
+                        if migration_full_status.get("read_only")
+                        else "МИГРАЦИОННЫЙ ПИЛОТ работает только в режиме просмотра"
+                    )
+                })
+                return
             try:
                 with service.user_context(
                     email,
                     author_name=self._session_author(),
                     role_override=self._session_role_override(),
-                ), service.lock:
-                    if path == "/api/logout":
-                        self._logout()
-                    else:
+                ):
+                    if path.startswith("/api/full-inventory/"):
                         self._do_POST()
+                    else:
+                        with service.lock:
+                            if path == "/api/logout":
+                                self._logout()
+                            else:
+                                self._do_POST()
+            except WarehousePostingBlocked as error:
+                self._send_json(409, {"error": str(error), "code": error.code})
+            except (WorkspaceError, FullInventoryXlsxError) as error:
+                self._send_json(400, {"error": str(error), "code": getattr(error, "code", "")})
             except WarehouseError as error:
                 self._send_json(403, {"error": str(error)})
 
         def _do_POST(self) -> None:
             parsed = urlparse(self.path)
+            if parsed.path == "/api/full-inventory/sessions":
+                result = app_context.full_inventory.create_session(
+                    self._full_inventory_actor(),
+                    correlation_id=self._correlation_id(),
+                )
+                self._send_json(201, {"ok": True, "session": result})
+                return
+            if parsed.path == "/api/full-inventory/upload":
+                query = parse_qs(parsed.query)
+                length = int(self.headers.get("Content-Length", "0"))
+                result = app_context.full_inventory.upload_source(
+                    self._query(query, "session_id"),
+                    filename=unquote(self.headers.get("X-Filename", "")),
+                    content_type=self.headers.get("Content-Type", ""),
+                    content_length=length,
+                    stream=self.rfile,
+                    actor=self._full_inventory_actor(),
+                    correlation_id=self._correlation_id(),
+                )
+                self._send_json(200, {"ok": True, "session": result})
+                return
+            if parsed.path in {
+                "/api/full-inventory/preview",
+                "/api/full-inventory/revalidate",
+                "/api/full-inventory/candidate-rehearsal",
+                "/api/full-inventory/reject",
+                "/api/full-inventory/resolutions",
+            }:
+                data = self._read_json_object(100_000)
+                session_id = str(data.get("session_id") or "")
+                actor = self._full_inventory_actor()
+                if parsed.path.endswith("/preview") or parsed.path.endswith("/revalidate"):
+                    result = app_context.full_inventory.build_preview(
+                        session_id, actor, correlation_id=self._correlation_id()
+                    )
+                    self._send_json(200, {"ok": True, **result})
+                elif parsed.path.endswith("/candidate-rehearsal"):
+                    result = app_context.full_inventory.build_candidate_rehearsal(
+                        session_id, actor, correlation_id=self._correlation_id()
+                    )
+                    self._send_json(201, {"ok": True, **result})
+                elif parsed.path.endswith("/resolutions"):
+                    result = app_context.full_inventory.record_resolution(
+                        session_id,
+                        actor,
+                        action_code=str(data.get("action_code") or ""),
+                        reason=str(data.get("reason") or ""),
+                        correlation_id=self._correlation_id(),
+                        row_id=self._optional_json_int(data, "row_id"),
+                        finding_id=self._optional_json_int(data, "finding_id"),
+                        field_code=str(data.get("field_code") or ""),
+                        target_public_id=str(data.get("target_public_id") or ""),
+                        replacement_value=str(data.get("replacement_value") or ""),
+                        supersedes_resolution_id=self._optional_json_int(
+                            data, "supersedes_resolution_id"
+                        ),
+                    )
+                    self._send_json(201, {"ok": True, **result})
+                else:
+                    result = app_context.full_inventory.reject_session(
+                        session_id, actor, correlation_id=self._correlation_id()
+                    )
+                    self._send_json(200, {"ok": True, "session": result})
+                return
             if parsed.path == "/api/preview-csv":
                 self._import_csv(
                     self._query(parse_qs(parsed.query), "kind") or "receipt", preview=True
@@ -1097,9 +1203,22 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._validate_action_payload(data)
                 action = data.get("action")
                 if action in {
+                    "RECEIPT", "ISSUE", "MOVE", "ADD", "STOCK_RECEIPT",
+                    "ASSIGN_INVENTORY_NUMBER", "STOCK_ISSUE",
+                    "CONFIRM_SCANNED_RECEIPTS", "CONFIRM_SCANNED_ISSUES",
+                    "CONFIRM_SCANNED_ISSUE_PAIRS", "CONFIRM_IMPORT_PREVIEW",
+                    "CONFIRM_BULK_ISSUE", "CONFIRM_DELIVERY",
+                    "UPDATE_DELIVERY_LINES", "ACCEPT_DELIVERY_SERIAL",
+                    "ACCEPT_DELIVERY_BATCH", "CLOSE_DELIVERY",
+                    "ADD_REFERENCE", "TOGGLE_REFERENCE", "PROPOSE_REFERENCE",
+                    "REFERENCE_RENAME", "REFERENCE_MERGE",
+                }:
+                    app_context.warehouse.assert_posting_allowed(str(action))
+                if action in {
                     "CREATE_BACKUP", "CHECK_DATABASE", "RESTORE_BACKUP",
                     "CREATE_USER", "CHANGE_PASSWORD", "UPDATE_PROFILE",
-                    "ADD_REFERENCE", "TOGGLE_REFERENCE",
+                    "ADD_REFERENCE", "TOGGLE_REFERENCE", "REFERENCE_RENAME",
+                    "REFERENCE_MERGE_PREVIEW", "REFERENCE_MERGE",
                 }:
                     self._require_admin_session(allow_password_change=action == "CHANGE_PASSWORD")
                 response: dict[str, Any] = {"ok": True}
@@ -1143,6 +1262,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 elif action == "CONFIRM_SCANNED_ISSUES":
                     response.update(app_context.warehouse.create_issue_by_serials(
                         data.get("common_fields", {}), data.get("serial_numbers", [])
+                    ))
+                elif action == "CONFIRM_SCANNED_ISSUE_PAIRS":
+                    response.update(app_context.warehouse.create_issue_pairs(
+                        data.get("common_fields", {}), data.get("pairs", [])
                     ))
                 elif action == "CONFIRM_IMPORT_PREVIEW":
                     kind = data.get("kind", "")
@@ -1222,9 +1345,25 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 elif action == "ADD_REFERENCE":
                     service.add_reference(data.get("kind", ""), data.get("name", ""))
                 elif action == "TOGGLE_REFERENCE":
-                    service.set_reference_active(
+                    app_context.warehouse.set_reference_active(
                         int(data.get("reference_id", 0)),
                         self._json_boolean(data.get("is_active", False), "is_active"),
+                    )
+                elif action == "PROPOSE_REFERENCE":
+                    response["reference_id"] = app_context.warehouse.propose_reference(
+                        data.get("domain", ""), data.get("value", ""), data.get("parent", "")
+                    )
+                elif action == "REFERENCE_RENAME":
+                    app_context.warehouse.rename_reference(
+                        int(data.get("reference_id", 0)), data.get("display_name", "")
+                    )
+                elif action == "REFERENCE_MERGE_PREVIEW":
+                    response["preview"] = app_context.warehouse.preview_reference_merge(
+                        int(data.get("source_id", 0)), int(data.get("target_id", 0))
+                    )
+                elif action == "REFERENCE_MERGE":
+                    response["result"] = app_context.warehouse.merge_reference(
+                        int(data.get("source_id", 0)), int(data.get("target_id", 0))
                     )
                 elif action == "CREATE_BACKUP":
                     response["backup"] = service.create_backup()
@@ -1253,6 +1392,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 else:
                     raise WarehouseError("Неизвестная операция")
                 self._send_json(200, response)
+            except WarehousePostingBlocked as error:
+                self._send_json(409, {"error": str(error), "code": error.code})
             except (WarehouseError, ValueError, KeyError, json.JSONDecodeError) as error:
                 self._send_json(400, {"error": str(error)})
             except Exception:
@@ -1274,6 +1415,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 body = self.rfile.read(length)
                 rows = parse_csv_bytes(body, kind)
                 soft = self._query(parse_qs(urlparse(self.path).query), "mode") != "strict"
+                if not preview and kind in {"equipment", "receipt", "issue", "bulk_issue"}:
+                    app_context.warehouse.assert_posting_allowed(f"import_csv:{kind}")
                 if kind == "delivery":
                     result = app_context.warehouse.preview_delivery_import(
                         rows, unquote(self.headers.get("X-Filename", "delivery.csv")),
@@ -1365,6 +1508,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 if kind == "daily_report":
                     response["upload_id"] = result["id"]
                 self._send_json(200, response)
+            except WarehousePostingBlocked as error:
+                self._send_json(409, {"error": str(error), "code": error.code})
             except (WarehouseError, ValueError, csv.Error, UnicodeError) as error:
                 self._send_json(400, {"error": str(error)})
             except Exception:
@@ -1385,7 +1530,19 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         })
                         return
                     try:
-                        user = service.authenticate(email, data.get("password", ""))
+                        if (
+                            migration_pilot_status.get("enabled")
+                            or migration_full_status.get("read_only")
+                        ):
+                            user = service.authenticate(
+                                email,
+                                data.get("password", ""),
+                                record_login=False,
+                            )
+                        else:
+                            user = service.authenticate(
+                                email, data.get("password", "")
+                            )
                     except WarehouseError:
                         if self._record_login_failure(rate_key):
                             self._send_json(429, {
@@ -1474,6 +1631,18 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _session_role_override(self) -> str | None:
             return "engineer" if self._session_data().get("mode") == "engineer" else None
+
+        def _full_inventory_actor(self):
+            return app_context.full_inventory.actor_snapshot(
+                service.current_user(),
+                display_override=self._session_author(),
+            )
+
+        def _correlation_id(self) -> str:
+            supplied = self.headers.get("X-Correlation-ID", "").strip()
+            if 16 <= len(supplied) <= 200 and re.fullmatch(r"[A-Za-z0-9._:-]+", supplied):
+                return supplied
+            return "corr_" + secrets.token_hex(16)
 
         def _require_admin_session(self, *, allow_password_change: bool = False) -> None:
             if self._session_data().get("mode") != "admin":
@@ -1620,6 +1789,16 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             return data
 
         @staticmethod
+        def _optional_json_int(data: dict[str, Any], name: str) -> int | None:
+            value = data.get(name)
+            if value is None:
+                return None
+            try:
+                return int(value)
+            except (TypeError, ValueError) as error:
+                raise WarehouseError(f"Поле {name} должно быть целым числом") from error
+
+        @staticmethod
         def _validate_action_payload(data: dict[str, Any]) -> None:
             action = data.get("action")
             if not isinstance(action, str) or not action:
@@ -1628,12 +1807,16 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 "WORK_LOGS": {"rows": list},
                 "CONFIRM_SCANNED_RECEIPTS": {"common_fields": dict, "serial_numbers": list},
                 "CONFIRM_SCANNED_ISSUES": {"common_fields": dict, "serial_numbers": list},
+                "CONFIRM_SCANNED_ISSUE_PAIRS": {"common_fields": dict, "pairs": list},
                 "UPDATE_DELIVERY_LINES": {"line_ids": list, "values": dict},
                 "ACCEPT_DELIVERY_SERIAL": {"values": dict},
                 "ACCEPT_DELIVERY_BATCH": {"line_ids": list, "common_values": dict},
             }
             allowed = collection_fields.get(action, {})
-            numeric_fields = {"equipment_id", "quantity", "delivery_id", "reference_id"}
+            numeric_fields = {
+                "equipment_id", "quantity", "delivery_id", "reference_id",
+                "source_id", "target_id",
+            }
             boolean_fields = {"only_empty", "unplanned", "is_active", "confirmed"}
             for key, value in data.items():
                 if key == "action":
@@ -1652,7 +1835,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         @staticmethod
         def _validate_action_collection(value: Any, field: str) -> None:
-            if field == "rows":
+            if field in {"rows", "pairs"}:
                 if any(not isinstance(item, dict) for item in value):
                     raise WarehouseError("Поле rows должно быть списком объектов")
                 mappings = value
@@ -1696,6 +1879,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 for name in (
                     "query", "project", "object_name", "equipment_type", "component_type",
                     "cable_type", "unit", "datacenter", "category", "item_type",
+                    "supplier", "vendor", "stock_state", "sort_by", "sort_dir",
                 )
             }
 
@@ -1716,8 +1900,26 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                return
+
+        def _send_binary_download(
+            self, filename: str, body: bytes, content_type: str
+        ) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                return
 
         def _send_static(self, path: str) -> None:
             relative = Path(unquote(path.removeprefix("/static/")))
@@ -1750,8 +1952,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             if cookie := getattr(self, "_pending_cookie", ""):
                 self.send_header("Set-Cookie", cookie)
                 self._pending_cookie = ""
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.end_headers()
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                return
 
         def log_message(self, format: str, *args: object) -> None:
             return
@@ -1765,6 +1970,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--host", default="127.0.0.1", help="адрес локального сервера")
     parser.add_argument("--port", type=int, default=8765, help="порт локального сервера")
     parser.add_argument("--no-browser", action="store_true", help="не открывать браузер автоматически")
+    parser.add_argument(
+        "--warehouse-contour",
+        choices=("production", "demo"),
+        default="production",
+        help="production блокирует складские записи до baseline; demo разрешает их только на отдельной БД",
+    )
+    parser.add_argument(
+        "--inventory-state-root",
+        default=None,
+        help="внешний application state root для FULL inventory Preview",
+    )
     return parser
 
 
@@ -1773,9 +1989,52 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         _validate_test_mode_database(args.db)
+        contour_policy = PostingPolicy(
+            args.db,
+            mode=args.warehouse_contour,
+            production_db_path=DEFAULT_DB_PATH,
+        )
+        if args.warehouse_contour == "demo" and not contour_policy.demo:
+            raise RuntimeError(str(contour_policy.status()["configuration_error"]))
+        # This must run before WarehouseService/initialize can touch the file.
+        migration_full_status = validate_full_migration_database(args.db)
+        migration_pilot_status = validate_migration_pilot_database(args.db)
     except RuntimeError as error:
         parser.error(str(error))
-    app_context = create_application_context(args.db)
+    service = WarehouseService(
+        args.db,
+        initialize_database=not migration_pilot_status.get("enabled")
+        and not migration_full_status.get("read_only"),
+    )
+    app_context = create_application_context(
+        args.db,
+        service=service,
+        configuration=RuntimeConfig(
+            service.db_path,
+            warehouse_contour=args.warehouse_contour,
+            production_db_path=DEFAULT_DB_PATH,
+            full_inventory_state_root=(
+                Path(args.inventory_state_root).expanduser()
+                if args.inventory_state_root
+                else None
+            ),
+        ),
+    )
+    stats = service.dashboard_stats()
+    health = service._database_check(service.db_path, service.KEY_TABLES)
+    integrity_status = "ok" if health["ok"] else "; ".join(health["messages"])
+    contour = (
+        "REVIEW DATABASE"
+        if migration_pilot_status.get("enabled") or migration_full_status.get("read_only")
+        else "WORKING DATABASE"
+    )
+    if contour == "WORKING DATABASE":
+        contour = "DEMO DATABASE" if contour_policy.demo else "HISTORICAL READ-ONLY DATABASE"
+    print(contour)
+    print(f"Path: {service.db_path.resolve()}")
+    print(f"ODE version: {PRODUCT_VERSION}")
+    print(f"Cards: {int(stats.get('cards', stats['positions']))}")
+    print(f"Integrity: {integrity_status}")
     server = ThreadingHTTPServer((args.host, args.port), make_handler(app_context))
     url = f"http://{args.host}:{server.server_port}"
     print(f"Интерфейс открыт: {url}")

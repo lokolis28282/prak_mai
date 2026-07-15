@@ -16,6 +16,8 @@ from inventory.monitoring.facade import MonitoringFacade
 from inventory.reports.facade import ReportsFacade
 from inventory.warehouse.events import WarehouseEventReader
 from inventory.warehouse.facade import WarehouseFacade
+from inventory.warehouse.baseline.posting_policy import PostingPolicy
+from inventory.warehouse.baseline.service import FullInventoryService
 
 
 @dataclass
@@ -29,6 +31,7 @@ class ApplicationContext:
     feature_flags: FeatureFlags | None = None
     configuration: RuntimeConfig | None = None
     compat_service: WarehouseService | None = None
+    full_inventory: FullInventoryService | None = None
 
     @classmethod
     def from_service(
@@ -37,20 +40,43 @@ class ApplicationContext:
         *,
         current_actor: str = "",
         feature_flags: FeatureFlags | None = None,
+        configuration: RuntimeConfig | None = None,
     ) -> "ApplicationContext":
         flags = feature_flags or FeatureFlags()
+        runtime = configuration or RuntimeConfig(
+            service.db_path,
+            flags,
+            warehouse_contour="unknown",
+            production_db_path=DEFAULT_DB_PATH,
+        )
+        production_path = runtime.production_db_path or DEFAULT_DB_PATH
+        posting_policy = PostingPolicy(
+            service.db_path,
+            mode=runtime.warehouse_contour,
+            production_db_path=production_path,
+        )
+        full_inventory = FullInventoryService(
+            service.db_path,
+            state_root=runtime.full_inventory_state_root,
+        )
         event_reader = WarehouseEventReader(service)
         event_publisher = NoopEventPublisher()
         return cls(
             db_path=service.db_path,
-            warehouse=WarehouseFacade(service, event_publisher=event_publisher),
+            warehouse=WarehouseFacade(
+                service,
+                event_publisher=event_publisher,
+                posting_policy=posting_policy,
+                full_inventory=full_inventory,
+            ),
             reports=ReportsFacade(service, warehouse_events=event_reader),
             monitoring=MonitoringFacade(),
             administration=AdministrationFacade(service),
             current_actor=current_actor,
             feature_flags=flags,
-            configuration=RuntimeConfig(service.db_path, flags),
+            configuration=runtime,
             compat_service=service,
+            full_inventory=full_inventory,
         )
 
     def service_adapter(self) -> WarehouseService:
@@ -65,10 +91,28 @@ def create_application_context(
     service: WarehouseService | None = None,
     current_actor: str = "",
     feature_flags: FeatureFlags | None = None,
+    configuration: RuntimeConfig | None = None,
+    warehouse_contour: str | None = None,
+    full_inventory_state_root: str | Path | None = None,
 ) -> ApplicationContext:
     compat = service or WarehouseService(db_path)
+    if configuration is None and warehouse_contour is not None:
+        configuration = RuntimeConfig(
+            compat.db_path,
+            feature_flags or FeatureFlags(),
+            warehouse_contour=warehouse_contour,
+            production_db_path=DEFAULT_DB_PATH,
+            full_inventory_state_root=(
+                Path(full_inventory_state_root)
+                if full_inventory_state_root is not None
+                else None
+            ),
+        )
     return ApplicationContext.from_service(
-        compat, current_actor=current_actor, feature_flags=feature_flags
+        compat,
+        current_actor=current_actor,
+        feature_flags=feature_flags,
+        configuration=configuration,
     )
 
 

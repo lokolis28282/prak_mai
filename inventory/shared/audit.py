@@ -46,20 +46,30 @@ def write_audit_entry(
     author: str,
     entity_id: int | str | None = None,
     details: dict[str, Any] | str | None = None,
+    event_date: str | None = None,
 ) -> None:
     serialized = (
         json.dumps(details, ensure_ascii=False, sort_keys=True)
         if isinstance(details, dict)
         else str(details or "")
     )
-    db.execute(
-        """INSERT INTO audit_log(action, entity_type, entity_id, details, author)
-           VALUES (?, ?, ?, ?, ?)""",
-        (
-            action,
-            entity_type,
-            "" if entity_id is None else str(entity_id),
-            serialized,
-            author or "lokolis",
-        ),
+    values = (
+        action,
+        entity_type,
+        "" if entity_id is None else str(entity_id),
+        serialized,
+        author or "lokolis",
     )
+    if event_date is None:
+        db.execute(
+            """INSERT INTO audit_log(action, entity_type, entity_id, details, author)
+               VALUES (?, ?, ?, ?, ?)""",
+            values,
+        )
+    else:
+        db.execute(
+            """INSERT INTO audit_log(
+                   event_date, action, entity_type, entity_id, details, author
+               ) VALUES (?, ?, ?, ?, ?, ?)""",
+            (event_date, *values),
+        )

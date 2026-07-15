@@ -10,4 +10,4 @@ echo "Пересоздаю чистую тестовую базу (profile=demo)
 python3 scripts/create_clean_test_db.py --profile demo --overwrite || exit 1
 
 echo "Запуск ODE на тестовом контуре..."
-ODE_TEST_MODE=1 python3 app.py web --db data/warehouse_test_clean.db
+ODE_TEST_MODE=1 python3 app.py web --db data/warehouse_test_clean.db --warehouse-contour demo

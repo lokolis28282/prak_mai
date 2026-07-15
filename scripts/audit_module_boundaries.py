@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check Stage 0.12.6 module boundaries without importing the application."""
+"""Check ODE module boundaries without importing the application."""
 
 from __future__ import annotations
 
@@ -9,6 +9,41 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+MIGRATION_REQUIRED_MODULES = (
+    "__init__.py",
+    "models.py",
+    "reference_data.py",
+    "canonical_naming.py",
+    "xlsx_cells.py",
+    "serial_preservation.py",
+    "staging_schema.py",
+    "candidate_db.py",
+    "validation.py",
+    "pilot_models.py",
+    "pilot_schema.py",
+    "pilot_selector.py",
+    "pilot_builder.py",
+)
+
+# Candidate-only table names must never leak into the production initializer.
+MIGRATION_CANDIDATE_TABLES = (
+    "migration_batches",
+    "migration_source_files",
+    "reference_domains_v2",
+    "reference_values_v2",
+    "reference_aliases_v2",
+    "catalog_items_v2",
+    "migration_staging_rows",
+    "migration_serial_cells",
+    "migration_validation_results",
+    "migration_pilot_marker",
+    "migration_pilot_selection",
+    "migration_pilot_identities",
+    "migration_pilot_provenance",
+    "migration_pilot_quarantine",
+    "migration_pilot_performance",
+)
 
 
 def python_imports(path: Path) -> set[str]:
@@ -23,6 +58,12 @@ def python_imports(path: Path) -> set[str]:
         elif isinstance(node, ast.ImportFrom):
             module = "." * node.level + (node.module or "")
             result.add(module)
+            # ``from inventory import migration`` and ``from . import webapp``
+            # carry the imported module in ``names``, not in ``node.module``.
+            for alias in node.names:
+                if alias.name != "*":
+                    separator = "" if module.endswith(".") else "."
+                    result.add(f"{module}{separator}{alias.name}")
     return result
 
 
@@ -57,6 +98,170 @@ def direct_service_calls_in_function(path: Path, function_name: str, forbidden: 
 
 def main() -> int:
     errors: list[str] = []
+
+    # ODE 0.13 is a side-by-side runtime and must remain isolated from 0.12.
+    for path in files("ode"):
+        imports = python_imports(path)
+        bad = sorted(item for item in imports if item == "inventory" or item.startswith("inventory."))
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} imports legacy runtime: " + ", ".join(bad)
+            )
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        if any(isinstance(node, ast.Name) and node.id == "Any" for node in ast.walk(tree)):
+            errors.append(f"{path.relative_to(ROOT)} uses Any in the ODE 0.13 contract")
+
+    for path in files("inventory"):
+        imports = python_imports(path)
+        bad = sorted(item for item in imports if item == "ode" or item.startswith("ode."))
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} imports ODE 0.13 runtime: " + ", ".join(bad)
+            )
+
+    # The disposable baseline rehearsal is the only explicit anti-corruption
+    # bridge between legacy Preview evidence and the target ODE schema.
+    for path in files("baseline_rehearsal"):
+        imports = python_imports(path)
+        forbidden = sorted(
+            item for item in imports
+            if item in {
+                "inventory.webapp", "inventory.service", "inventory.db",
+                "inventory.migration", "inventory.reports", "inventory.monitoring",
+            }
+            or item.startswith("inventory.migration.")
+            or item.startswith("inventory.reports.")
+            or item.startswith("inventory.monitoring.")
+        )
+        if forbidden:
+            errors.append(
+                f"{path.relative_to(ROOT)} crosses rehearsal bridge boundary: "
+                + ", ".join(forbidden)
+            )
+        if "data/warehouse.db" in path.read_text(encoding="utf-8"):
+            errors.append(f"{path.relative_to(ROOT)} embeds the production DB path")
+
+    for path in files("inventory"):
+        imports = python_imports(path)
+        bridge = sorted(
+            item for item in imports
+            if item == "baseline_rehearsal" or item.startswith("baseline_rehearsal.")
+        )
+        if bridge and path.relative_to(ROOT).as_posix() != "inventory/warehouse/baseline/service.py":
+            errors.append(
+                f"{path.relative_to(ROOT)} imports the restricted rehearsal bridge: "
+                + ", ".join(bridge)
+            )
+
+    for path in files("ode"):
+        imports = python_imports(path)
+        bridge = sorted(
+            item for item in imports
+            if item == "baseline_rehearsal" or item.startswith("baseline_rehearsal.")
+        )
+        if bridge:
+            errors.append(
+                f"{path.relative_to(ROOT)} imports the legacy rehearsal bridge: "
+                + ", ".join(bridge)
+            )
+
+    for path in files("ode/system"):
+        imports = python_imports(path)
+        bad = sorted(
+            item for item in imports
+            if item in {"sqlite3", "os", "pathlib"} or item.startswith("ode.infrastructure")
+        )
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} crosses the system/infrastructure boundary: "
+                + ", ".join(bad)
+            )
+
+    for path in files("ode/application"):
+        imports = python_imports(path)
+        bad = sorted(item for item in imports if item == "inventory" or item.startswith("inventory."))
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} imports legacy application runtime: "
+                + ", ".join(bad)
+            )
+
+    for path in files("ode/application") + files("ode/system"):
+        sql = contains(path, ("CREATE TABLE", "ALTER TABLE", "DROP TABLE", "INSERT INTO"))
+        if sql:
+            errors.append(
+                f"{path.relative_to(ROOT)} embeds infrastructure SQL: " + ", ".join(sql)
+            )
+
+    for path in files("ode"):
+        if "data/warehouse.db" in path.read_text(encoding="utf-8"):
+            errors.append(f"{path.relative_to(ROOT)} embeds the production DB path")
+
+    migration_root = ROOT / "inventory/migration"
+    missing_migration_modules = [
+        f"inventory/migration/{name}"
+        for name in MIGRATION_REQUIRED_MODULES
+        if not (migration_root / name).is_file()
+    ]
+    if missing_migration_modules:
+        errors.append(
+            "offline migration foundation modules are missing: "
+            + ", ".join(missing_migration_modules)
+        )
+
+    forbidden_migration_roots = (
+        "inventory.webapp",
+        "inventory.service",
+        "inventory.services",
+        "inventory.warehouse",
+        "inventory.reports",
+        "inventory.administration",
+        "webapp",
+        "service",
+        "services",
+        "warehouse",
+        "reports",
+        "administration",
+    )
+    for path in files("inventory/migration"):
+        imports = python_imports(path)
+        bad = sorted(
+            item
+            for item in imports
+            for forbidden in forbidden_migration_roots
+            if item.lstrip(".") == forbidden
+            or item.lstrip(".").startswith(forbidden + ".")
+        )
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} imports runtime/production modules: "
+                + ", ".join(sorted(set(bad)))
+            )
+
+    for path in files("inventory"):
+        if migration_root in path.parents:
+            continue
+        imports = python_imports(path)
+        bad = sorted(
+            item for item in imports
+            if item == "inventory.migration"
+            or item.startswith("inventory.migration.")
+            or item.lstrip(".") == "migration"
+            or item.lstrip(".").startswith("migration.")
+        )
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} imports offline migration modules: "
+                + ", ".join(bad)
+            )
+
+    production_db = ROOT / "inventory/db.py"
+    leaked_candidate_tables = contains(production_db, MIGRATION_CANDIDATE_TABLES)
+    if leaked_candidate_tables:
+        errors.append(
+            "inventory/db.py contains candidate-only migration tables: "
+            + ", ".join(leaked_candidate_tables)
+        )
 
     forbidden_monitoring = (
         "inventory.service",

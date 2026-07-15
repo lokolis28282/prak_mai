@@ -16,8 +16,15 @@ from .delivery_acceptance import DeliveryAcceptanceService
 from .deliveries import DeliveryReadService
 from .delivery_imports import DeliveryImportService
 from .issue_imports import IssueWriteService
+from .migration_full_review import (
+    MigrationFullReviewService,
+    assert_full_inventory_assignment_allowed,
+)
+from .migration_pilot_review import MigrationPilotReviewService
 from .previews import WarehousePreviewStore
 from .receipt_imports import ReceiptWriteService
+from .baseline.posting_policy import PostingPolicy
+from .baseline.service import FullInventoryService
 
 
 def _plain(value: Any) -> Any:
@@ -31,9 +38,18 @@ def _plain(value: Any) -> Any:
 
 
 class WarehouseFacade:
-    def __init__(self, service: Any, *, event_publisher: Any = None):
+    def __init__(
+        self,
+        service: Any,
+        *,
+        event_publisher: Any = None,
+        posting_policy: PostingPolicy | None = None,
+        full_inventory: FullInventoryService | None = None,
+    ):
         self.service = service
         self.event_publisher = event_publisher
+        self.posting_policy = posting_policy
+        self.full_inventory = full_inventory
         self._previews = WarehousePreviewStore()
         self.receipt_writer = ReceiptWriteService(
             service.db_path,
@@ -65,11 +81,46 @@ class WarehouseFacade:
             actor_provider=service,
             receipt_writer=self.receipt_writer,
         )
+        self.migration_pilot_review = MigrationPilotReviewService(
+            service.db_path,
+            actor_provider=service,
+        )
+        self.migration_full_review = MigrationFullReviewService(
+            service.db_path,
+            actor_provider=service,
+        )
+
+    def _guard_posting(self, operation: str) -> None:
+        if self.posting_policy is None:
+            raise WarehouseError(
+                "WAREHOUSE_NOT_INITIALIZED: posting policy не настроена"
+            )
+        self.posting_policy.assert_mutation_allowed(operation)
+
+    def assert_posting_allowed(self, operation: str) -> None:
+        self._guard_posting(operation)
+
+    def get_system_status(self) -> dict[str, Any]:
+        if self.full_inventory is None:
+            return {
+                "state": "DEGRADED",
+                "authoritative": False,
+                "balance_kind": "HISTORICAL_CALCULATION",
+                "baseline_timestamp": None,
+                "posting_allowed": False,
+                "degraded_reason": "FULL inventory service не настроен",
+            }
+        result = self.full_inventory.system_status()
+        if self.posting_policy is not None:
+            result["contour"] = self.posting_policy.status()
+            result["posting_allowed"] = self.posting_policy.demo
+        return result
 
     def receipts(self, *args: Any, **kwargs: Any) -> Any:
         return _plain(self.receipt_writer.repository.receipts(*args, **kwargs))
 
     def add_receipt(self, *args: Any, **kwargs: Any) -> Any:
+        self._guard_posting("add_receipt")
         if kwargs:
             return self.create_receipt(kwargs)
         if args and isinstance(args[0], dict):
@@ -83,6 +134,7 @@ class WarehouseFacade:
         return _plain(self.receipt_writer.prepare_receipt(dict(data)))
 
     def create_receipt(self, data: dict[str, Any]) -> int:
+        self._guard_posting("create_receipt")
         if self._is_cable_receipt(data):
             return self.create_cable_receipt(data)
         return int(self.receipt_writer.create_receipt(dict(data)))
@@ -90,6 +142,8 @@ class WarehouseFacade:
     def assign_inventory_number(
         self, serial_number: str, inventory_number: str
     ) -> dict[str, Any]:
+        self._guard_posting("assign_inventory_number")
+        assert_full_inventory_assignment_allowed(self.service.db_path, serial_number)
         return _plain(self.receipt_writer.assign_inventory_number(
             serial_number, inventory_number
         ))
@@ -104,14 +158,17 @@ class WarehouseFacade:
         ))
 
     def confirm_inventory_number_import(self, preview_id: str) -> dict[str, Any]:
+        self._guard_posting("confirm_inventory_number_import")
         return _plain(self.receipt_writer.confirm_inventory_number_import(preview_id))
 
     def create_receipt_batch(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
+        self._guard_posting("create_receipt_batch")
         return _plain(self.receipt_writer.create_receipt_batch([dict(row) for row in rows]))
 
     def confirm_scanned_receipts(
         self, common_fields: dict[str, Any], serial_numbers: list[str]
     ) -> int:
+        self._guard_posting("confirm_scanned_receipts")
         return int(self.receipt_writer.confirm_scanned_receipts(dict(common_fields), list(serial_numbers)))
 
     def preview_receipt_import(
@@ -140,12 +197,14 @@ class WarehouseFacade:
         ))
 
     def confirm_receipt_import(self, preview_id: str) -> int:
+        self._guard_posting("confirm_receipt_import")
         try:
             return int(self.receipt_writer.confirm_receipt_import(preview_id))
         except WarehouseError:
             return int(self.confirm_cable_import(preview_id))
 
     def import_receipts(self, rows: list[dict[str, Any]], *, soft: bool = True) -> int:
+        self._guard_posting("import_receipts")
         cable_rows = [self._is_cable_receipt(row) for row in rows]
         if any(cable_rows):
             if not all(cable_rows):
@@ -174,14 +233,17 @@ class WarehouseFacade:
         return _plain(self.cables.validate_cable_issue(dict(data)))
 
     def create_cable_receipt(self, data: dict[str, Any]) -> int:
+        self._guard_posting("create_cable_receipt")
         return int(self.cables.create_cable_receipt(dict(data)))
 
     def create_cable_receipt_batch(
         self, rows: list[dict[str, Any]], *, soft: bool = True
     ) -> dict[str, Any]:
+        self._guard_posting("create_cable_receipt_batch")
         return _plain(self.cables.create_cable_receipt_batch([dict(row) for row in rows], soft=soft))
 
     def create_cable_issue(self, data: dict[str, Any]) -> int:
+        self._guard_posting("create_cable_issue")
         return int(self.cables.create_cable_issue(dict(data)))
 
     def validate_issue_serial(
@@ -189,10 +251,14 @@ class WarehouseFacade:
     ) -> dict[str, Any]:
         return _plain(self.issue_writer.validate_issue_serial(serial_number, context))
 
+    def validate_issue_target(self, serial_number: str) -> dict[str, Any]:
+        return _plain(self.issue_writer.validate_issue_target(serial_number))
+
     def prepare_issue(self, data: dict[str, Any]) -> dict[str, Any]:
         return _plain(self.issue_writer.prepare_issue(dict(data)))
 
     def create_issue(self, data: dict[str, Any]) -> int:
+        self._guard_posting("create_issue")
         if self._is_cable_issue(data):
             return self.create_cable_issue(data)
         return int(self.issue_writer.create_issue(dict(data)))
@@ -200,12 +266,22 @@ class WarehouseFacade:
     def create_issue_batch(
         self, rows: list[dict[str, Any]], *, soft: bool = False
     ) -> dict[str, Any]:
+        self._guard_posting("create_issue_batch")
         return _plain(self.issue_writer.create_issue_batch([dict(row) for row in rows], soft=soft))
 
     def create_issue_by_serials(
         self, common_fields: dict[str, Any], serial_numbers: list[str]
     ) -> dict[str, int]:
+        self._guard_posting("create_issue_by_serials")
         return _plain(self.issue_writer.create_issue_by_serials(dict(common_fields), list(serial_numbers)))
+
+    def create_issue_pairs(
+        self, common_fields: dict[str, Any], pairs: list[dict[str, Any]]
+    ) -> dict[str, int]:
+        self._guard_posting("create_issue_pairs")
+        return _plain(self.issue_writer.create_issue_pairs(
+            dict(common_fields), [dict(pair) for pair in pairs]
+        ))
 
     def preview_issue_import(
         self,
@@ -223,9 +299,11 @@ class WarehouseFacade:
         ))
 
     def confirm_issue_import(self, preview_id: str) -> int:
+        self._guard_posting("confirm_issue_import")
         return int(self.issue_writer.confirm_issue_import(preview_id))
 
     def import_issues(self, rows: list[dict[str, Any]], *, soft: bool = True) -> int:
+        self._guard_posting("import_issues")
         return int(self.issue_writer.import_issues([dict(row) for row in rows], soft=soft))
 
     def preview_bulk_issue_serials(
@@ -243,6 +321,7 @@ class WarehouseFacade:
         comment: str = "",
         target_serial_number: str = "",
     ) -> int:
+        self._guard_posting("confirm_bulk_issue_preview")
         return int(self.issue_writer.confirm_bulk_issue_preview(
             preview_id, issue_date, responsible, task_type, task_number,
             comment, target_serial_number,
@@ -284,6 +363,7 @@ class WarehouseFacade:
         ))
 
     def confirm_cable_import(self, preview_id: str) -> int:
+        self._guard_posting("confirm_cable_import")
         return int(self.cables.confirm_cable_import(preview_id))
 
     def issues(self, *args: Any, **kwargs: Any) -> Any:
@@ -293,6 +373,7 @@ class WarehouseFacade:
         return _plain(self.service.stock_issue_rows())
 
     def add_issue(self, *args: Any, **kwargs: Any) -> Any:
+        self._guard_posting("add_issue")
         if kwargs and self._is_cable_issue(kwargs):
             return self.create_cable_issue(kwargs)
         if args and isinstance(args[0], dict) and self._is_cable_issue(args[0]):
@@ -333,23 +414,27 @@ class WarehouseFacade:
             "operations": _plain(self.service.operation_log(limit=100)),
             "categories": _plain(self.service.reference_data("categories")),
             "locations": _plain(self.service.reference_data("locations")),
-            "references": _plain(self.service.references()),
+            "references": _plain(self.service.references(active_only=True)),
             "reference_kinds": _plain(self.service.REFERENCE_KINDS),
-            "balance": self.get_balance(limit=5_000),
-            "balance_limit": 5_000,
-            "balance_truncated": int(stats["positions"]) > 5_000,
+            "balance": self.get_balance(limit=500),
+            "balance_limit": 500,
+            "balance_truncated": int(stats["cards"]) > 500,
             "recent_receipts": self.receipts(limit=20),
             "problems": _plain({key: rows[:200] for key, rows in problems.items()}),
             "problem_counts": problem_counts,
             "deliveries": self.list_deliveries(limit=100),
             "warehouse_categories": self.get_warehouse_categories(),
+            "warehouse_type_summary": self.get_warehouse_type_summary(),
             "warehouse_history": self.get_warehouse_history(),
         }
 
     def get_balance(
-        self, filters: dict[str, Any] | None = None, *, limit: int | None = None
+        self, filters: dict[str, Any] | None = None, *, limit: int | None = None,
+        offset: int = 0,
     ) -> list[dict[str, Any]]:
-        return _plain(self.service.stock_balance(**(filters or {}), limit=limit))
+        return _plain(self.service.stock_balance(
+            **(filters or {}), limit=limit, offset=offset
+        ))
 
     def get_warehouse_history(
         self, filters: dict[str, Any] | None = None, limit: int = 300
@@ -388,6 +473,7 @@ class WarehouseFacade:
         preview_id: str,
         source_metadata: dict[str, Any] | None = None,
     ) -> int:
+        self._guard_posting("confirm_delivery_import")
         return int(self.delivery_importer.confirm_delivery_import(
             preview_id,
             source_metadata=source_metadata,
@@ -442,6 +528,7 @@ class WarehouseFacade:
         serial_number: str,
         values: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        self._guard_posting("accept_delivery_serial")
         return _plain(self.delivery_acceptance.accept_delivery_serial(
             delivery_id, serial_number, dict(values or {})
         ))
@@ -452,6 +539,7 @@ class WarehouseFacade:
         line_ids: list[int],
         common_values: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        self._guard_posting("accept_delivery_batch")
         return _plain(self.delivery_acceptance.accept_delivery_batch(
             delivery_id, list(line_ids), dict(common_values or {})
         ))
@@ -462,6 +550,7 @@ class WarehouseFacade:
         serial_number: str,
         values: dict[str, Any],
     ) -> dict[str, Any]:
+        self._guard_posting("accept_unplanned_delivery_serial")
         return _plain(self.delivery_acceptance.accept_unplanned_delivery_serial(
             delivery_id, serial_number, dict(values)
         ))
@@ -474,6 +563,7 @@ class WarehouseFacade:
         *,
         only_empty: bool = False,
     ) -> int:
+        self._guard_posting("update_delivery_line_metadata")
         return int(self.delivery_acceptance.update_delivery_line_metadata(
             delivery_id, list(line_ids), dict(values), only_empty=only_empty
         ))
@@ -485,6 +575,7 @@ class WarehouseFacade:
         return _plain(self.delivery_acceptance.get_delivery_conflicts(delivery_id))
 
     def refresh_delivery_status(self, delivery_id: int) -> str:
+        self._guard_posting("refresh_delivery_status")
         return str(self.delivery_acceptance.refresh_delivery_status(delivery_id))
 
     def get_inventory_view(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -501,7 +592,48 @@ class WarehouseFacade:
             cable_type=filters.get("cable_type", ""),
             project=filters.get("project", ""),
             datacenter=filters.get("datacenter", ""),
+            include_migration_audit=False,
         ))
+
+    def list_migration_pilot_rows(
+        self,
+        *,
+        filter_name: str = "",
+        query: str = "",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return _plain(self.migration_pilot_review.list_rows(
+            filter_name=filter_name,
+            query=query,
+            limit=limit,
+            offset=offset,
+        ))
+
+    def get_migration_pilot_card(self, selection_id: int) -> dict[str, Any]:
+        return _plain(self.migration_pilot_review.get_card(selection_id))
+
+    def list_migration_full_rows(
+        self,
+        *,
+        filter_name: str = "",
+        query: str = "",
+        vendor: str = "",
+        model: str = "",
+        limit: int = 200,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return _plain(self.migration_full_review.list_rows(
+            filter_name=filter_name,
+            query=query,
+            vendor=vendor,
+            model=model,
+            limit=limit,
+            offset=offset,
+        ))
+
+    def get_migration_full_card(self, reconciliation_id: int) -> dict[str, Any]:
+        return _plain(self.migration_full_review.get_card(reconciliation_id))
 
     def search_warehouse(self, query: str) -> list[dict[str, Any]]:
         return _plain(self.service.search_stock_positions(query))
@@ -511,14 +643,42 @@ class WarehouseFacade:
 
     def get_warehouse_references(self) -> dict[str, Any]:
         return {
-            "references": _plain(self.service.references()),
+            "references": _plain(self.service.references(active_only=True)),
             "reference_kinds": _plain(self.service.REFERENCE_KINDS),
             "categories": _plain(self.service.reference_data("categories")),
             "locations": _plain(self.service.reference_data("locations")),
         }
 
+    def get_reference_editor(self) -> dict[str, Any]:
+        return _plain(self.service.reference_service.editor_catalog())
+
+    def get_vendor_models(self, vendor: str) -> list[dict[str, Any]]:
+        return _plain(self.service.reference_service.models(vendor))
+
+    def propose_reference(self, domain: str, value: str, parent: str = "") -> int:
+        self._guard_posting("propose_reference")
+        return int(self.service.reference_service.propose(domain, value, parent))
+
+    def set_reference_active(self, reference_id: int, is_active: bool) -> None:
+        self._guard_posting("set_reference_active")
+        self.service.set_reference_active(reference_id, is_active)
+
+    def rename_reference(self, reference_id: int, display_name: str) -> None:
+        self._guard_posting("rename_reference")
+        self.service.reference_service.rename(reference_id, display_name)
+
+    def preview_reference_merge(self, source_id: int, target_id: int) -> dict[str, Any]:
+        return _plain(self.service.reference_service.merge_preview(source_id, target_id))
+
+    def merge_reference(self, source_id: int, target_id: int) -> dict[str, Any]:
+        self._guard_posting("merge_reference")
+        return _plain(self.service.reference_service.merge(source_id, target_id))
+
     def get_warehouse_categories(self) -> list[dict[str, Any]]:
         return _plain(self.service.warehouse_categories())
+
+    def get_warehouse_type_summary(self) -> list[dict[str, Any]]:
+        return _plain(self.service.warehouse_type_summary())
 
     def export_balance_rows(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         return self.get_balance(filters)

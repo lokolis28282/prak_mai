@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Самозавершающийся UI smoke-test ODE на временной копии базы."""
 from __future__ import annotations
+import argparse
 
 import shutil
 import socket
@@ -18,6 +19,7 @@ from urllib.request import urlopen
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from inventory.db import hash_password
+from inventory.core.application import create_application_context
 from inventory.service import WarehouseService
 from inventory.webapp import make_handler
 CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
@@ -27,13 +29,19 @@ def free_port() -> int:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", type=Path, default=ROOT / "data" / "warehouse.db")
+    args = parser.parse_args(argv)
     if not CHROME.exists():
         raise SystemExit(f"Chrome не найден: {CHROME}")
+    source_database = args.db.resolve()
+    if not source_database.is_file():
+        raise SystemExit(f"База не найдена: {source_database}")
     with tempfile.TemporaryDirectory(prefix="ode_ui_smoke_") as directory:
         work = Path(directory)
         database = work / "warehouse.db"
-        shutil.copy2(ROOT / "data" / "warehouse.db", database)
+        shutil.copy2(source_database, database)
         with closing(sqlite3.connect(database)) as db, db:
             db.execute(
                 """UPDATE users
@@ -41,7 +49,14 @@ def main() -> int:
                    WHERE email = 'lokolis'""",
                 (hash_password("lokolis"),),
             )
-        server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(WarehouseService(database)))
+        service = WarehouseService(database)
+        context = create_application_context(
+            database,
+            service=service,
+            warehouse_contour="demo",
+            full_inventory_state_root=work / "full_inventory_state",
+        )
+        server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(context))
         server.daemon_threads = True
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -68,7 +83,7 @@ def main() -> int:
             print("smoke: devtools ready", flush=True)
             result = subprocess.run(
                 ["node", str(ROOT / "tests" / "headless_smoke.js"), app_url, str(debug_port)],
-                cwd=ROOT, text=True, capture_output=True, timeout=50,
+                cwd=ROOT, text=True, capture_output=True, timeout=180,
             )
             print(result.stdout.strip(), flush=True)
             if result.returncode:

@@ -1,0 +1,153 @@
+-- Deterministic migration of the approved disposable Preview workspace v1.
+PRAGMA foreign_keys = ON;
+BEGIN IMMEDIATE;
+
+CREATE TABLE preview_sessions (
+    session_id TEXT PRIMARY KEY,
+    public_id TEXT NOT NULL UNIQUE,
+    session_type TEXT NOT NULL CHECK (session_type = 'FULL'),
+    session_status TEXT NOT NULL CHECK (
+        session_status IN ('DRAFT', 'UPLOADED', 'PREVIEWING',
+                           'REVIEW_REQUIRED', 'READY_FOR_APPROVAL',
+                           'FAILED', 'REJECTED')
+    ),
+    warehouse_scope_raw TEXT NOT NULL,
+    compatibility_mapping_version TEXT NOT NULL,
+    counted_by_raw TEXT NOT NULL,
+    count_started_at TEXT NOT NULL,
+    count_finished_at TEXT NOT NULL,
+    created_actor_id TEXT NOT NULL,
+    created_actor_display TEXT NOT NULL,
+    created_actor_role TEXT NOT NULL,
+    created_at INTEGER NOT NULL CHECK (created_at > 0),
+    updated_at INTEGER NOT NULL CHECK (updated_at > 0),
+    source_opaque_key TEXT CHECK (
+        source_opaque_key IS NULL OR (
+            length(source_opaque_key) BETWEEN 16 AND 200
+            AND source_opaque_key NOT LIKE '%..%'
+            AND source_opaque_key NOT GLOB '*[^A-Za-z0-9._:-]*'
+        )
+    ),
+    source_original_filename TEXT NOT NULL DEFAULT '',
+    source_content_type TEXT NOT NULL DEFAULT '',
+    source_size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (source_size_bytes >= 0),
+    source_sha256 BLOB CHECK (source_sha256 IS NULL OR length(source_sha256) = 32),
+    template_version TEXT NOT NULL DEFAULT '',
+    reference_fingerprint BLOB CHECK (
+        reference_fingerprint IS NULL OR length(reference_fingerprint) = 32
+    ),
+    active_run_id TEXT,
+    row_count INTEGER NOT NULL DEFAULT 0 CHECK (row_count >= 0),
+    blocker_count INTEGER NOT NULL DEFAULT 0 CHECK (blocker_count >= 0),
+    warning_count INTEGER NOT NULL DEFAULT 0 CHECK (warning_count >= 0),
+    informational_count INTEGER NOT NULL DEFAULT 0 CHECK (informational_count >= 0),
+    preview_digest BLOB CHECK (preview_digest IS NULL OR length(preview_digest) = 32),
+    rejection_reason TEXT NOT NULL DEFAULT '',
+    rejected_at INTEGER CHECK (rejected_at IS NULL OR rejected_at > 0),
+    rejected_by_actor_id TEXT NOT NULL DEFAULT ''
+) STRICT;
+CREATE INDEX ix_preview_sessions_status
+ON preview_sessions(session_type, session_status, updated_at, session_id);
+
+INSERT INTO preview_sessions (
+    session_id, public_id, session_type, session_status, warehouse_scope_raw,
+    compatibility_mapping_version, counted_by_raw, count_started_at,
+    count_finished_at, created_actor_id, created_actor_display,
+    created_actor_role, created_at, updated_at, source_opaque_key,
+    source_size_bytes, source_sha256, template_version, reference_fingerprint,
+    active_run_id, row_count, preview_digest
+)
+SELECT r.session_id, r.session_id, 'FULL',
+       CASE r.session_status
+           WHEN 'READY_FOR_APPROVAL' THEN 'READY_FOR_APPROVAL'
+           WHEN 'REVIEW_REQUIRED' THEN 'REVIEW_REQUIRED'
+           WHEN 'PREVIEWING' THEN 'PREVIEWING'
+           WHEN 'UPLOADED' THEN 'UPLOADED'
+           WHEN 'REJECTED' THEN 'REJECTED'
+           WHEN 'FAILED' THEN 'FAILED'
+           ELSE 'DRAFT'
+       END,
+       '', 'COMPATIBILITY_V1_DATACENTER_SHELF', '', '', '', '', '', '',
+       COALESCE(r.started_at_us, r.completed_at_us, 1),
+       COALESCE(r.completed_at_us, r.started_at_us, 1),
+       r.source_object_key, r.source_size_bytes, r.source_sha256,
+       r.template_version, r.reference_fingerprint, r.run_id, r.row_count,
+       r.preview_digest
+FROM preview_runs r
+WHERE r.attempt = (
+    SELECT MAX(r2.attempt) FROM preview_runs r2 WHERE r2.session_id = r.session_id
+);
+
+CREATE TABLE preview_activity_events (
+    event_id INTEGER PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES preview_sessions(session_id) ON DELETE RESTRICT,
+    event_type TEXT NOT NULL CHECK (
+        event_type IN ('SESSION_CREATED', 'SOURCE_UPLOADED', 'PREVIEW_STARTED',
+                       'PREVIEW_COMPLETED', 'PREVIEW_FAILED', 'SESSION_REJECTED',
+                       'SESSION_REOPENED', 'RESOLUTION_RECORDED')
+    ),
+    actor_id TEXT NOT NULL,
+    actor_display_snapshot TEXT NOT NULL,
+    actor_role_snapshot TEXT NOT NULL,
+    occurred_at INTEGER NOT NULL CHECK (occurred_at > 0),
+    correlation_id TEXT NOT NULL CHECK (length(correlation_id) BETWEEN 16 AND 200),
+    safe_metadata_json TEXT NOT NULL CHECK (json_valid(safe_metadata_json))
+) STRICT;
+CREATE INDEX ix_preview_activity_session
+ON preview_activity_events(session_id, occurred_at, event_id);
+
+CREATE TRIGGER tr_preview_resolutions_no_update
+BEFORE UPDATE ON preview_resolutions
+BEGIN
+    SELECT RAISE(ABORT, 'preview resolutions are append-only');
+END;
+CREATE TRIGGER tr_preview_resolutions_no_delete
+BEFORE DELETE ON preview_resolutions
+BEGIN
+    SELECT RAISE(ABORT, 'preview resolutions are append-only');
+END;
+
+CREATE TRIGGER tr_preview_runs_session_insert
+BEFORE INSERT ON preview_runs
+WHEN NOT EXISTS (SELECT 1 FROM preview_sessions s WHERE s.session_id = NEW.session_id)
+BEGIN
+    SELECT RAISE(ABORT, 'preview run session does not exist');
+END;
+CREATE TRIGGER tr_preview_runs_session_update
+BEFORE UPDATE OF session_id ON preview_runs
+WHEN NOT EXISTS (SELECT 1 FROM preview_sessions s WHERE s.session_id = NEW.session_id)
+BEGIN
+    SELECT RAISE(ABORT, 'preview run session does not exist');
+END;
+CREATE TRIGGER tr_preview_activity_no_update
+BEFORE UPDATE ON preview_activity_events
+BEGIN
+    SELECT RAISE(ABORT, 'preview activity is append-only');
+END;
+CREATE TRIGGER tr_preview_activity_no_delete
+BEFORE DELETE ON preview_activity_events
+BEGIN
+    SELECT RAISE(ABORT, 'preview activity is append-only');
+END;
+CREATE TRIGGER tr_preview_session_active_run_insert
+BEFORE INSERT ON preview_sessions
+WHEN NEW.active_run_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM preview_runs r
+    WHERE r.run_id = NEW.active_run_id AND r.session_id = NEW.session_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'active run does not belong to session');
+END;
+CREATE TRIGGER tr_preview_session_active_run_update
+BEFORE UPDATE OF active_run_id ON preview_sessions
+WHEN NEW.active_run_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM preview_runs r
+    WHERE r.run_id = NEW.active_run_id AND r.session_id = NEW.session_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'active run does not belong to session');
+END;
+
+COMMIT;
+PRAGMA application_id = 0x4F445057;
+PRAGMA user_version = 2;

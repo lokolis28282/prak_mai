@@ -11,6 +11,7 @@ from typing import Any, Sequence
 from .db import DEFAULT_DB_PATH
 from .seed import seed_database
 from .service import WarehouseError, WarehouseService
+from .warehouse.baseline.posting_policy import PostingPolicy
 
 
 HEADERS = {
@@ -58,6 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Система учета оборудования склада ЦОД",
     )
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="путь к файлу SQLite")
+    parser.add_argument(
+        "--warehouse-contour",
+        choices=("production", "demo"),
+        default="production",
+        help="явный safety contour для складских записей",
+    )
     commands = parser.add_subparsers(dest="command")
     commands.add_parser("menu", help="открыть интерактивное меню")
     seed = commands.add_parser("seed", help="создать базу с начальными данными")
@@ -109,24 +116,34 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def run_command(args: argparse.Namespace) -> None:
+    policy = PostingPolicy(
+        args.db,
+        mode=getattr(args, "warehouse_contour", "unknown"),
+        production_db_path=DEFAULT_DB_PATH,
+    )
     if args.command == "seed":
+        policy.assert_mutation_allowed("cli:seed")
         seed_database(args.db, reset=args.reset)
         print(f"База готова: {Path(args.db).resolve()}")
         return
     service = WarehouseService(args.db)
     if args.command == "add":
+        policy.assert_mutation_allowed("cli:add")
         item_id = service.add_equipment(
             args.category, args.model, args.serial, args.inventory, args.location,
             args.quantity, args.basis, args.responsible,
         )
         print(f"Карточка создана. ID оборудования: {item_id}")
     elif args.command == "receipt":
+        policy.assert_mutation_allowed("cli:receipt")
         service.receipt(args.equipment_id, args.quantity, args.basis, args.responsible)
         print("Приход зарегистрирован.")
     elif args.command == "issue":
+        policy.assert_mutation_allowed("cli:issue")
         service.issue(args.equipment_id, args.quantity, args.basis, args.responsible)
         print("Выдача зарегистрирована.")
     elif args.command == "move":
+        policy.assert_mutation_allowed("cli:move")
         service.move(args.equipment_id, args.destination, args.basis, args.responsible)
         print("Перемещение зарегистрировано.")
     elif args.command == "stock":
@@ -141,7 +158,7 @@ def run_command(args: argparse.Namespace) -> None:
     elif args.command in ("categories", "locations"):
         print_table(service.reference_data(args.command))
     else:
-        interactive_menu(service)
+        interactive_menu(service, policy)
 
 
 def _ask(prompt: str, default: str = "") -> str:
@@ -150,7 +167,12 @@ def _ask(prompt: str, default: str = "") -> str:
     return value or default
 
 
-def interactive_menu(service: WarehouseService) -> None:
+def interactive_menu(service: WarehouseService, policy: PostingPolicy | None = None) -> None:
+    posting = policy or PostingPolicy(
+        service.db_path,
+        mode="unknown",
+        production_db_path=DEFAULT_DB_PATH,
+    )
     actions = {
         "1": "Остатки", "2": "Поиск", "3": "Добавить оборудование",
         "4": "Приход", "5": "Выдача", "6": "Перемещение",
@@ -174,6 +196,7 @@ def interactive_menu(service: WarehouseService) -> None:
             elif choice == "2":
                 print_table(service.equipment(_ask("Модель или номер")))
             elif choice == "3":
+                posting.assert_mutation_allowed("menu:add")
                 item_id = service.add_equipment(
                     _ask("Категория"), _ask("Модель"), _ask("Серийный номер"),
                     _ask("Инвентарный номер"), _ask("Код места"),
@@ -182,11 +205,13 @@ def interactive_menu(service: WarehouseService) -> None:
                 )
                 print(f"Создана карточка ID {item_id}.")
             elif choice in ("4", "5"):
+                posting.assert_mutation_allowed("menu:receipt_or_issue")
                 method = service.receipt if choice == "4" else service.issue
                 method(int(_ask("ID оборудования")), int(_ask("Количество")),
                        _ask("Основание"), _ask("Ответственный"))
                 print("Операция зарегистрирована.")
             elif choice == "6":
+                posting.assert_mutation_allowed("menu:move")
                 service.move(int(_ask("ID оборудования")), _ask("Код нового места"),
                              _ask("Основание"), _ask("Ответственный"))
                 print("Перемещение зарегистрировано.")

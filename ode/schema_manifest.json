@@ -1,0 +1,49 @@
+{
+  "schema_version": 8,
+  "application_id": 1329874225,
+  "approved_schema_hash": "143bb0ae16c68c1fcd653ecc94adc62464746fed738ebfa47749057380f7f0cb",
+  "migrations": [
+    {
+      "version": 1,
+      "file": "V001__system_and_security.sql",
+      "sha256": "946e17453d3926648caebca0e9287af2fffc56a0a3548c37289712ba0316570b"
+    },
+    {
+      "version": 2,
+      "file": "V002__references_and_catalog.sql",
+      "sha256": "781ea0f8a1f7e0a45188132b383b6f9d3db5e0a26003566bb5004ce91566ff50"
+    },
+    {
+      "version": 3,
+      "file": "V003__equipment_identity.sql",
+      "sha256": "a5e7a4e4f0dd20bbea163a0aa4204d8703653d352a49b963a22ec30896fa466f"
+    },
+    {
+      "version": 4,
+      "file": "V004__legacy_history.sql",
+      "sha256": "e830e9a8d658f8528e57532ea71ea5dc2d66afa60fcab3ecebe6888a9e81d76f"
+    },
+    {
+      "version": 5,
+      "file": "V005__imports_and_inventory.sql",
+      "sha256": "1ec116d96c150a28d22a39fdde6ecdf3bdec3cb6c16d07715e52c4e3151c822a"
+    },
+    {
+      "version": 6,
+      "file": "V006__warehouse_ledger.sql",
+      "sha256": "e34ec3431786d6746b90d07ab69d0cc7222657da1f99c6784a5de51e97d4d2fb"
+    },
+    {
+      "version": 7,
+      "file": "V007__balance_projection.sql",
+      "sha256": "c0fa68fe2d62fdd7929b38abd7184f7bc86e081b10dc6f5630723406d4fe28a5"
+    },
+    {
+      "version": 8,
+      "file": "V008__audit_and_operations.sql",
+      "sha256": "25e0beaae0f6ea1883f796938ff2eed6d3095ec0374c111b7d38bc37386d52b6"
+    }
+  ],
+  "expected_migration_count": 8,
+  "expected_user_version": 8
+}

@@ -34,8 +34,8 @@ class IssueWriteService:
         item = self.repository.available_position(serial)
         if item is None:
             return {
-                "serial_number": serial, "found": False, "valid": True,
-                "warning": "S/N не найден — при подтверждении попадет в проблемные",
+                "serial_number": serial, "found": False, "valid": False,
+                "error": "S/N не найден — расход запрещён",
                 "item_name": "", "model": "", "shelf": "", "available": 0,
             }
         available = float(item["available"])
@@ -48,6 +48,30 @@ class IssueWriteService:
             "serial_number": serial, "found": True, "valid": not error,
             "warning": "", "error": error, "item_name": item["item_name"],
             "model": item["model"], "shelf": item["shelf"], "available": available,
+        }
+
+    def validate_issue_target(self, serial_number: str) -> dict[str, Any]:
+        self._require_write()
+        serial = self._required(str(serial_number).strip().upper(), "S/N сервера")
+        with connect(self.repository.db_path) as db:
+            row = db.execute(
+                """SELECT serial_number, item_name, model, datacenter, shelf
+                     FROM stock_receipts
+                    WHERE trim(serial_number) <> ''
+                      AND trim(serial_number) = trim(?) COLLATE NOCASE
+                      AND trim(equipment_type) <> ''
+                    ORDER BY id LIMIT 1""",
+                (serial,),
+            ).fetchone()
+        if row is None:
+            return {
+                "serial_number": serial, "found": False, "valid": False,
+                "error": "Целевой сервер с таким S/N не найден",
+            }
+        return {
+            "serial_number": serial, "found": True, "valid": True,
+            "item_name": row["item_name"], "model": row["model"],
+            "datacenter": row["datacenter"], "shelf": row["shelf"],
         }
 
     def prepare_issue(self, data: dict[str, Any], *, line_number: int | None = None, soft: bool = False) -> dict[str, Any]:
@@ -91,35 +115,56 @@ class IssueWriteService:
         folded = [value.casefold() for value in serials]
         if len(set(folded)) != len(folded):
             raise WarehouseError("Список содержит повторяющиеся S/N")
-        with connect(self.repository.db_path) as db:
-            references = self.repository.reference_sets(db)
-            imported = unmatched = 0
-            for line, serial in enumerate(serials, start=1):
-                row = prepare_issue(
-                    {**common_fields, "source_serial_number": serial,
-                     "source_item_name": "", "source_cable_type": "", "quantity": 1},
-                    references,
-                    line_number=line,
-                    strict_references=self.strict_reference_validation,
-                )
-                try:
-                    self.repository.create_issue(db, row, author=self.audit_author(), line_number=line)
-                except WarehouseError as error:
-                    reason = str(error)
-                    if not self.repository.is_unmatched_issue(db, row, reason):
-                        raise
-                    self.repository.create_unmatched_issue(db, row, reason, author=self.audit_author())
-                    unmatched += 1
-                imported += 1
-            from inventory.shared.audit import write_audit_entry
-            write_audit_entry(
-                db,
-                action="SCANNED_ISSUE_IMPORT",
-                entity_type="stock_issue",
-                author=self.audit_author(),
-                details={"count": imported, "unmatched": unmatched},
-            )
-        return {"imported": imported, "unmatched": unmatched}
+        rows = [
+            {**common_fields, "source_serial_number": serial,
+             "source_item_name": "", "source_cable_type": "", "quantity": 1}
+            for serial in serials
+        ]
+        prepared = self._prepare_rows(rows, soft=False)
+        imported = self.repository.insert_many(
+            prepared,
+            author=self.audit_author(),
+            collect_refs=not self.strict_reference_validation,
+            soft=False,
+            audit_action="SCANNED_ISSUE_IMPORT",
+        )
+        return {"imported": imported, "unmatched": 0}
+
+    def create_issue_pairs(
+        self, common_fields: dict[str, Any], pairs: Iterable[dict[str, Any]]
+    ) -> dict[str, int]:
+        self._require_write()
+        source_pairs = [dict(pair) for pair in pairs]
+        if not source_pairs or len(source_pairs) > 1000:
+            raise WarehouseError("Список пар пуст или превышает 1000 строк")
+        normalized: list[dict[str, Any]] = []
+        seen_sources: set[str] = set()
+        for line, pair in enumerate(source_pairs, start=1):
+            source = str(pair.get("source_serial_number", "")).strip().upper()
+            target = str(pair.get("target_serial_number", "")).strip().upper()
+            if not source or not target:
+                raise WarehouseError(f"Строка {line}: укажите S/N компонента и S/N сервера")
+            source_key = source.casefold()
+            if source_key in seen_sources:
+                raise WarehouseError(f"Строка {line}: S/N компонента повторяется в списке")
+            seen_sources.add(source_key)
+            normalized.append({
+                **common_fields,
+                "source_serial_number": source,
+                "target_serial_number": target,
+                "source_item_name": "",
+                "source_cable_type": "",
+                "quantity": 1,
+            })
+        prepared = self._prepare_rows(normalized, soft=False)
+        imported = self.repository.insert_many(
+            prepared,
+            author=self.audit_author(),
+            collect_refs=not self.strict_reference_validation,
+            soft=False,
+            audit_action="SCANNED_ISSUE_PAIR_IMPORT",
+        )
+        return {"imported": imported}
 
     def import_issues(self, rows: Iterable[dict[str, Any]], *, soft: bool = True) -> int:
         self._require_write()

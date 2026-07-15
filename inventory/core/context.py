@@ -20,4 +20,7 @@ class FeatureFlags:
 class RuntimeConfig:
     db_path: Path
     feature_flags: FeatureFlags = field(default_factory=FeatureFlags)
+    warehouse_contour: str = "unknown"
+    production_db_path: Path | None = None
+    full_inventory_state_root: Path | None = None
     settings: dict[str, Any] = field(default_factory=dict)

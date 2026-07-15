@@ -154,7 +154,7 @@ class DeliveryRepository:
         serial_number: str,
     ) -> dict[str, Any] | None:
         row = db.execute(
-            "SELECT * FROM stock_receipts WHERE trim(serial_number) <> '' AND serial_number=? COLLATE NOCASE",
+            "SELECT * FROM stock_receipts WHERE trim(serial_number) <> '' AND trim(serial_number)=trim(?) COLLATE NOCASE",
             (serial_number,),
         ).fetchone()
         return dict(row) if row else None

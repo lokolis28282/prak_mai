@@ -43,9 +43,12 @@ class WarehouseService:
         db_path: str | Path = DEFAULT_DB_PATH,
         *,
         strict_reference_validation: bool = STRICT_REFERENCE_VALIDATION,
+        initialize_database: bool = True,
     ):
         self._core = WarehouseCore(
-            db_path, strict_reference_validation=strict_reference_validation
+            db_path,
+            strict_reference_validation=strict_reference_validation,
+            initialize_database=initialize_database,
         )
         self.profile_service = ProfileService(self._core)
         self.reference_service = ReferenceService(self._core)
@@ -231,6 +234,9 @@ class WarehouseService:
 
     def warehouse_categories(self, *args: Any, **kwargs: Any) -> Any:
         return self.balance_service.warehouse_categories(*args, **kwargs)
+
+    def warehouse_type_summary(self, *args: Any, **kwargs: Any) -> Any:
+        return self.balance_service.warehouse_type_summary(*args, **kwargs)
 
     def stock_balance(self, *args: Any, **kwargs: Any) -> Any:
         return self.balance_service.stock_balance(*args, **kwargs)

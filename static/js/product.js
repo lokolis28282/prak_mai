@@ -28,12 +28,21 @@
     },3000);
   },true);
 
-  sections.warehouse=[
-    ['overview','Обзор'],['receipt','Приход'],['issue','Расход'],['balance','Баланс'],
-    ['deliveries','Поставки'],['inventory','Инвентаризация'],['problems','Проблемы'],
-    ['journal','События']
-  ];
+  sections.home=[['home','ODE']];
   sections.monitoring=[['monitoring','Мониторинг']];
+  sections.works=[['worklogs','Журнал работ']];
+  sections.warehouse=[
+    ['overview','Обзор склада'],['balance','Оборудование'],['receipt','Приход'],['issue','Расход'],
+    ['inventory','Инвентаризация'],['deliveries','Поставки'],['equipment','Перемещения'],
+    ['references','Справочники']
+  ];
+  sections.reports=[['daily','Ежедневный'],['weekly','Еженедельный'],['journal','Складские операции']];
+  sections.administration=[
+    ['admin_users','Пользователи'],['admin_permissions','Права'],
+    ['admin_backups','Резервные копии'],['admin_database','Проверка базы'],
+    ['admin_audit','Журнал действий'],['admin_migration','Миграция данных'],
+    ['admin_references','Управление справочниками']
+  ];
 
   function formatNumber(value){return Number(value||0).toLocaleString('ru-RU')}
   function openWarehouseProblems(){openTask('warehouse','problems')}
@@ -41,42 +50,125 @@
 
   openMonitoringHub=function(){
     openTask('monitoring','monitoring');
-    const root=byId('monitoring');
-    if(!root)return;
-    root.replaceChildren(renderElement('div',{className:'monitoring-placeholder',children:[
-      renderElement('div',{className:'monitoring-icon',text:'M'}),
-      renderElement('p',{className:'eyebrow',text:'Мониторинг'}),
-      renderElement('h2',{text:'Раздел в разработке'}),
-      renderElement('p',{text:'Интеграция с системами мониторинга ЦОД появится после стабильного 1.0.'})
-    ]}));
+    showDevelopmentPlaceholder(byId('monitoring'),'Мониторинг — в разработке','M');
   };
 
   openWarehouseHub=function(){
     openTask('warehouse','overview');
+  };
+
+  function warehouseTypeIcon(type,category){
+    const value=String(type||'').toLocaleLowerCase();
+    if(category==='Кабели')return '〰';
+    if(/сервер|server/.test(value))return '▣';
+    if(/трансив|sfp|qsfp/.test(value))return '⇄';
+    if(/коммут|switch|сетев/.test(value))return '⌁';
+    if(/диск|ssd|hdd/.test(value))return '◉';
+    if(/памят|ram|dimm/.test(value))return '▤';
+    return category==='Компоненты'?'◇':'◆';
+  }
+
+  function warehouseCategoryTotals(rows,category){
+    return rows.filter(row=>row.category===category).reduce((result,row)=>({
+      positions:result.positions+Number(row.positions||0),
+      quantity:result.quantity+Number(row.quantity||0)
+    }),{positions:0,quantity:0});
+  }
+
+  function openWarehouseBalance(category='',type=''){
+    openTask('warehouse','balance');
+    const categorySelect=byId('uxBalanceCategory'),typeSelect=byId('uxBalanceType'),query=byId('balanceQuery');
+    if(query)query.value='';
+    if(categorySelect)categorySelect.value=category;
+    if(typeSelect)typeSelect.value=[...typeSelect.options].some(option=>option.value===type)?type:'';
+    (typeSelect||categorySelect||query)?.dispatchEvent(new Event('input',{bubbles:true}));
+  }
+
+  function renderWarehouseOverview(){
     const root=byId('overview');
     if(!root)return;
-    const actions=[
-      ['Принять оборудование','Сканирование, поставка, кабели или ручной ввод',()=>openTask('warehouse','receipt')],
-      ['Выдать оборудование','Сканирование, баланс или списание кабелей',()=>openTask('warehouse','issue')],
-      ['Поставки','Документы снабжения и приемка',()=>openTask('warehouse','deliveries')],
-      ['Баланс','Остатки, поиск и фильтры',()=>openTask('warehouse','balance')],
-      ['Инвентаризация','Сверка фактического наличия',()=>openTask('warehouse','inventory')],
-      ['Проблемы','Несопоставленные операции и качество данных',openWarehouseProblems],
-      ['События','Хронология складских операций',openWarehouseEvents]
-    ];
+    const rows=state.warehouse_type_summary||[];
+    const categories=['Оборудование','Компоненты','Кабели'];
+    const categoryLabels={Оборудование:'Оборудование',Компоненты:'Компоненты',Кабели:'Кабели и расходники'};
+    const totalPositions=rows.reduce((sum,row)=>sum+Number(row.positions||0),0);
+    const categoryCards=categories.map(category=>{
+      const totals=warehouseCategoryTotals(rows,category);
+      return renderButton({className:`warehouse-overview-stat warehouse-overview-stat-${category==='Оборудование'?'equipment':category==='Компоненты'?'components':'cables'}`,onClick:()=>openWarehouseBalance(category),children:[
+        renderElement('span',{text:categoryLabels[category]}),
+        renderElement('strong',{text:formatNumber(totals.positions)}),
+        renderElement('small',{text:'позиций в наличии'})
+      ]});
+    });
+    const typeGroups=categories.map(category=>{
+      const items=rows.filter(row=>row.category===category);
+      if(!items.length)return null;
+      return renderElement('section',{className:'warehouse-type-group',children:[
+        renderElement('div',{className:'warehouse-type-heading',children:[
+          renderElement('h3',{text:categoryLabels[category]}),
+          renderButton({text:'Показать все',className:'warehouse-link-button',onClick:()=>openWarehouseBalance(category)})
+        ]}),
+        renderElement('div',{className:'warehouse-type-grid',children:items.map(row=>renderButton({
+          className:'warehouse-type-card',onClick:()=>openWarehouseBalance(category,row.item_type),children:[
+            renderElement('span',{className:'warehouse-type-icon',text:warehouseTypeIcon(row.item_type,category)}),
+            renderElement('span',{className:'warehouse-type-name',text:balanceTypeLabel(row.item_type)}),
+            renderElement('strong',{text:formatNumber(row.positions)}),
+            renderElement('small',{text:`Остаток: ${formatNumber(row.quantity)}`})
+          ]
+        }))})
+      ]});
+    }).filter(Boolean);
     root.replaceChildren(
-      renderElement('div',{className:'landing-head compact',children:[
-        renderElement('p',{className:'eyebrow',text:'Склад'}),
-        renderElement('h2',{text:'Что нужно сделать?'}),
-        renderElement('p',{text:'Выберите рабочий сценарий.'})
+      renderElement('div',{className:'warehouse-overview-head',children:[
+        renderElement('div',{children:[renderElement('p',{className:'eyebrow',text:'Склад'}),renderElement('h2',{text:'Всё оборудование — одним взглядом'}),renderElement('p',{text:'Нажмите на категорию или тип, чтобы открыть готовую выборку в балансе.'})]}),
+        renderButton({text:'Открыть весь баланс',className:'button primary',onClick:()=>openWarehouseBalance()})
       ]}),
-      renderElement('div',{className:'action-grid',children:actions.map(([title,help,onClick])=>
-        renderButton({className:'warehouse-action',onClick,children:[
-          renderElement('strong',{text:title}),renderElement('span',{text:help})
+      renderElement('div',{className:'warehouse-overview-stats',children:[
+        renderElement('div',{className:'warehouse-overview-stat warehouse-overview-stat-total',children:[renderElement('span',{text:'Всего на складе'}),renderElement('strong',{text:formatNumber(totalPositions)}),renderElement('small',{text:'активных позиций'})]}),
+        ...categoryCards
+      ]}),
+      renderElement('div',{className:'warehouse-overview-toolbar',children:[
+        renderElement('div',{children:[renderElement('h3',{text:'По типам'}),renderElement('p',{text:'Серверы, трансиверы, диски и остальные типы из справочника.'})]}),
+        renderElement('div',{children:[
+          renderButton({text:'Принять',className:'button',onClick:()=>openTask('warehouse','receipt')}),
+          renderButton({text:'Выдать',className:'button',onClick:()=>openTask('warehouse','issue')})
         ]})
-      )})
+      ]}),
+      ...typeGroups
     );
-  };
+  }
+
+  function installPrimaryNavigation(){
+    const navigation=document.querySelector('.section-nav');
+    if(!navigation)return;
+    navigation.hidden=true;
+    navigation.setAttribute('aria-hidden','true');
+    const sidebar=document.querySelector('.sidebar');
+    if(sidebar){sidebar.hidden=true;sidebar.setAttribute('aria-hidden','true')}
+  }
+
+  function configureWarehouseViews(){
+    const balance=byId('balance'),movement=byId('equipment');
+    const intro=balance?.querySelector(':scope > .import-box');
+    if(intro){
+      const title=intro.querySelector('strong'),description=intro.querySelector('p');
+      if(title)title.textContent='Карточки оборудования';
+      if(description)description.textContent='Поиск по S/N, инвентарному номеру, наименованию, поставщику, категории и размещению.';
+    }
+    if(movement&&!byId('movementViewHeading')){
+      movement.prepend(renderElement('div',{className:'landing-head compact',attrs:{id:'movementViewHeading'},children:[
+        renderElement('p',{className:'eyebrow',text:'Склад'}),
+        renderElement('h2',{text:'Перемещения'}),
+        renderElement('p',{text:'Изменение текущего размещения существующей карточки оборудования.'})
+      ]}));
+      const importBox=movement.querySelector(':scope > .import-box'),boxes=[...movement.querySelectorAll('.split > .box')];
+      if(importBox)importBox.hidden=true;
+      if(boxes[0])boxes[0].hidden=true;
+      if(boxes[1])boxes[1].querySelector('h3').textContent='Переместить оборудование';
+      movement.classList.add('warehouse-movement-view');
+    }
+    const modalTitle=byId('positionModal')?.querySelector('.modal-head h2');
+    if(modalTitle)modalTitle.textContent='Карточка оборудования';
+  }
 
   function dashboardAction(title,help,onClick,primary=false){
     return renderButton({className:`dashboard-action${primary?' primary':''}`,onClick,children:[
@@ -151,9 +243,10 @@
     }
   }
 
-  let searchTimer=0,searchSequence=0;
+  let searchTimer=0,searchSequence=0,searchController=null;
   function closeGlobalSearch(){
     clearTimeout(searchTimer);searchTimer=0;searchSequence+=1;
+    if(searchController){searchController.abort();searchController=null}
     const panel=byId('globalSearchResults'),input=byId('globalSearch');
     if(panel){panel.hidden=true;panel.replaceChildren()}
     if(input)input.setAttribute('aria-expanded','false');
@@ -178,10 +271,12 @@
     const normalized=query.trim();
     if(normalized.length<2){closeGlobalSearch();return}
     const sequence=++searchSequence;
+    if(searchController)searchController.abort();
+    searchController=new AbortController();
     panel.hidden=false;
     panel.replaceChildren(renderElement('div',{className:'global-search-state',text:'Поиск...'}));
     try{
-      const response=await request('/api/global-search?'+new URLSearchParams({query:normalized,limit:'30'}));
+      const response=await request('/api/global-search?'+new URLSearchParams({query:normalized,limit:'30'}),{signal:searchController.signal});
       if(sequence!==searchSequence)return;
       const results=response.results||[];
       panel.replaceChildren(...(results.length?results.map(result=>{
@@ -195,6 +290,7 @@
       }):[renderElement('div',{className:'global-search-state',text:'Ничего не найдено'})]));
       byId('globalSearch')?.setAttribute('aria-expanded','true');
     }catch(error){
+      if(error?.name==='AbortError')return;
       if(sequence===searchSequence)panel.replaceChildren(renderElement('div',{className:'global-search-state error-list',text:error.message}));
     }
   }
@@ -346,7 +442,7 @@
     }catch(error){notify(error.message,true)}finally{input.value=''}
   };
 
-  let initialBalanceRows=[],balanceSearchTimer=0,balanceSearchSequence=0;
+  let initialBalanceRows=[],balanceSearchTimer=0,balanceSearchSequence=0,balancePageOffset=0,balanceHasMore=false;
   function renderBalanceSearchState(message,busy=false){
     const body=byId('balanceBody');
     if(body){
@@ -361,25 +457,41 @@
     const input=byId('balanceQuery');
     if(!input||input.dataset.serverSearch==='true')return;
     input.dataset.serverSearch='true';
-    input.oninput=()=>{
+    const controls=[input,byId('uxBalanceCategory'),byId('uxBalanceType'),byId('uxBalanceProject'),byId('uxBalanceSupplier'),byId('uxBalanceVendor'),byId('uxBalanceStock'),byId('uxBalanceSort')].filter(Boolean);
+    const refresh=event=>{
       clearTimeout(balanceSearchTimer);balanceSearchTimer=0;
       const sequence=++balanceSearchSequence;
-      const query=input.value.trim();
-      if(!query){
+      balancePageOffset=0;
+      const params=currentBalanceParams();
+      const hasFilters=[...params.entries()].some(([key,value])=>!['limit','offset'].includes(key)&&value&&!(key==='sort_by'&&value==='item_name')&&!(key==='sort_dir'&&value==='asc'));
+      if(!hasFilters){
         state.balance=initialBalanceRows.slice();
+        balanceHasMore=Boolean(state.balance_truncated);
         renderSimpleBalance();
         byId('balanceBody')?.setAttribute('aria-busy','false');
         setBalanceScope(Boolean(state.balance_truncated));
         return;
       }
-      // Do not leave stale rows actionable while the debounced server search
-      // is pending: a user could otherwise open or issue an unrelated item.
+      if(!state.balance_truncated&&!params.get('query')){
+        state.balance=initialBalanceRows.slice();renderSimpleBalance();setBalanceScope(false);return;
+      }
       renderBalanceSearchState('Поиск по всей базе...',true);
       setBalanceScope(false,'Поиск по всей базе...');
       balanceSearchTimer=window.setTimeout(()=>{
-        balanceSearchTimer=0;searchBalanceOnServer(query,sequence);
-      },220);
+        balanceSearchTimer=0;searchBalanceOnServer(params,sequence);
+      },event?.target===input?220:0);
     };
+    controls.forEach(control=>{control.oninput=refresh;control.onchange=refresh});
+  }
+  function currentBalanceParams(){
+    const sort=(byId('uxBalanceSort')?.value||'item_name:asc').split(':');
+    return new URLSearchParams({
+      query:byId('balanceQuery')?.value.trim()||'',category:byId('uxBalanceCategory')?.value||'',
+      item_type:byId('uxBalanceType')?.value||'',project:byId('uxBalanceProject')?.value||'',
+      supplier:byId('uxBalanceSupplier')?.value||'',vendor:byId('uxBalanceVendor')?.value||'',
+      stock_state:byId('uxBalanceStock')?.value||'',sort_by:sort[0]||'item_name',
+      sort_dir:sort[1]||'asc',limit:'500',offset:String(balancePageOffset)
+    });
   }
   function setBalanceScope(truncated,message=''){
     let note=byId('balanceScope');
@@ -388,17 +500,37 @@
       document.querySelector('#balance .filters')?.insertAdjacentElement('afterend',note);
     }
     note.textContent=message||(truncated?'Показана ограниченная выборка. Используйте поиск, чтобы найти позицию во всей базе.':'Показаны все позиции.');
+    renderBalancePager();
   }
-  async function searchBalanceOnServer(query,sequence=++balanceSearchSequence){
+  function renderBalancePager(){
+    let pager=byId('balancePager');
+    if(!pager){pager=renderElement('div',{className:'balance-pager',attrs:{id:'balancePager'}});byId('balanceScope')?.insertAdjacentElement('afterend',pager)}
+    const page=Math.floor(balancePageOffset/500)+1;
+    pager.replaceChildren(
+      renderButton({text:'← Предыдущая',className:'button',disabled:balancePageOffset===0,onClick:()=>changeBalancePage(-1)}),
+      renderElement('span',{text:`Страница ${page} · строки ${balancePageOffset+1}–${balancePageOffset+state.balance.length}`}),
+      renderButton({text:'Следующая →',className:'button',disabled:!balanceHasMore,onClick:()=>changeBalancePage(1)})
+    );
+  }
+  function changeBalancePage(direction){
+    balancePageOffset=Math.max(0,balancePageOffset+direction*500);
+    const sequence=++balanceSearchSequence;
+    renderBalanceSearchState('Загружаем страницу...',true);
+    searchBalanceOnServer(currentBalanceParams(),sequence);
+  }
+  async function searchBalanceOnServer(params,sequence=++balanceSearchSequence){
     try{
-      const response=await request('/api/balance?'+new URLSearchParams({query,limit:'500'}));
-      if(sequence!==balanceSearchSequence||byId('balanceQuery')?.value.trim()!==query)return;
+      const expected=params.toString();
+      const response=await request('/api/balance?'+expected);
+      if(sequence!==balanceSearchSequence||currentBalanceParams().toString()!==expected)return;
       state.balance=response.rows||[];
+      balancePageOffset=Number(response.offset||0);
+      balanceHasMore=Boolean(response.has_more);
       renderSimpleBalance();
       byId('balanceBody')?.setAttribute('aria-busy','false');
-      setBalanceScope(Boolean(response.truncated),response.truncated?'Показаны первые 500 совпадений. Уточните запрос.':`Найдено позиций: ${state.balance.length}`);
+      setBalanceScope(Boolean(response.has_more),response.has_more?'Есть следующая страница результатов.':`Показано позиций на странице: ${state.balance.length}`);
     }catch(error){
-      if(sequence===balanceSearchSequence&&byId('balanceQuery')?.value.trim()===query){
+      if(sequence===balanceSearchSequence){
         notify(error.message,true);renderBalanceSearchState('Поиск не выполнен');setBalanceScope(false,'Поиск не выполнен');
       }
     }
@@ -406,7 +538,7 @@
 
   function inventoryNumberAssignment(card,key){
     const canWrite=['admin','engineer'].includes(state.current_user?.role);
-    if(!canWrite||!card.serial_number||card.inventory_number)return null;
+    if(state.migration_full?.read_only||state.migration_pilot?.enabled||!canWrite||!card.serial_number||card.inventory_number)return null;
     const input=renderInput({
       name:'inventory_number',
       placeholder:'Введите полученный инвентарный номер',
@@ -455,28 +587,198 @@
     return form;
   }
 
+  function isMigrationAdministrationContext(position){
+    return state.current_user?.role==='admin'
+      &&currentSection==='administration'
+      &&document.querySelector('.subtab.active')?.dataset.view==='migration_pilot'
+      &&Boolean(position.full_reconciliation_id||position.pilot_selection_id);
+  }
+
+  function reviewRowScore(row,position){
+    const same=(left,right)=>String(left||'').toLocaleLowerCase()===String(right||'').toLocaleLowerCase();
+    let score=0;
+    if(same(row.display_serial_value,position.serial_number))score+=20;
+    if(same(row.source_serial_value,position.serial_number))score+=10;
+    if(same(row.canonical_item_name,position.item_name))score+=8;
+    if(same(row.vendor,position.vendor))score+=4;
+    if(same(row.model,position.model))score+=4;
+    if(row.operation_kind==='receipt')score+=2;
+    if(row.has_card)score+=1;
+    return score;
+  }
+
+  async function positionCardQuery(position){
+    if(position.full_reconciliation_id)return new URLSearchParams({full_reconciliation_id:position.full_reconciliation_id});
+    if(position.pilot_selection_id)return new URLSearchParams({pilot_selection_id:position.pilot_selection_id});
+    const review=state.migration_full?.read_only
+      ?{route:'/api/migration-full?',parameter:'full_reconciliation_id'}
+      :(state.migration_pilot?.enabled?{route:'/api/migration-pilot?',parameter:'pilot_selection_id'}:null);
+    if(review){
+      const lookup=position.serial_number||position.item_name||'';
+      const response=await request(review.route+new URLSearchParams({query:lookup,limit:'100',offset:'0'}));
+      const rows=(response.rows||[]).filter(row=>row.has_card).sort((left,right)=>reviewRowScore(right,position)-reviewRowScore(left,position));
+      if(!rows.length)throw new Error('Карточка оборудования не найдена');
+      return new URLSearchParams({[review.parameter]:rows[0].selection_id});
+    }
+    return new URLSearchParams(position.serial_number?{serial_number:position.serial_number}:{
+      item_name:position.item_name,cable_type:position.cable_type,project:position.project||'',datacenter:position.datacenter||''
+    });
+  }
+
+  function userFacingHistoryText(value){
+    return String(value??'')
+      .replaceAll('MIGRATION_RECEIPT_IMPORTED','Исторический приход')
+      .replaceAll('MIGRATION_ISSUE_IMPORTED','Исторический расход')
+      .replaceAll('MIGRATION_OPENING_STATE_CREATED','Восстановлена историческая запись')
+      .replaceAll('MIGRATION_SOURCE_ROW_LINKED','Связана историческая запись')
+      .replaceAll('MIGRATION_EXACT_DUPLICATE_SKIPPED','Повторная историческая запись пропущена')
+      .replaceAll('MIGRATION_CONFLICT_RECORDED','Зафиксировано расхождение исторических данных')
+      .replaceAll('MIGRATION_NUMERIC_IDENTITY_PROVISIONAL','Историческая карточка требует проверки администратора')
+      .replaceAll('MIGRATION_SERIAL_QUARANTINED','Историческая запись изолирована администратором')
+      .replace(/Исторический приход\s*\(миграция\)/gi,'Исторический приход')
+      .replace(/Исторический расход\s*\(миграция\)/gi,'Исторический расход')
+      .replace(/Миграционное начальное состояние/gi,'Восстановленная историческая запись')
+      .replace(/Историческая миграция/gi,'Исторические данные')
+      .replace(/Миграционн(?:ый|ая|ое|ые)/gi,'Исторический')
+      .replace(/Миграци(?:я|и)/gi,'История')
+      .replace(/\bMIGRATION_[A-Z_]+\b/g,'Историческое событие');
+  }
+
+  function equipmentHistorySummary(title,rows){
+    const table=renderTable({
+      headers:['Дата','Событие','Количество'],rows:rows.slice(-5),empty:'Записей пока нет',
+      rowRenderer:row=>renderElement('tr',{children:[
+        renderElement('td',{text:row.date||''}),renderElement('td',{text:row.event_type||''}),renderElement('td',{text:row.quantity})
+      ]})
+    });
+    return renderElement('article',{className:'equipment-history-summary',children:[
+      renderElement('h3',{text:title}),renderElement('div',{className:'table-wrap',children:[table]})
+    ]});
+  }
+
+  function equipmentProductSections(history){
+    const workCount=history.filter(row=>/работ|work/i.test(`${row.event_type||''} ${row.task||''}`)).length;
+    const productCard=(title,text,future=false)=>renderElement('article',{className:`equipment-product-section${future?' future':''}`,children:[
+      renderElement('strong',{text:title}),renderElement('span',{text})
+    ]});
+    return renderElement('section',{className:'equipment-product-map',attrs:{'aria-label':'Связанные разделы карточки'},children:[
+      productCard('Мониторинг','Эта же карточка используется как единая точка оборудования.'),
+      productCard('Работы',workCount?`Связанных записей: ${workCount}`:'Связанные работы пока не зарегистрированы.'),
+      productCard('Комментарии','Комментарии сохранены в операциях и Timeline.'),
+      productCard('Инвентаризация','Сверка выполняется в разделе «Склад → Инвентаризация».'),
+      productCard('Фотографии','Запланировано',true),productCard('Документы','Запланировано',true),
+      productCard('Гарантия','Запланировано',true),productCard('Комплектующие','Запланировано',true)
+    ]});
+  }
+
   openPositionCard=async function(key){
     const position=findPosition(key);
     if(!position)return;
     currentPositionKey=key;
-    const query=new URLSearchParams(position.serial_number?{serial_number:position.serial_number}:{
-      item_name:position.item_name,cable_type:position.cable_type,project:position.project||'',datacenter:position.datacenter||''
-    });
     try{
+      const query=await positionCardQuery(position);
       const response=await request('/api/position-card?'+query);
-      const card=response.position,details=[
-        ['S/N',card.serial_number],['Инвентарный №',card.inventory_number],['Тип',card.item_type],['Категория',card.category],
-        ['Вендор',card.vendor],['Модель',card.model],['Hostname',card.hostname],['Название',card.item_name],
-        ['Проект',card.project],['ЦОД',card.datacenter],['Полка',card.shelf],['Ряд',card.rack_row],['Юнит',card.rack_unit],
+      const card=response.position,migration=response.migration||{},technicalContext=isMigrationAdministrationContext(position);
+      const publicText=value=>technicalContext?value:userFacingHistoryText(value);
+      const location=[card.datacenter,card.object_name,card.shelf,card.rack_row,card.rack_unit].filter(Boolean).join(' · ');
+      const details=[
+        ['S/N',card.serial_number],['Инвентарный №',card.inventory_number],
+        ['Каноническое название',card.canonical_name||migration.canonical_item_name||card.item_name],['Исходное название',card.source_name||migration.source_item_name||card.item_name],
+        ['Вендор',card.vendor||migration.vendor],['Модель',card.model||migration.model],['Part Number',card.part_number||migration.part_number],
+        ['Категория',card.category||migration.category],['Тип оборудования',card.item_type||card.equipment_type||migration.equipment_type||migration.component_type],
+        ['Текущее местоположение',location],['Hostname',card.hostname],['Проект',card.project],['ЦОД',card.datacenter],
+        ['Полка',card.shelf],['Ряд',card.rack_row],['Юнит',card.rack_unit],
         ['Статус',card.status],['Поставщик',card.supplier],['Поставка',card.delivery_number],['Заказ',card.order_number],
-        ['Дата поступления',card.receipt_date],['Инженер',card.responsible],['Комментарий',card.comment]
+        ['Дата поступления',card.receipt_date],['Инженер',publicText(card.responsible)],['Комментарий',publicText(card.comment)]
       ];
-      currentPositionHistory=response.history||[];
+      const rawHistory=response.history||[];
+      currentPositionHistory=(technicalContext?rawHistory:rawHistory.filter(row=>{
+        const technicalPayload=`${row.event_type||''} ${row.responsible||''} ${row.comment||''}`;
+        return !/MIGRATION_[A-Z_]+|full-warehouse-migration|source_row_hash/i.test(technicalPayload);
+      })).map(row=>technicalContext?row:{
+        ...row,event_type:userFacingHistoryText(row.event_type),task:userFacingHistoryText(row.task),
+        responsible:userFacingHistoryText(row.responsible),comment:userFacingHistoryText(row.comment)
+      });
       const detailList=renderElement('dl',{className:'equipment-details',children:details.map(([label,value])=>
         renderElement('div',{className:'equipment-field',children:[renderElement('dt',{text:label}),renderElement('dd',{text:value||'—'})]})
       )});
       const detailChildren=[detailList],assignment=inventoryNumberAssignment(card,key);
       if(assignment)detailChildren.push(assignment);
+      const receipts=currentPositionHistory.filter(row=>/приход|поступ|восстановлен/i.test(row.event_type||''));
+      const issues=currentPositionHistory.filter(row=>/расход|выдан|списан/i.test(row.event_type||''));
+      detailChildren.push(renderElement('section',{className:'equipment-history-summaries',children:[
+        equipmentHistorySummary('История приходов',receipts),equipmentHistorySummary('История расходов',issues)
+      ]}));
+      if(response.migration&&technicalContext){
+        const sourceRows=Array.isArray(migration.source_rows)?migration.source_rows:[];
+        const readable=value=>Array.isArray(value)?value.map(readable).filter(Boolean).join('; '):(value&&typeof value==='object'?Object.entries(value).map(([name,item])=>`${name}: ${readable(item)}`).join('; '):String(value??''));
+        const source=[migration.source_file,migration.source_sheet,migration.source_row?`строка ${migration.source_row}`:''].filter(Boolean).join(' · ');
+        const pilotMigrationFields=[
+          ['Source',source],['Selected Source S/N',migration.source_serial_value],['Preserved Identity S/N',migration.preserved_identity_serial],['Original Item Name',migration.source_item_name],
+          ['Canonical Item Name',migration.canonical_item_name],['Preservation Status',migration.serial_preservation_status],
+          ['Object Kind',migration.object_kind],['Equipment Category',migration.equipment_category],
+          ['Equipment Type',migration.equipment_type],['Component Type',migration.component_type],
+          ['Vendor',migration.vendor],['Model',migration.model],['Part Number',migration.part_number],
+          ['Supplier',migration.supplier],['Shelf (optional)',migration.shelf],
+          ['Source Receipt Date',migration.source_receipt_date],['Source Receipt Date (raw)',migration.source_receipt_date_raw],
+          ['Source Date Status',migration.source_date_status],
+          ['Migration Warnings',readable(migration.migration_warnings)],['Conflicts',readable(migration.conflicts)]
+        ];
+        const fullMigrationFields=[
+          ['Source',source],['Operation Kind',migration.operation_kind],['Historical Source Date',migration.source_operation_date],
+          ['Selected Source S/N',migration.source_serial_value],['Display S/N',migration.display_serial_value],
+          ['Preserved Identity S/N',migration.preserved_serial_value],['Raw XML Token',migration.raw_xml_value],
+          ['Preservation Status',migration.preservation_status],['Identity Confidence',migration.identity_confidence],
+          ['Authoritative',migration.authoritative?'Да':'Нет'],['Requires Manual Review',migration.requires_manual_review?'Да':'Нет'],
+          ['Final Status',migration.final_status],['Original Item Name',migration.source_item_name],
+          ['Canonical Item Name',migration.canonical_item_name],['Object Kind',migration.object_kind],
+          ['Equipment Category',migration.category],['Equipment Type',migration.equipment_type],
+          ['Component Type',migration.component_type],['Vendor',migration.vendor],['Model',migration.model],
+          ['Part Number',migration.part_number],['Shelf (provenance only)',migration.shelf],
+          ['Normalization Rule',migration.normalization_rule],['Opening State',migration.opening_state?'Да':'Нет'],
+          ['Opening State Explanation',migration.opening_state_message],
+          ['Numeric Preservation Warning',migration.preservation_status==='NUMERIC_FORMAT_UNPROVEN'?'Возможна утрата ведущих нулей; authoritative=false, требуется ручная проверка':''],
+          ['Migration Warnings',readable(migration.warnings)],['Conflicts',readable(migration.conflicts)]
+        ];
+        const migrationFields=migration.mode==='full'?fullMigrationFields:pilotMigrationFields;
+        const migrationList=renderElement('dl',{className:'equipment-details migration-details',children:migrationFields.map(([label,value])=>
+          renderElement('div',{className:'equipment-field',children:[renderElement('dt',{text:label}),renderElement('dd',{text:value||'—'})]})
+        )});
+        const fullSource=migration.mode==='full';
+        const sourceTable=renderTable({
+          headers:fullSource?['Операция','Дата','Файл','Лист','Строка','Source S/N','Display S/N','Финальный статус','Warnings']:['Файл','Лист','Строка','Source S/N','Решение','Warnings'],rows:sourceRows,
+          empty:'Связанные source rows отсутствуют',
+          rowRenderer:row=>renderElement('tr',{children:fullSource?[
+            renderElement('td',{text:row.operation_kind||''}),renderElement('td',{text:row.source_operation_date||''}),
+            renderElement('td',{text:row.source_file||''}),renderElement('td',{text:row.source_sheet||''}),
+            renderElement('td',{text:row.source_row||''}),renderElement('td',{children:[renderElement('code',{text:row.source_serial_value||''})]}),
+            renderElement('td',{children:[renderElement('code',{text:row.display_serial_value||''})]}),
+            renderElement('td',{text:row.final_status||''}),renderElement('td',{text:readable(row.migration_warnings)})
+          ]:[
+            renderElement('td',{text:row.source_file||''}),renderElement('td',{text:row.source_sheet||''}),
+            renderElement('td',{text:row.source_row||''}),renderElement('td',{children:[renderElement('code',{text:row.source_serial_value||''})]}),
+            renderElement('td',{text:row.import_decision||''}),renderElement('td',{text:readable(row.migration_warnings)})
+          ]})
+        });
+        const relationships=Array.isArray(migration.relationships)?migration.relationships:[];
+        const relationshipTable=fullSource&&relationships.length?renderElement('div',{children:[
+          renderElement('h4',{text:`Target S/N relationships (${relationships.length})`}),
+          renderElement('div',{className:'table-wrap',children:[renderTable({
+            headers:['Relationship','Target Source S/N','Target Display S/N','Preservation','Warning'],rows:relationships,
+            empty:'Связи отсутствуют',rowRenderer:row=>renderElement('tr',{children:[
+              renderElement('td',{text:row.relationship_type||''}),renderElement('td',{children:[renderElement('code',{text:row.target_source_serial_value||''})]}),
+              renderElement('td',{children:[renderElement('code',{text:row.target_display_serial_value||''})]}),
+              renderElement('td',{text:row.target_preservation_status||''}),renderElement('td',{text:row.warning||''})
+            ]})
+          })]})
+        ]}):null;
+        const provenanceChildren=[
+          renderElement('h3',{text:'Migration provenance'}),migrationList,
+          renderElement('h4',{text:`Source Rows (${sourceRows.length})`}),renderElement('div',{className:'table-wrap',children:[sourceTable]})
+        ];
+        if(relationshipTable)provenanceChildren.push(relationshipTable);
+        detailChildren.push(renderElement('section',{className:'equipment-migration-section',attrs:{'aria-label':'Migration provenance'},children:provenanceChildren}));
+      }
       byId('positionDetails').replaceChildren(...detailChildren);
       const historyBody=byId('positionHistory');
       historyBody.replaceChildren(...(currentPositionHistory.length?currentPositionHistory.map(row=>renderElement('tr',{children:[
@@ -495,6 +797,9 @@
       }
     }catch(error){notify(error.message,true)}
   };
+
+  installPrimaryNavigation();
+  configureWarehouseViews();
 
   const baseShowSection=showSection,baseShowView=showView;
   let applyingHistory=false;
@@ -532,7 +837,8 @@
   loadAll=async function(){
     await productLoadAll();
     initialBalanceRows=(state.balance||[]).slice();
-    initServerBalanceSearch();setBalanceScope(Boolean(state.balance_truncated));
+    balancePageOffset=0;balanceHasMore=Boolean(state.balance_truncated);
+    initServerBalanceSearch();setBalanceScope(Boolean(state.balance_truncated));renderWarehouseOverview();
   };
   // 0.12.17.1: ODE always opens the four-module launcher built by
   // warehouseLanding() (static/js/ui.js). renderDashboard() (KPI overview,

@@ -13,8 +13,8 @@ from inventory import __version__
 
 
 ROOT = Path(__file__).resolve().parent
-PACKAGE_NAME = "ODE_windows_test.zip"
-RC_DIR_NAME = "ODE_0.12.17.1_RC2"
+PACKAGE_NAME = "ODE_0.14.0_windows_source.zip"
+RC_DIR_NAME = "ODE_0.14.0"
 RC_PACKAGE_NAME = f"{RC_DIR_NAME}.zip"
 
 
@@ -40,9 +40,9 @@ This package includes:
 - equipment card with operational history;
 - bounded large-data views and session-isolated previews.
 
-The validation suite passed 206 tests. End-to-end headless Chrome acceptance
-covered engineer and administrator login, warehouse operations, global search,
-Back/reload, reports, deliveries, mobile navigation and zero HTTP/JS/resource errors.
+The package deliberately contains no runtime database, production data,
+candidate database or credentials. A target installation must create and own
+its database separately under the documented bootstrap procedure.
 
 Limitations:
 
@@ -52,7 +52,8 @@ Limitations:
 - external system APIs are not connected;
 - server deployment has not been performed;
 - deployment is limited to one local ODE process and one local SQLite file;
-- this build requires target Windows acceptance before production rollout.
+- real initial-baseline publish remains disabled;
+- this source package requires target Windows acceptance before any rollout.
 """
 
 
@@ -68,6 +69,8 @@ KNOWN_ISSUES = """# Known Issues
 - Server deployment is not implemented.
 - One CSV import is limited to 40,000 non-empty rows.
 - Corrective/reversal operations are not implemented.
+- Initial-baseline publish to the operational database is disabled; only a
+  disposable target-schema rehearsal is available.
 """
 
 
@@ -112,7 +115,7 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
     for name in ("LICENSE", "LICENSE.md", "NOTICE", "NOTICE.md"):
         if (root / name).is_file():
             files.append((root / name, Path(name)))
-    files.append((root / "data" / "warehouse.db", Path("data/warehouse.db")))
+    files.append((root / "data" / "README.md", Path("data/README.md")))
     missing = [str(path) for path, _ in files if not path.is_file()]
     if missing:
         raise FileNotFoundError("Не найдены обязательные файлы: " + ", ".join(missing))

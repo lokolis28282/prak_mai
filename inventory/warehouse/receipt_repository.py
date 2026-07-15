@@ -60,7 +60,7 @@ class ReceiptRepository:
         with connect(self.db_path) as db:
             if row["serial_number"] and db.execute(
                 """SELECT 1 FROM stock_receipts
-                   WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE""",
+                   WHERE trim(serial_number) <> '' AND trim(serial_number) = trim(?) COLLATE NOCASE""",
                 (row["serial_number"],),
             ).fetchone():
                 raise WarehouseError(f"S/N «{row['serial_number']}» уже используется")
@@ -97,7 +97,7 @@ class ReceiptRepository:
     ) -> int:
         if row["serial_number"] and db.execute(
             """SELECT 1 FROM stock_receipts
-               WHERE trim(serial_number) <> '' AND serial_number = ? COLLATE NOCASE""",
+               WHERE trim(serial_number) <> '' AND trim(serial_number) = trim(?) COLLATE NOCASE""",
             (row["serial_number"],),
         ).fetchone():
             raise WarehouseError(f"S/N «{row['serial_number']}» уже используется")
@@ -186,7 +186,7 @@ class ReceiptRepository:
             """SELECT id, serial_number, inventory_number, legacy_equipment_id
                FROM stock_receipts
                WHERE trim(serial_number) <> ''
-                 AND serial_number = ? COLLATE NOCASE""",
+                 AND trim(serial_number) = trim(?) COLLATE NOCASE""",
             (serial_number,),
         ).fetchone()
         if receipt is None:

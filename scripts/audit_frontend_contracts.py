@@ -37,6 +37,8 @@ DYNAMIC_ID_WHITELIST = {
     # Engineer UX creates these controls after load.
     "activeDrafts",
     "balanceKpis",
+    "balancePager",
+    "balanceSummary",
     "balanceScope",
     "cableIssueForm",
     "dailyLogDate",
@@ -45,6 +47,13 @@ DYNAMIC_ID_WHITELIST = {
     "deliveryScanResult",
     "deliveryFillField",
     "deliveryFillValue",
+    "movementViewHeading",
+    # Pair scanner controls are created after the Warehouse shell is ready.
+    "issuePairPrompt",
+    "issueScanModes",
+    # Reference editor builds its table body after the permission-checked API
+    # returns the selected canonical domain.
+    "referenceEditorBody",
     # Product shell creates the global-search lupe modal (input, result panel,
     # the dialog wrapper and its trigger button) after load.
     "globalSearch",
@@ -52,11 +61,27 @@ DYNAMIC_ID_WHITELIST = {
     "globalSearchModal",
     "globalSearchTrigger",
     "shiftProfileCard",
+    # The marker-guarded review is created only for an administrator after
+    # /api/data confirms the selected review database.
+    "migration_pilot",
+    "migrationPilotBody",
+    "migrationPilotCounts",
+    "migrationPilotDatabase",
+    "migrationPilotFilters",
+    "migrationPilotQuery",
+    "migrationPilotResultCount",
+    "migrationPilotSearch",
+    "migrationFullModel",
+    "migrationFullVendor",
     "simpleReceiptForm",
     "simpleReceiptTitle",
     "uxBalanceCategory",
     "uxBalanceProject",
+    "uxBalanceSupplier",
+    "uxBalanceSort",
+    "uxBalanceStock",
     "uxBalanceType",
+    "uxBalanceVendor",
     "wDc",
     "wProject",
     "wShelf",

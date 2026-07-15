@@ -264,10 +264,20 @@ CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status);
 CREATE INDEX IF NOT EXISTS idx_reference_values_kind ON reference_values(kind, is_active, name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_receipts_serial_unique
     ON stock_receipts(serial_number COLLATE NOCASE) WHERE trim(serial_number) <> '';
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_serial_trim_nocase
+    ON stock_receipts(trim(serial_number) COLLATE NOCASE) WHERE trim(serial_number) <> '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_receipts_inventory_unique
     ON stock_receipts(inventory_number COLLATE NOCASE) WHERE trim(inventory_number) <> '';
 CREATE INDEX IF NOT EXISTS idx_stock_receipts_date ON stock_receipts(receipt_date);
 CREATE INDEX IF NOT EXISTS idx_stock_receipts_cable ON stock_receipts(item_name, cable_type);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_supplier_nocase ON stock_receipts(supplier COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_vendor_nocase ON stock_receipts(vendor COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_model_nocase ON stock_receipts(model COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_item_name_nocase ON stock_receipts(item_name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_project_nocase ON stock_receipts(project COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_equipment_type_nocase ON stock_receipts(equipment_type COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_component_type_nocase ON stock_receipts(component_type COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_stock_receipts_cable_type_nocase ON stock_receipts(cable_type COLLATE NOCASE);
 CREATE INDEX IF NOT EXISTS idx_stock_issues_date ON stock_issues(issue_date);
 CREATE INDEX IF NOT EXISTS idx_stock_issue_allocations_issue ON stock_issue_allocations(issue_id);
 CREATE INDEX IF NOT EXISTS idx_stock_issue_allocations_receipt ON stock_issue_allocations(receipt_id);
@@ -306,7 +316,23 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
     """Создать таблицы и индексы, если они еще не существуют."""
     default_admin_created = False
     with connect(db_path) as connection:
-        connection.executescript(SCHEMA)
+        full_marker = connection.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type='table' AND name='migration_full_marker'"
+        ).fetchone()
+        # The promoted full database already carries the compatible operational
+        # schema plus preservation-aware serial indexes. Replaying the legacy
+        # schema would attempt to impose NOCASE uniqueness that the historical
+        # build intentionally did not claim.
+        if full_marker is None:
+            connection.executescript(SCHEMA)
+        elif connection.execute(
+            "SELECT 1 FROM reference_values LIMIT 1"
+        ).fetchone() is not None:
+            # A promoted full DB needs the compatibility/reference population
+            # exactly once. Repeating INSERT OR IGNORE would advance
+            # sqlite_sequence even though no business row changes.
+            return False
         work_log_sql = connection.execute(
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'work_logs'"
         ).fetchone()[0]

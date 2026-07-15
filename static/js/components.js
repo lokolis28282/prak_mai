@@ -69,10 +69,5 @@ function renderTable({headers=[],rows=[],empty='Нет данных',rowRenderer
   table.replaceChildren(thead,tbody);
   return table;
 }
-function renderWizard({title='',step='',children=[]}={}){
-  return renderElement('div',{className:'wizard-shell',children:[step?renderElement('p',{text:step}):null,renderElement('h2',{text:title}),...children]});
-}
 function renderToast(message,error=false){return renderElement('div',{className:`status show${error?' error':''}`,text:message})}
 function renderDialog({title='',children=[]}={}){return renderElement('div',{className:'modal-card',children:[renderElement('div',{className:'modal-head',children:[renderElement('h2',{text:title})]}),...children]})}
-function renderHeader({title='',subtitle='',actions=[]}={}){return renderElement('header',{className:'top',children:[renderElement('div',{children:[renderElement('h1',{attrs:{id:'pageTitle'},text:title}),renderElement('span',{className:'hint',text:subtitle})]}),renderElement('div',{className:'profile-actions',children:actions})]})}
-function renderSidebar(items=[]){return renderElement('aside',{className:'sidebar',children:[renderElement('nav',{className:'section-nav',children:items})]})}

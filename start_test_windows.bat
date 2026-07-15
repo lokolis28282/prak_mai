@@ -37,7 +37,7 @@ if errorlevel 1 (
 
 set ODE_TEST_MODE=1
 echo Запуск ODE на тестовом контуре...
-%PY% app.py web --db data\warehouse_test_clean.db
+%PY% app.py web --db data\warehouse_test_clean.db --warehouse-contour demo
 if errorlevel 1 (
     echo.
     echo ODE завершилась с ошибкой. Текст ошибки указан выше.

@@ -6,6 +6,11 @@ from datetime import date, datetime
 from typing import Any
 
 from inventory.shared.validators import WarehouseError
+from inventory.warehouse.classification import (
+    canonical_vendor,
+    classify_card,
+    infer_vendor,
+)
 
 
 RECEIPT_REFERENCE_FIELDS = {
@@ -73,14 +78,25 @@ def soft_receipt_source(source: dict[str, Any]) -> dict[str, Any]:
     row["receipt_date"] = str(row.get("receipt_date") or date.today().isoformat())
     row["responsible"] = str(row.get("responsible") or "Не указан")
     row["supplier"] = str(row.get("supplier") or "Не указан")
-    row["vendor"] = str(row.get("vendor") or "Не указан")
+    supplied_vendor = canonical_vendor(row.get("vendor"))
+    inferred_vendor = infer_vendor(
+        row.get("item_name"), row.get("model"), row.get("part_number") or row.get("pn")
+    )
+    row["vendor"] = supplied_vendor or inferred_vendor or "Не указан"
     row["object_name"] = str(row.get("object_name") or "Не указано")
     row["datacenter"] = str(row.get("datacenter") or "Ixcellerate")
     row["unit"] = str(row.get("unit") or "шт")
     if not any(str(row.get(key) or "").strip() for key in (
         "equipment_type", "component_type", "cable_type"
     )):
-        if str(row.get("serial_number") or "").strip():
+        classification = classify_card(
+            item_name=row.get("item_name"), vendor=row.get("vendor"),
+            model=row.get("model"),
+            part_number=row.get("part_number") or row.get("pn"),
+        )
+        if classification.confidence != "LOW":
+            row[classification.field] = classification.value
+        elif str(row.get("serial_number") or "").strip():
             row["equipment_type"] = "Не указан"
         else:
             row["cable_type"] = "Не указан"

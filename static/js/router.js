@@ -1,12 +1,3 @@
-const sectionNavItems=[
-  ['home','Главная'],
-  ['warehouse','Склад'],
-  ['reports','Отчеты'],
-  ['administration','Администрирование','admin-only',true],
-  ['monitoring','Мониторинг'],
-  ['profile','Профиль']
-];
-
 function goHome(){
   showSection('home');
   showView('home');
@@ -16,26 +7,18 @@ function goHome(){
 function initSectionNavigation(){
   const nav=document.querySelector('.section-nav');
   if(!nav)return;
-  nav.replaceChildren(...sectionNavItems.map(([section,label,extraClass='',hidden=false])=>{
-    const button=renderButton({
-      text:label,
-      className:`section-button${section==='home'?' active':''}${extraClass?' '+extraClass:''}`,
-      dataset:{section},
-      onClick:()=>showSection(section)
-    });
-    button.hidden=Boolean(hidden);
-    return button;
-  }));
+  nav.replaceChildren();
+  nav.hidden=true;
+  nav.setAttribute('aria-hidden','true');
 }
 
 function showSection(name){
   const entries=sections[name];
   if(!entries||!entries.length){showPlaceholder(name);return}
   currentSection=name;
-  setText('pageTitle',{home:'Главная',warehouse:'Склад',reports:'Отчеты',administration:'Администрирование',monitoring:'Мониторинг',profile:'Профиль'}[name]||'Раздел');
-  document.querySelectorAll('.section-button').forEach(x=>x.classList.toggle('active',x.dataset.section===name));
+  setText('pageTitle',{home:'ODE',monitoring:'Мониторинг',works:'Работы',warehouse:'Склад',reports:'Отчеты',administration:'Администрирование',profile:'Профиль'}[name]||'Раздел');
   const nav=byId('subnav');
-  nav.style.display=['home','monitoring','profile'].includes(name)?'none':'flex';
+  nav.style.display=['warehouse','works','administration'].includes(name)?'flex':'none';
   nav.replaceChildren(...entries.map((entry,index)=>renderButton({
     text:entry[1],
     className:`subtab ${index?'':'active'}`,
@@ -46,10 +29,11 @@ function showSection(name){
 }
 function showView(id){
   const adminMode=id.startsWith('admin_')?id:'';
-  const actual=adminMode?'admin':id;
+  const actual=id==='admin_references'?'references':adminMode?'admin':id;
   document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===actual));
   document.querySelectorAll('.subtab').forEach(x=>x.classList.toggle('active',x.dataset.view===id));
   if(id==='worklogs')loadWorkLogs();
+  if(id==='admin_references'){window.renderReferenceEditor?.();return}
   if(adminMode){setAdminMode(adminMode);loadAdmin()}
   if(id==='deliveries')loadDeliveries();
 }
@@ -65,6 +49,8 @@ function setAdminMode(mode){
   if(mode==='admin_backups'){split.style.display='grid';boxes[0].style.display='block';boxes[1].style.display='block';boxes[2].style.display='block';heads[1].style.display='block';tables[1].style.display='block'}
   if(mode==='admin_database'){split.style.display='grid';boxes[0].style.display='block'}
   if(mode==='admin_audit'){heads[2].style.display='block';tables[2].style.display='block'}
+  if(mode==='admin_permissions'){split.style.display='grid';boxes[3].style.display='block';heads[0].style.display='block';tables[0].style.display='block'}
+  if(mode==='admin_migration'){root.querySelector('p').textContent='Миграционная диагностиика доступна в административном контексте и не показывается инженерам.'}
 }
 function showProfile(){
   document.querySelectorAll('.section-button').forEach(x=>x.classList.remove('active'));
