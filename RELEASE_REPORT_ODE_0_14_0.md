@@ -18,6 +18,11 @@ Raw XLSX и рабочая БД не изменяются. Resolution evidence a
 reason обязательны, старые runs сохраняются. Candidate строится на approved
 target DDL V001..V008 и доказывает snapshot/projection equivalence.
 
+Follow-up этой же версии добавляет изолированный Monitoring hostname routing:
+локальные Tech/Digital rules определяют Salt/Digital/X5Tech и подготовленные
+адресаты через `MonitoringFacade`. Operator UI, collectors и email transport
+не включены; внутренние rules не публикуются в GitHub.
+
 ## Security и данные
 
 - production mutations возвращают `WAREHOUSE_NOT_INITIALIZED`;
@@ -68,7 +73,9 @@ byte-identical.
 - module boundaries — PASS, включая restricted rehearsal bridge;
 - frontend contracts — PASS;
 - clean-test DB dry-run — PASS, source SHA unchanged;
-- full warning-clean suite — **444 tests PASS, 8 expected skips**;
+- full warning-clean suite — **464 tests PASS, 8 expected skips**;
+- focused Monitoring routing/generator suite — **20 tests PASS**; 33 локальных
+  Tech rules и 530 Digital hostname проходят runtime validation;
 - focused ODE target suite входит в full gate (60 tests);
 - headless Chrome smoke — PASS: receipt/issue/balance/history/search/profile/
   administration/monitoring, console/window/resource/HTTP/API500 errors = 0;

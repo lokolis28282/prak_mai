@@ -66,7 +66,9 @@ change.
 | `users` | Administration | Administration, Core current user | Administration | no | stay Administration |
 | `audit_log` | Administration | Administration, Core EventReader, Reports read-only events | Administration/Core infrastructure via shared audit adapter | temporary event source | separate module events later |
 
-Core owns no business table. Monitoring owns no table in Stage 0.12.6. Future Monitoring tables must use `monitoring_` prefix or a separate migration mechanism.
+Core owns no business table. Monitoring hostname routing не владеет таблицами;
+future Monitoring tables must use `monitoring_` prefix or a separate migration
+mechanism.
 
 Reports does not own Warehouse tables. When daily/weekly reports include
 receipts, issues, deliveries or warehouse problem rows, those records are

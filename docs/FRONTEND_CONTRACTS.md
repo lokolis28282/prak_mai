@@ -4,7 +4,8 @@
 
 - постоянной строки глобальных модулей нет; ODE возвращает на module cards;
 - Warehouse subnav содержит ровно семь складских разделов;
-- Monitoring и Reports показывают только «В разработке»;
+- Monitoring и Reports UI показывают только «В разработке»; готовый Monitoring
+  hostname-routing backend не включается скрыто без отдельного UI/API slice;
 - `Администрирование ODE` видит только session user с backend permission;
 - role может быть скрыта из UX, но frontend не заменяет backend check;
 - reference dropdown использует `state.references`, active canonical значения

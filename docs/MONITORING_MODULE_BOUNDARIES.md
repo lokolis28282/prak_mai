@@ -1,11 +1,15 @@
 # MONITORING_MODULE_BOUNDARIES
 
-Monitoring is an isolated future product module.
+Monitoring is an isolated product module. Hostname routing is implemented;
+operator UI and external collectors remain future work.
 
 ## Included Now
 
 - `inventory/monitoring/facade.py`;
+- `inventory/monitoring/hostname_routing.py`;
 - `inventory/monitoring/models.py`;
+- local ignored `data/monitoring/*.json` rules;
+- offline `scripts/generate_hostname_rules.py`;
 - `static/js/monitoring/index.js`;
 - existing UI placeholder `В разработке`;
 - documentation for future integration.
@@ -26,6 +30,8 @@ Core exposes the Monitoring entrypoint through feature flags:
 - `FEATURE_MONITORING = false`;
 - UI remains a placeholder;
 - `MonitoringFacade.module_status()` returns module status.
+- `MonitoringFacade.resolve_hostname()` exposes deterministic routing without
+  enabling the unfinished UI.
 
 ## Dependency Rule
 

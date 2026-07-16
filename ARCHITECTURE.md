@@ -15,7 +15,9 @@ module-boundary audit. Publish в operational path отсутствует.
 Текущий активный read/write модуль — Warehouse. Глобальный shell показывает
 компактную шапку и module cards; после входа в Склад router использует
 существующий section/view механизм и не создаёт второй router. Monitoring и
-Reports заканчиваются на placeholder и не вызывают Warehouse internals.
+Reports UI заканчиваются на placeholder и не вызывают Warehouse internals.
+Monitoring backend содержит только изолированный hostname routing по локальным
+JSON rules; внешние collectors и email transport отсутствуют.
 
 Reference Data имеет один путь:
 
@@ -93,7 +95,7 @@ app.py
  ├─ warehouse/                 receipts, issues, cables, deliveries, balance/history
  ├─ reports/                   work logs, daily/weekly reports
  ├─ administration/            users, audit read, backup/restore, diagnostics
- ├─ monitoring/                isolated placeholder/future module
+ ├─ monitoring/                isolated hostname routing; UI/collectors future
  ├─ shared/                    SQLite/CSV/audit/validation adapters
  ├─ migration/                 offline source/reference/staging bounded context
  └─ db.py                      schema and idempotent migrations
@@ -349,7 +351,8 @@ transaction-aware repository helper.
 - `WarehouseCore` и часть legacy service/API flows ещё существуют;
 - Warehouse preview хранится в памяти и не переживает restart;
 - нет persisted import jobs, progress/cancel и отдельного batch audit ID;
-- Monitoring и внешние интеграции остаются вне текущего runtime;
+- Monitoring operator UI и внешние интеграции остаются вне текущего runtime;
+  реализован только локальный hostname routing через публичный facade;
 - корректирующие/сторнирующие операции требуют отдельной модели событий.
 
 Изменения этих ограничений нельзя выполнять массовым refactor: каждый доменный

@@ -14,7 +14,9 @@
 - Последний фактически собранный ZIP: `0.12.17 RC1`.
 - Рабочий runtime: `app.py` → `inventory/` → `data/warehouse.db`.
 - Активный продуктовый модуль: Warehouse.
-- Monitoring и Reports остаются отдельными placeholder-направлениями.
+- Reports и Monitoring UI остаются отдельными placeholder-направлениями;
+  Monitoring backend уже содержит изолированный hostname routing без связи со
+  складом.
 
 Обычная локальная рабочая БД содержит 50 000 receipts/cards, 18 798 issues и
 18 798 allocations. Текущий SHA и правила работы с ней находятся в
@@ -105,15 +107,19 @@ Performance на disposable fixtures после streaming hardening: 1k — 0.13
 ignored migration artifacts), module/frontend audits и headless Chrome smoke
 PASS, browser/HTTP/API500 error counters равны нулю.
 
+Monitoring hostname-routing follow-up: 20 focused tests и полный gate
+464 tests PASS (`skipped=8`). Локальные 33 Tech rules и 530 Digital hostname
+валидны; внутренние JSON исключены из публичного Git, рабочая БД не менялась.
+
 Ручная операторская приёмка фиксируется отдельно по
 `../MANUAL_TESTING_WAREHOUSE_STABILIZATION.md`.
 
 ## Git state
 
-Локальная `main` содержит четыре непушенных логических commit поверх
-`origin/main`: Repository Data Separation, код ODE 0.14, тесты и документацию.
-Перед текущим hardening worktree был чист; текущий diff относится только к
-повторному pre-release циклу. Push не выполнялся.
+Точный Git status определяется командами `git status --short --branch` и
+`git log --oneline origin/main..HEAD`. Runtime DB, Monitoring rules и candidate
+artifacts остаются installation-owned local data и не публикуются вместе с
+source commits.
 
 Нельзя выполнять force reset или добавлять runtime/candidate DB. Следующий
 commit допустим только после полного documentation/release gate и финального

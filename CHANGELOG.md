@@ -2,6 +2,16 @@
 
 ## ODE 0.14.0 — Full Inventory safety workflow and baseline rehearsal
 
+- добавлен первый изолированный Monitoring capability: fail-closed
+  Salt/Digital/X5Tech routing по hostname, безопасная подготовка To/CC/темы и
+  публичный `MonitoringFacade`; UI, collectors и отправка писем не включены;
+- offline генератор Tech/Digital rules переведён с отсутствующего `openpyxl`
+  на standard-library OOXML reader ODE, исправлено повреждение завершающего
+  дефиса в hostname pattern, JSON пишется атомарно;
+- внутренние hostname/recipient JSON установлены только локально и исключены
+  из публичного Git; GitHub получает код, тесты, контракты и Mermaid-карту
+  архитектурных связей без company infrastructure data;
+
 - рабочий Warehouse переведён в fail-closed состояние `NOT_INITIALIZED`:
   импортированные receipts/issues остаются доступной историей, но рассчитанный
   по ним остаток явно помечен как исторический и не считается физическим;

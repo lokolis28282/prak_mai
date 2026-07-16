@@ -42,9 +42,9 @@ Reports:
 
 Monitoring:
 
-- isolated placeholder in Stage 0.12.6;
+- isolated hostname-routing backend; operator UI/collectors remain placeholder;
 - does not import Warehouse, Reports, `WarehouseService` or `WarehouseCore`;
-- exposes `MonitoringFacade.module_status()`.
+- exposes `MonitoringFacade.module_status()` and `resolve_hostname()`.
 
 Administration:
 

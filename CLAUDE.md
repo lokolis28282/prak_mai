@@ -3,8 +3,9 @@
 ## Current Warehouse stabilization boundary
 
 - Единственный активный продуктовый контур — Warehouse на `data/warehouse.db`.
-- Monitoring и Reports принадлежат отдельным направлениям и пока показывают
-  placeholder; не расширять их бизнес-логику и не связывать со складом.
+- Monitoring и Reports принадлежат отдельным направлениям и не связываются со
+  складом. Monitoring UI пока placeholder; hostname routing реализован как
+  изолированный backend capability по локальным ignored JSON rules.
 - Reference Data runtime: `UI → existing API → ApplicationContext →
   WarehouseFacade → ReferenceDataService → reference_*_v2`.
 - Нельзя hardcode справочники в JS и нельзя переписывать operational raw/S/N
@@ -315,7 +316,7 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 292 tests under
+Current full discover result is 464 tests under
 `-W error::ResourceWarning`. Never run a 51,003-row
 operational import as a performance test.
 
@@ -380,7 +381,8 @@ Stage создаётся датированный report/appendix.
   для этапов «несколько инженеров» и «сервер», требует отдельного решения.
 - Нет корректирующих/сторнирующих операций для ошибочно проведенного
   прихода/расхода.
-- Monitoring и Kaiten — заглушки; недельный отчет — базовая агрегация.
+- Monitoring UI/collectors/email transport и Kaiten — заглушки; hostname
+  routing backend реализован, недельный отчет — базовая агрегация.
 - Нет автоматического расписания/ротации backup.
 - `inventory/webapp.py` — монолит (см. «Архитектура» выше) — главный источник
   риска регрессий при правке разметки/JS.

@@ -10,6 +10,9 @@
 - Warehouse living architecture contracts из `DECISIONS_INDEX.md`.
 - `docs/MANUAL_TESTING_0_14_FULL_INVENTORY.md` — операторская приёмка 0.14.
 - `RELEASE_REPORT_ODE_0_14_0.md` — readiness evidence и ограничения.
+- `docs/MONITORING_HOSTNAME_ROUTING.md` — реализованный изолированный routing
+  contract и правила локальных данных.
+- `docs/CODEBASE_GRAPH.md` — GitHub-rendered карта поддерживаемых зависимостей.
 
 ## Normative target
 
@@ -44,8 +47,8 @@ Evidence не переписывается задним числом. Новый
 
 - старые `MANUAL_TESTING_*`, release reports и migration plans действуют только
   в указанном scope;
-- Monitoring integration review анализирует main-repo placeholder, а не
-  доказанную реализацию коллеги.
+- старый Monitoring integration review анализирует исторический placeholder;
+  текущий hostname-routing slice описан отдельным living contract выше.
 
 Root-level evidence сохранён как датированные снимки и не переписывается
 задним числом:

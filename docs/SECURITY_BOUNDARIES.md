@@ -202,7 +202,9 @@ actor.
 ## Current Limitations
 
 Authentication, session storage, Administration writes, backup/restore and
-Monitoring remain compatibility/in-memory boundaries. Inventory Number preview
+Monitoring UI remain compatibility/in-memory boundaries. Monitoring hostname
+routing читает только локальные ignored JSON rules, не отправляет email и не
+обращается к Warehouse/Reports. Inventory Number preview
 ownership is author-bound rather than session-bound and preview state does not
 survive process restart. Server/multi-process deployment therefore requires a
 separate persistent job/ownership design.

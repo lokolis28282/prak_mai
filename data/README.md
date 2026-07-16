@@ -23,3 +23,9 @@ Before first use:
 The ordinary local Warehouse path remains `data/warehouse.db`. Test and
 migration review databases must use distinct filenames and the documented
 guarded launchers.
+
+`data/monitoring/*.json` contains generated, environment-specific hostname
+routing and recipient data. These files are local runtime configuration and
+must not be committed to the public repository. Regenerate them from approved
+local XLSX sources using the command documented in
+`docs/MONITORING_HOSTNAME_ROUTING.md`.

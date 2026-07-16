@@ -15,6 +15,10 @@ __pycache__/
 /data/*.sqlite-*
 /data/*.sqlite3
 /data/*.sqlite3-*
+
+# Internal Monitoring routing data contains company hostnames and recipients.
+# Keep generated rules local; the public repository contains only code/tests/docs.
+/data/monitoring/*.json
 *.db-wal
 *.db-shm
 *.db-journal
