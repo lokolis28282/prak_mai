@@ -7,7 +7,7 @@ matching and is never changed by these use cases.
 
 from __future__ import annotations
 
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import hashlib
@@ -140,6 +140,38 @@ def _sha(value: bytes | str) -> bytes:
     return hashlib.sha256(value).digest()
 
 
+def _file_sha256(path: Path) -> bytes:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.digest()
+
+
+@contextmanager
+def _exclusive_creation_lock(path: Path) -> Iterable[None]:
+    secure_directory(path.parent)
+    if path.is_symlink():
+        raise WorkspaceError("FULL inventory creation lock не может быть symlink")
+    connection = sqlite3.connect(path, timeout=0.25, isolation_level=None)
+    try:
+        secure_file(path)
+        connection.execute("PRAGMA busy_timeout=250")
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error).casefold():
+                raise
+            raise WorkspaceError(
+                "Создание FULL inventory session уже выполняется в другом процессе"
+            ) from error
+        yield
+    finally:
+        if connection.in_transaction:
+            connection.rollback()
+        connection.close()
+
+
 def _serial_key(value: str) -> str:
     return unicodedata.normalize("NFKC", value).strip().casefold()
 
@@ -250,11 +282,7 @@ class FullInventoryService:
         key_digest = key.removeprefix("src_")
         if len(expected) != 32 or expected.hex() != key_digest:
             raise WorkspaceError("Inventory source key/hash provenance mismatch")
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        if digest.digest() != expected:
+        if _file_sha256(path) != expected:
             raise WorkspaceError("Inventory source hash mismatch")
 
     def system_status(self) -> dict[str, Any]:
@@ -316,6 +344,12 @@ class FullInventoryService:
         self._require_operator(actor)
         if self._path_error:
             raise WorkspaceError(self._path_error)
+        with _exclusive_creation_lock(self.paths.root / ".session-create-lock.db"):
+            return self._create_session_locked(actor, correlation_id=correlation_id)
+
+    def _create_session_locked(
+        self, actor: ActorSnapshot, *, correlation_id: str
+    ) -> dict[str, Any]:
         if len(correlation_id) < 16:
             raise WarehouseError("Некорректный correlation ID")
         status = self.system_status()
@@ -460,6 +494,16 @@ class FullInventoryService:
             raise WarehouseError("Resolution доступно только после успешного Preview")
         now = _now_us()
         with closing(WorkspaceStore(path).connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute(
+                "SELECT * FROM preview_sessions WHERE session_id=?",
+                (session["session_id"],),
+            ).fetchone()
+            if current is None or current["session_status"] not in REVIEW_STATUSES:
+                raise WarehouseError(
+                    "Resolution больше не относится к active Preview"
+                )
+            session = dict(current)
             active_run_id = str(session["active_run_id"] or "")
             row = None
             finding = None
@@ -669,8 +713,14 @@ class FullInventoryService:
             source_path = self._source_path(source_key)
             secure_directory(source_path.parent)
             if source_path.exists():
-                if source_path.is_symlink() or source_path.stat().st_size != content_length:
+                if (
+                    source_path.is_symlink()
+                    or not source_path.is_file()
+                    or source_path.stat().st_size != content_length
+                ):
                     raise WorkspaceError("Source vault collision")
+                if _file_sha256(source_path) != digest.digest():
+                    raise WorkspaceError("Source vault collision: SHA-256 mismatch")
                 temporary.unlink()
             else:
                 os.replace(temporary, source_path)
@@ -680,6 +730,18 @@ class FullInventoryService:
             fingerprint = self.reference_fingerprint()
             now = _now_us()
             with closing(WorkspaceStore(path).connect()) as db:
+                db.execute("BEGIN IMMEDIATE")
+                current = db.execute(
+                    "SELECT * FROM preview_sessions WHERE session_id=?",
+                    (session["session_id"],),
+                ).fetchone()
+                if current is None or current["session_status"] not in {
+                    SessionStatus.DRAFT.value,
+                    SessionStatus.UPLOADED.value,
+                }:
+                    raise WarehouseError(
+                        "Source можно загрузить только в DRAFT/UPLOADED session"
+                    )
                 db.execute(
                     """UPDATE preview_sessions SET
                            session_status='UPLOADED',warehouse_scope_raw=?,counted_by_raw=?,
@@ -725,9 +787,13 @@ class FullInventoryService:
             temporary.unlink(missing_ok=True)
             raise
 
-    def reference_fingerprint(self) -> bytes:
+    def _reference_snapshot(
+        self,
+    ) -> tuple[bytes, dict[str, dict[str, list[dict[str, Any]]]]]:
         digest = hashlib.sha256()
+        index: dict[str, dict[str, list[dict[str, Any]]]] = {}
         with closing(_read_only_db(self.operational_db)) as db:
+            db.execute("BEGIN")
             tables = {
                 str(row[0])
                 for row in db.execute(
@@ -737,28 +803,21 @@ class FullInventoryService:
             required = {"reference_domains_v2", "reference_values_v2", "reference_aliases_v2"}
             if not required.issubset(tables):
                 raise WorkspaceError("Canonical reference tables are unavailable")
-            for row in db.execute(
+            value_rows = db.execute(
                 """SELECT d.domain_key,v.id,v.canonical_value,v.display_name,
                           v.normalized_key,v.scope_key,v.active,v.approval_status
                    FROM reference_values_v2 v
                    JOIN reference_domains_v2 d ON d.id=v.domain_id
                    ORDER BY d.domain_key,v.id"""
-            ):
-                digest.update(_canonical_json(list(row)).encode("utf-8"))
-            for row in db.execute(
+            ).fetchall()
+            alias_rows = db.execute(
                 """SELECT d.domain_key,a.id,a.source_value,a.normalized_source_key,
                           a.canonical_id,a.resolution_status
                    FROM reference_aliases_v2 a
                    JOIN reference_domains_v2 d ON d.id=a.domain_id
                    ORDER BY d.domain_key,a.id"""
-            ):
-                digest.update(_canonical_json(list(row)).encode("utf-8"))
-        return digest.digest()
-
-    def _reference_index(self) -> dict[str, dict[str, list[dict[str, Any]]]]:
-        index: dict[str, dict[str, list[dict[str, Any]]]] = {}
-        with closing(_read_only_db(self.operational_db)) as db:
-            rows = db.execute(
+            ).fetchall()
+            index_rows = db.execute(
                 """SELECT d.domain_key,v.id,v.canonical_value,v.display_name,
                           v.normalized_key,v.active,v.approval_status,
                           a.normalized_source_key
@@ -769,7 +828,11 @@ class FullInventoryService:
                         AND a.resolution_status IN ('APPROVED','AUTO_APPROVED')
                    WHERE d.active=1 ORDER BY d.domain_key,v.id,a.id"""
             ).fetchall()
-        for row in rows:
+            for row in value_rows:
+                digest.update(_canonical_json(list(row)).encode("utf-8"))
+            for row in alias_rows:
+                digest.update(_canonical_json(list(row)).encode("utf-8"))
+        for row in index_rows:
             value = {
                 "id": row["id"], "display_name": row["display_name"],
                 "active": row["active"], "approval_status": row["approval_status"],
@@ -786,6 +849,14 @@ class FullInventoryService:
                 bucket = domain_index.setdefault(key, [])
                 if not any(item["id"] == value["id"] for item in bucket):
                     bucket.append(value)
+        return digest.digest(), index
+
+    def reference_fingerprint(self) -> bytes:
+        fingerprint, _ = self._reference_snapshot()
+        return fingerprint
+
+    def _reference_index(self) -> dict[str, dict[str, list[dict[str, Any]]]]:
+        _, index = self._reference_snapshot()
         return index
 
     def _resolve_reference(
@@ -1051,13 +1122,25 @@ class FullInventoryService:
             SessionStatus.READY_FOR_APPROVAL.value,
         }:
             raise WarehouseError("Preview требует загруженный XLSX")
-        self._verify_session_source(session)
-        current_fingerprint = self.reference_fingerprint()
-        source_key = str(session["source_opaque_key"])
-        source_path = self._source_path(source_key)
+        current_fingerprint, reference_index = self._reference_snapshot()
         run_id = _uuid7()
         now = _now_us()
         with closing(WorkspaceStore(path).connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute(
+                "SELECT * FROM preview_sessions WHERE session_id=?",
+                (session["session_id"],),
+            ).fetchone()
+            if current is None or current["session_status"] not in {
+                SessionStatus.UPLOADED.value,
+                SessionStatus.REVIEW_REQUIRED.value,
+                SessionStatus.READY_FOR_APPROVAL.value,
+            }:
+                raise WarehouseError(
+                    "Preview уже выполняется или session больше не допускает Preview"
+                )
+            session = dict(current)
+            source_key = str(session["source_opaque_key"])
             attempt = int(db.execute(
                 "SELECT COALESCE(MAX(attempt),0)+1 FROM preview_runs WHERE session_id=?",
                 (session["session_id"],),
@@ -1092,10 +1175,11 @@ class FullInventoryService:
             self._append_activity(db, session["session_id"], "PREVIEW_STARTED", actor, correlation_id, {"attempt": attempt}, now)
             db.commit()
         try:
+            self._verify_session_source(session)
+            source_path = self._source_path(source_key)
             workbook = inspect_workbook(source_path)
             manifest = self._validate_manifest(workbook)
             legacy_match_index = self._legacy_match_index()
-            reference_index = self._reference_index()
             with closing(WorkspaceStore(path).connect()) as db:
                 resolution_plan, resolution_checksums = self._resolution_plan(
                     db, session["session_id"]
@@ -1234,6 +1318,7 @@ class FullInventoryService:
                         else:
                             info_count += 1
                     row_count += 1
+                self._verify_session_source(session)
                 for finding in global_findings:
                     finding_hash = self._insert_finding(db, run_id, None, finding)
                     ordered_finding_hashes.append(finding_hash)
@@ -1597,6 +1682,20 @@ class FullInventoryService:
             return self._public_session(session)
         now = _now_us()
         with closing(WorkspaceStore(path).connect()) as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = db.execute(
+                "SELECT * FROM preview_sessions WHERE session_id=?",
+                (session["session_id"],),
+            ).fetchone()
+            if current is None:
+                raise WarehouseError("FULL inventory session не найдена")
+            session = dict(current)
+            if session["session_status"] == SessionStatus.REJECTED.value:
+                return self._public_session(session)
+            if session["session_status"] == SessionStatus.PREVIEWING.value:
+                raise WarehouseError(
+                    "Нельзя отменить session во время Preview; дождитесь завершения"
+                )
             if session["active_run_id"]:
                 db.execute(
                     """UPDATE preview_runs SET run_status='CANCELLED',session_status='REJECTED',

@@ -6,7 +6,8 @@
 - grouped Catalog resolution UI для production-scale (50k) inventory;
 - controlled approval/cutover с external backup, writer stop, sibling candidate,
   atomic publish и rollback drill;
-- снизить peak RSS 50k XLSX Preview (~708 MiB) потоковым writer/parser этапом;
+- отдельный 1m-row acceptance benchmark; 50k Preview уже потоковый и занимает
+  около 69 MiB peak RSS;
 - correction/reversal operations после active baseline.
 
 Дата проверки: 2026-07-10
@@ -29,9 +30,10 @@
 
    Для полноценного release-gate стоит расширить E2E: CSV preview/import, delivery upload, inventory upload, work logs upload, uploaded reports.
 
-5. Warning в тестах.
+5. FULL Inventory Preview пока не имеет cooperative cancel/resume.
 
-   В `test_large_work_log_preview_is_limited_and_confirm_writes` есть `ResourceWarning` про незакрытые SQLite connections.
+   Отмена во время активного Preview безопасно блокируется, но для будущего
+   1m-row контура нужны checkpoint/progress и остановка не позднее 5 секунд.
 
 6. Administration diagnostics пока легковесная.
 

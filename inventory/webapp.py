@@ -1114,6 +1114,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(400, {"error": str(error), "code": getattr(error, "code", "")})
             except WarehouseError as error:
                 self._send_json(403, {"error": str(error)})
+            except Exception:
+                self._send_json(500, {"error": "Внутренняя ошибка сервера"})
 
         def _do_POST(self) -> None:
             parsed = urlparse(self.path)
@@ -1126,7 +1128,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 return
             if parsed.path == "/api/full-inventory/upload":
                 query = parse_qs(parsed.query)
-                length = int(self.headers.get("Content-Length", "0"))
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError as error:
+                    raise WarehouseError("Некорректный размер XLSX-запроса") from error
                 result = app_context.full_inventory.upload_source(
                     self._query(query, "session_id"),
                     filename=unquote(self.headers.get("X-Filename", "")),

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 from contextlib import closing
+import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import unittest
 
 from inventory.shared.validators import WarehouseError
@@ -41,6 +44,20 @@ class FullInventoryCandidateTest(FullInventoryFixture, unittest.TestCase):
             session["public_id"], self.actor, correlation_id="corr_candidate_revalidate_01"
         )
         return session
+
+    def test_baseline_rehearsal_has_clean_cold_import(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from baseline_rehearsal import build_candidate, validate_candidate",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_candidate_requires_explicit_catalog_and_equipment_decisions(self) -> None:
         session = self.create_session()
@@ -88,6 +105,24 @@ class FullInventoryCandidateTest(FullInventoryFixture, unittest.TestCase):
             session["public_id"], self.admin, correlation_id="corr_candidate_idempotent_02"
         )
         self.assertEqual(first["sha256"], second["sha256"])
+
+    def test_candidate_output_symlink_is_rejected_without_touching_target(self) -> None:
+        session = self._ready_session()
+        digest = self.inventory.preview_summary(session["public_id"])["run"][
+            "preview_digest"
+        ]
+        candidates = self.state_root / "candidates"
+        candidates.mkdir(parents=True)
+        victim = self.root / "must-not-be-created.db"
+        os.symlink(victim, candidates / f"{digest}.db")
+
+        with self.assertRaisesRegex(WarehouseError, "symlink"):
+            self.inventory.build_candidate_rehearsal(
+                session["public_id"],
+                self.admin,
+                correlation_id="corr_candidate_symlink_0123",
+            )
+        self.assertFalse(victim.exists())
 
 
 if __name__ == "__main__":

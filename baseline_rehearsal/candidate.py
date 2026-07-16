@@ -44,6 +44,14 @@ def _sha(value: str | bytes) -> bytes:
     return hashlib.sha256(value).digest()
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _key(value: str) -> str:
     return unicodedata.normalize("NFKC", value).strip().casefold()
 
@@ -186,8 +194,13 @@ def build_candidate(
             )
         if "LINK_EXISTING_EQUIPMENT" in actions:
             raise WarehouseError("LINK_EXISTING_EQUIPMENT требует future Equipment Query Port")
-    output = output.resolve(strict=False)
+    output = Path(output)
+    if output.is_symlink():
+        raise WarehouseError("Candidate path не может быть symlink")
     output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if output.parent.is_symlink() or not output.parent.is_dir():
+        raise WarehouseError("Candidate directory должен быть реальным каталогом")
+    output = output.parent.resolve(strict=True) / output.name
     output.parent.chmod(0o700)
     if output.exists():
         report = validate_candidate(output)
@@ -543,7 +556,7 @@ def validate_candidate(path: Path) -> dict[str, Any]:
             raise WarehouseError("Candidate projection не совпадает с snapshot")
         row_count = int(db.execute("SELECT count(*) FROM inventory_snapshot_items").fetchone()[0])
         preview_digest = bytes(db.execute("SELECT preview_digest FROM import_commits WHERE import_commit_id=1").fetchone()[0]).hex()
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = _file_sha256(path)
     return {
         "status": "REHEARSAL_READY",
         "path": str(path),

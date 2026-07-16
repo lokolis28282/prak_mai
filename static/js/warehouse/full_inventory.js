@@ -35,8 +35,13 @@
   }
 
   function button(text,onClick,options={}){
-    const result=node('button',{className:`button${options.primary?' primary':''}`,text,onClick});
+    const result=node('button',{className:`button${options.primary?' primary':''}`,text});
     result.type='button';result.disabled=Boolean(options.disabled);
+    if(onClick)result.addEventListener('click',async event=>{
+      if(result.disabled)return;
+      result.disabled=true;
+      try{await onClick(event)}finally{if(result.isConnected)result.disabled=Boolean(options.disabled)}
+    });
     return result;
   }
 
@@ -257,7 +262,7 @@
       children.push(node('section',{className:'box',children:[
         node('div',{className:'full-inventory-section-head',children:[
           node('div',{children:[node('h3',{text:SESSION_LABELS[session.session_status]||session.session_status}),node('p',{text:`Session ${session.public_id}`})]}),
-          button('Отменить session',rejectSession,{disabled:!canOperate})
+          button('Отменить session',rejectSession,{disabled:!canOperate||session.session_status==='PREVIEWING'})
         ]}),
         node('div',{className:'cards full-inventory-summary',children:[
           summaryCard('Строк',session.row_count||0),summaryCard('Блокеров',session.blocker_count||0),
@@ -268,7 +273,10 @@
       ]}));
       if(['DRAFT','UPLOADED'].includes(session.session_status)){
         const fileInput=node('input',{attrs:{type:'file',accept:'.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}});
-        fileInput.addEventListener('change',()=>uploadSource(fileInput.files?.[0]));
+        fileInput.addEventListener('change',async()=>{
+          fileInput.disabled=true;
+          try{await uploadSource(fileInput.files?.[0])}finally{if(fileInput.isConnected)fileInput.disabled=false}
+        });
         const uploadLabel=node('label',{className:'button primary',text:session.session_status==='DRAFT'?'Выбрать XLSX':'Заменить XLSX'});
         uploadLabel.append(fileInput);fileInput.className='file-input';
         const uploadActions=[uploadLabel];

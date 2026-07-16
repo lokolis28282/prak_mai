@@ -25,6 +25,14 @@
 - Preview performance: 1 000 строк — 0.13 s, 10 000 — 1.28 s, 50 000 —
   6.70 s на текущем MacBook; прогоны использовали temporary DB, исходная
   fixture DB осталась byte-identical;
+- post-release hardening перевёл Inventory rows с materialized tuple на
+  повторно открываемый streaming reader; независимый Preview worker теперь
+  обрабатывает 50 000 строк за 6.45 s при peak RSS около 69 MiB;
+- stale/double-submit операции защищены `BEGIN IMMEDIATE` и повторной проверкой
+  active session/run; отмена во время Preview fail-closed, UI-кнопки работают
+  single-flight;
+- существующий source-vault object теперь повторно проверяется по SHA-256, а
+  candidate path и cold import защищены от symlink/circular-import edge cases;
 - runtime metadata синхронизирована на `0.14.0`; Windows builder больше не
   включает `data/warehouse.db`, runtime/candidate DB или credentials. Новый
   Windows ZIP этой работой не создавался.

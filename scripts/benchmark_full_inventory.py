@@ -4,12 +4,14 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import closing
+from contextlib import closing, redirect_stdout
 import hashlib
+import io
 import json
 from pathlib import Path
 import resource
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import time
@@ -97,64 +99,116 @@ def _manifest(reference_fingerprint: str):
     return [{"Key": key, "Value": value} for key, value in values.items()]
 
 
-def run(size: int) -> dict[str, object]:
-    with tempfile.TemporaryDirectory(prefix=f"ode-full-inventory-{size}-") as temporary:
-        root = Path(temporary)
-        database = root / "warehouse.db"
+def _prepare_input(root: Path, size: int) -> tuple[float, int]:
+    database = root / "warehouse.db"
+    with redirect_stdout(io.StringIO()):
         WarehouseService(database)
-        _install_references(database)
-        inventory = FullInventoryService(database, state_root=root / "state")
-        actor = ActorSnapshot("benchmark:operator", "Benchmark Operator", "engineer")
-        workbook = root / f"inventory-{size}.xlsx"
-        started = time.perf_counter()
-        write_text_xlsx(
-            workbook,
-            {
-                "Manifest": (["Key", "Value"], _manifest(inventory.reference_fingerprint().hex())),
-                "Inventory": (COLUMNS, _rows(size)),
-            },
-            identifier_columns={"Manifest": ["Key", "Value"], "Inventory": COLUMNS},
+    _install_references(database)
+    inventory = FullInventoryService(database, state_root=root / "state")
+    workbook = root / f"inventory-{size}.xlsx"
+    started = time.perf_counter()
+    write_text_xlsx(
+        workbook,
+        {
+            "Manifest": (["Key", "Value"], _manifest(inventory.reference_fingerprint().hex())),
+            "Inventory": (COLUMNS, _rows(size)),
+        },
+        identifier_columns={"Manifest": ["Key", "Value"], "Inventory": COLUMNS},
+    )
+    return time.perf_counter() - started, workbook.stat().st_size
+
+
+def _run_preview(root: Path, size: int) -> dict[str, object]:
+    database = root / "warehouse.db"
+    workbook = root / f"inventory-{size}.xlsx"
+    inventory = FullInventoryService(database, state_root=root / "state")
+    actor = ActorSnapshot("benchmark:operator", "Benchmark Operator", "engineer")
+    operational_sha = hashlib.sha256(database.read_bytes()).hexdigest()
+    session = inventory.create_session(actor, correlation_id=f"benchmark-create-{size:08d}")
+    with workbook.open("rb") as stream:
+        inventory.upload_source(
+            session["public_id"], filename=workbook.name,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            content_length=workbook.stat().st_size, stream=stream, actor=actor,
+            correlation_id=f"benchmark-upload-{size:08d}",
         )
-        generated_seconds = time.perf_counter() - started
-        operational_sha = hashlib.sha256(database.read_bytes()).hexdigest()
-        session = inventory.create_session(actor, correlation_id=f"benchmark-create-{size:08d}")
-        with workbook.open("rb") as stream:
-            inventory.upload_source(
-                session["public_id"], filename=workbook.name,
-                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                content_length=workbook.stat().st_size, stream=stream, actor=actor,
-                correlation_id=f"benchmark-upload-{size:08d}",
-            )
-        started = time.perf_counter()
-        summary = inventory.build_preview(
-            session["public_id"], actor, correlation_id=f"benchmark-preview-{size:08d}"
-        )
-        preview_seconds = time.perf_counter() - started
-        if summary["session"]["row_count"] != size or summary["session"]["blocker_count"]:
-            raise RuntimeError("benchmark Preview result is not valid")
-        if hashlib.sha256(database.read_bytes()).hexdigest() != operational_sha:
-            raise RuntimeError("operational fixture DB changed during Preview")
-        peak_rss_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        if sys.platform == "darwin":
-            peak_rss_kib //= 1024
-        return {
-            "rows": size, "xlsx_bytes": workbook.stat().st_size,
-            "generation_seconds": round(generated_seconds, 3),
-            "preview_seconds": round(preview_seconds, 3),
-            "rows_per_second": round(size / preview_seconds, 1),
-            "peak_rss_kib": peak_rss_kib,
-            "session_status": summary["session"]["session_status"],
-            "operational_db_unchanged": True,
-        }
+    started = time.perf_counter()
+    summary = inventory.build_preview(
+        session["public_id"], actor, correlation_id=f"benchmark-preview-{size:08d}"
+    )
+    preview_seconds = time.perf_counter() - started
+    if summary["session"]["row_count"] != size or summary["session"]["blocker_count"]:
+        raise RuntimeError("benchmark Preview result is not valid")
+    if hashlib.sha256(database.read_bytes()).hexdigest() != operational_sha:
+        raise RuntimeError("operational fixture DB changed during Preview")
+    peak_rss_kib = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        peak_rss_kib //= 1024
+    return {
+        "rows": size,
+        "preview_seconds": round(preview_seconds, 3),
+        "rows_per_second": round(size / preview_seconds, 1),
+        "preview_process_peak_rss_kib": peak_rss_kib,
+        "session_status": summary["session"]["session_status"],
+        "operational_db_unchanged": True,
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--sizes", nargs="+", type=int, default=[1_000, 10_000, 50_000])
+    parser.add_argument("--worker-size", type=int, help=argparse.SUPPRESS)
+    parser.add_argument("--worker-root", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.worker_size is not None:
+        if args.worker_size < 1 or args.worker_size > 50_000 or args.worker_root is None:
+            parser.error("worker-size must be between 1 and 50000")
+        print(
+            "ODE_BENCH_RESULT="
+            + json.dumps(_run_preview(args.worker_root, args.worker_size), ensure_ascii=False)
+        )
+        return 0
     if any(size < 1 or size > 50_000 for size in args.sizes):
         parser.error("sizes must be between 1 and 50000")
-    results = [run(size) for size in args.sizes]
+    results = []
+    for size in args.sizes:
+        with tempfile.TemporaryDirectory(
+            prefix=f"ode-full-inventory-{size}-"
+        ) as temporary:
+            root = Path(temporary)
+            generated_seconds, xlsx_bytes = _prepare_input(root, size)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(Path(__file__).resolve()),
+                    "--worker-size",
+                    str(size),
+                    "--worker-root",
+                    str(root),
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if completed.returncode:
+                raise RuntimeError(
+                    f"benchmark worker {size} failed: {completed.stderr or completed.stdout}"
+                )
+            marker = next(
+                (
+                    line.removeprefix("ODE_BENCH_RESULT=")
+                    for line in completed.stdout.splitlines()
+                    if line.startswith("ODE_BENCH_RESULT=")
+                ),
+                "",
+            )
+            if not marker:
+                raise RuntimeError(f"benchmark worker {size} returned no result")
+            result = json.loads(marker)
+            result["xlsx_bytes"] = xlsx_bytes
+            result["generation_seconds"] = round(generated_seconds, 3)
+            results.append(result)
     print(json.dumps({"results": results}, ensure_ascii=False, indent=2))
     return 0
 

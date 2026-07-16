@@ -49,6 +49,10 @@ class FullInventoryFrontendContractTest(unittest.TestCase):
         self.assertIn('catalog_validation: "DEFERRED"', current_state)
         self.assertIn("не связывает строки по Vendor/Model/Description", current_state)
 
+    def test_mutating_buttons_are_single_flight_and_preview_cannot_be_rejected(self) -> None:
+        self.assertIn("result.disabled=true", self.javascript)
+        self.assertIn("session.session_status==='PREVIEWING'", self.javascript)
+
 
 if __name__ == "__main__":
     unittest.main()

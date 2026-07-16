@@ -12,6 +12,7 @@ from inventory.warehouse.baseline.xlsx_parser import (
     inspect_workbook,
     template_bytes,
 )
+from inventory.warehouse.baseline.workspace import WorkspaceError
 from tests.full_inventory_support import FullInventoryFixture
 
 
@@ -45,6 +46,18 @@ class FullInventoryXlsxTest(FullInventoryFixture, unittest.TestCase):
         self.assertEqual(workbook.manifest["TemplateId"].display_value, "ODE-FULL-INVENTORY")
         self.assertEqual(workbook.manifest["TemplateVersion"].display_value, "1.0")
 
+    def test_inventory_rows_are_reiterable_stream_not_materialized_tuple(self) -> None:
+        source = self.workbook(rows=[
+            self.row(RowId="ROW-1", SerialNumber="STREAM-1"),
+            self.row(RowId="ROW-2", SerialNumber="STREAM-2"),
+        ])
+        workbook = inspect_workbook(source)
+        self.assertNotIsInstance(workbook.rows, tuple)
+        first = [row.cells["SerialNumber"].display_value for row in workbook.rows]
+        second = [row.cells["SerialNumber"].display_value for row in workbook.rows]
+        self.assertEqual(first, ["STREAM-1", "STREAM-2"])
+        self.assertEqual(second, first)
+
     def test_valid_preview_preserves_leading_zero_serial_and_reaches_ready_for_approval(self) -> None:
         session = self.create_session()
         source = self.workbook(rows=[self.row(SerialNumber="0000000123")])
@@ -56,6 +69,19 @@ class FullInventoryXlsxTest(FullInventoryFixture, unittest.TestCase):
         rows = self.inventory.preview_rows(session["public_id"])["rows"]
         self.assertEqual(rows[0]["raw"]["SerialNumber"], "0000000123")
         self.assertEqual(rows[0]["normalized"]["serial_match_key"], "0000000123")
+
+    def test_existing_source_vault_object_requires_exact_sha256(self) -> None:
+        session = self.create_session()
+        source = self.workbook()
+        self.upload(session, source)
+        _, internal = self.inventory._find_session(session["public_id"])
+        vault_path = self.inventory._source_path(internal["source_opaque_key"])
+        tampered = bytearray(vault_path.read_bytes())
+        tampered[len(tampered) // 2] ^= 0x01
+        vault_path.write_bytes(tampered)
+
+        with self.assertRaisesRegex(WorkspaceError, "SHA-256 mismatch"):
+            self.upload(session, source)
 
     def test_duplicate_inventory_number_blocks_and_references_first_row(self) -> None:
         session = self.create_session()

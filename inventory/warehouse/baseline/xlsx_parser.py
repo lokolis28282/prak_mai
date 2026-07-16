@@ -104,9 +104,48 @@ class SourceRow:
 class WorkbookInfo:
     sheets: tuple[str, ...]
     manifest: dict[str, Cell]
-    rows: tuple[SourceRow, ...]
+    rows: "InventoryRowStream"
     unknown_sheets: tuple[str, ...]
     merged_inventory_ranges: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class InventoryRowStream:
+    source: Path
+    sheet_path: str
+    shared: tuple[str, ...]
+    formats: tuple[str, ...]
+    headers: tuple[tuple[str, str], ...]
+
+    def __iter__(self) -> Iterator[SourceRow]:
+        headers = dict(self.headers)
+        try:
+            with ZipFile(self.source) as archive:
+                row_iterator = _iter_rows(
+                    archive, self.sheet_path, list(self.shared), list(self.formats)
+                )
+                next(row_iterator, None)  # Header was validated by inspect_workbook.
+                for row in row_iterator:
+                    if row.row_number > MAX_ROWS + 1:
+                        raise FullInventoryXlsxError(
+                            "Inventory превышает 1 000 000 строк"
+                        )
+                    mapped = {
+                        headers[column]: cell
+                        for column, cell in row.cells.items()
+                        if column in headers
+                    }
+                    extra = {
+                        f"__EXTRA__{_column_number(column)}": cell
+                        for column, cell in row.cells.items()
+                        if column not in headers
+                    }
+                    if mapped or extra or row.hidden:
+                        yield SourceRow(
+                            row.row_number, row.hidden, {**mapped, **extra}
+                        )
+        except BadZipFile as error:
+            raise FullInventoryXlsxError("Файл не является валидным XLSX") from error
 
 
 def _q(namespace: str, local: str) -> str:
@@ -366,25 +405,17 @@ def inspect_workbook(path: str | Path) -> WorkbookInfo:
                 raise FullInventoryXlsxError(
                     "Отсутствуют колонки: " + ", ".join(sorted(missing_columns))
                 )
-            rows: list[SourceRow] = []
-            for row in row_iterator:
-                if row.row_number > MAX_ROWS + 1:
-                    raise FullInventoryXlsxError("Inventory превышает 1 000 000 строк")
-                mapped = {
-                    headers[column]: cell
-                    for column, cell in row.cells.items()
-                    if column in headers
-                }
-                extra = {
-                    f"__EXTRA__{_column_number(column)}": cell
-                    for column, cell in row.cells.items()
-                    if column not in headers
-                }
-                if mapped or extra or row.hidden:
-                    rows.append(SourceRow(row.row_number, row.hidden, {**mapped, **extra}))
+            row_iterator.close()
+            rows = InventoryRowStream(
+                source=source.resolve(),
+                sheet_path=inventory_path,
+                shared=tuple(shared),
+                formats=tuple(formats),
+                headers=tuple(headers.items()),
+            )
             merged = _merged_ranges(archive, inventory_path)
             unknown = tuple(name for name in names if name not in REQUIRED_SHEETS | OPTIONAL_SHEETS)
-            return WorkbookInfo(tuple(names), manifest, tuple(rows), unknown, merged)
+            return WorkbookInfo(tuple(names), manifest, rows, unknown, merged)
     except BadZipFile as error:
         raise FullInventoryXlsxError("Файл не является валидным XLSX") from error
 

@@ -25,7 +25,12 @@ target DDL V001..V008 и доказывает snapshot/projection equivalence.
 - candidate rehearsal — admin-only;
 - исходное raw identifier значение не перезаписывается;
 - upload ограничен размером, проверяет OOXML traversal/macros/external payload;
-- source SHA и reference fingerprint проверяются повторно;
+- source SHA проверяется до и после потокового Preview, существующий vault
+  object повторно хешируется; reference index и fingerprint читаются одним
+  согласованным snapshot;
+- stale/double-submit Preview/resolution requests закрыты транзакционным
+  `BEGIN IMMEDIATE`, отмена работающего Preview запрещена;
+- candidate path не может быть symlink, SHA candidate считается потоково;
 - runtime DB, candidate и credentials не входят в Windows/source package;
 - реальный publish отсутствует и не может заменить `data/warehouse.db`.
 
@@ -35,12 +40,14 @@ Disposable MacBook benchmark (`scripts/benchmark_full_inventory.py`):
 
 | Rows | Preview | Throughput | Peak RSS |
 |---:|---:|---:|---:|
-| 1 000 | 0.132 s | 7 594 rows/s | 56 MiB |
-| 10 000 | 1.280 s | 7 813 rows/s | 175 MiB |
-| 50 000 | 6.695 s | 7 469 rows/s | 708 MiB |
+| 1 000 | 0.130 s | 7 673 rows/s | 41 MiB |
+| 10 000 | 1.295 s | 7 723 rows/s | 49 MiB |
+| 50 000 | 6.448 s | 7 755 rows/s | 69 MiB |
 
-Во всех прогонах session стала `READY_FOR_APPROVAL`, fixture operational DB
-осталась byte-identical.
+Каждый Preview выполнялся в отдельном subprocess после отдельной генерации
+XLSX, поэтому RSS не включает synthetic writer и предыдущие размеры. Во всех
+прогонах session стала `READY_FOR_APPROVAL`, fixture operational DB осталась
+byte-identical.
 
 ## Ограничения / stop conditions
 
@@ -61,7 +68,7 @@ Disposable MacBook benchmark (`scripts/benchmark_full_inventory.py`):
 - module boundaries — PASS, включая restricted rehearsal bridge;
 - frontend contracts — PASS;
 - clean-test DB dry-run — PASS, source SHA unchanged;
-- full warning-clean suite — **436 tests PASS, 8 expected skips**;
+- full warning-clean suite — **444 tests PASS, 8 expected skips**;
 - focused ODE target suite входит в full gate (60 tests);
 - headless Chrome smoke — PASS: receipt/issue/balance/history/search/profile/
   administration/monitoring, console/window/resource/HTTP/API500 errors = 0;

@@ -22,6 +22,11 @@ schema hash, integrity, FK и domain invariants. Автоматическая п
 рабочую БД отключена (`publish_available=false`). Инструкция:
 [FULL Inventory 0.14](docs/MANUAL_TESTING_0_14_FULL_INVENTORY.md).
 
+Preview читает Inventory rows потоково. Проверенный disposable benchmark для
+50 000 строк: около 6.45 секунды, 7 755 строк/с и 69 MiB peak RSS отдельного
+Preview-процесса. Повторные клики и stale requests не создают параллельный run,
+а source/candidate paths проверяются по SHA-256 и на отсутствие symlink.
+
 ## Warehouse Stabilization (2026-07-14)
 
 Активно развивается и принимается только модуль **Склад**. Обычный запуск —
