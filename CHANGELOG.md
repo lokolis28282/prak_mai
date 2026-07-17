@@ -1,5 +1,19 @@
 # Changelog ODE
 
+## Unreleased — Monitoring and Knowledge integration (2026-07-17)
+
+- добавлен рабочий ручной Monitoring flow: hostname/problem validation,
+  опциональный Edge/Selenium DCIM collector, ping/classification, безопасная
+  hostname routing, Rooms/email preview и локальная история без автоотправки;
+- добавлена Knowledge Base с категориями, поиском, тегами, пагинацией,
+  безопасным Markdown, create/edit/soft-delete, private attachments и
+  server-side ролями `viewer`/`engineer`/`admin`;
+- добавлены идемпотентные runtime-таблицы Knowledge и миграционный скрипт;
+- восстановлены byte-exact LF для утверждённых DDL checksums и исправлен
+  Windows `fsync` для candidate/test database публикации;
+- добавлены конфигурация, документация, API/frontend/security/migration tests;
+  локальные routing rules, Edge profile, cookies, БД и вложения не публикуются.
+
 ## ODE 0.14.0 — Full Inventory safety workflow and baseline rehearsal
 
 - добавлен первый изолированный Monitoring capability: fail-closed

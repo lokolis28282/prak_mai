@@ -10,6 +10,10 @@ repository, включая рабочий Warehouse source/runtime track, нах
 Остальные Platform Stage не считаются реализованными или разрешёнными
 автоматически.
 
+Текущие изолированные runtime-модули Monitoring и Knowledge описаны отдельно:
+[Monitoring and Knowledge Base](MONITORING_KNOWLEDGE_GUIDE.md). Этот документ
+не меняет нормативный статус target ODE 0.13 architecture track.
+
 ## Порядок чтения ODE 0.13
 
 1. [Архитектурный обзор](architecture/overview.md)
