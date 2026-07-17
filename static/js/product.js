@@ -825,8 +825,9 @@
   function writeLocation(section,view,replace=false){
     if(applyingHistory)return;
     if(history.state?.section===section&&history.state?.view===view&&!history.state?.card)return;
-    const stateValue={section,view};
-    const hash=`#${encodeURIComponent(section)}/${encodeURIComponent(view)}`;
+    const knowledgeRoute=section==='knowledge'?(history.state?.section==='knowledge'&&history.state?.knowledgeRoute||'home'):'';
+    const stateValue={section,view,...(knowledgeRoute?{knowledgeRoute}:{})};
+    const hash=knowledgeRoute?`#knowledge/${knowledgeRoute.split('/').map(encodeURIComponent).join('/')}`:`#${encodeURIComponent(section)}/${encodeURIComponent(view)}`;
     history[replace?'replaceState':'pushState'](stateValue,'',hash);
   }
   showSection=function(name){
@@ -844,13 +845,15 @@
     const target=event.state;if(!target)return;
     if(!target.card&&byId('positionModal')?.classList.contains('show'))closePositionCard();
     applyingHistory=true;baseShowSection(target.section);baseShowView(target.view);applyingHistory=false;
+    if(target.section==='knowledge')window.ODE?.knowledge?.renderRoute(target.knowledgeRoute||'home');
   });
   const hashParts=location.hash.replace(/^#/,'').split('/').map(decodeURIComponent);
   const initialSection=sections[hashParts[0]]?hashParts[0]:'home';
-  const initialView=(sections[initialSection]||[]).some(entry=>entry[0]===hashParts[1])?hashParts[1]:(sections[initialSection]?.[0]?.[0]||'home');
+  const initialKnowledgeRoute=initialSection==='knowledge'?(window.ODE?.knowledge?.routeFromHash(hashParts.slice(1))||'home'):'';
+  const initialView=initialSection==='knowledge'?'knowledge':(sections[initialSection]||[]).some(entry=>entry[0]===hashParts[1])?hashParts[1]:(sections[initialSection]?.[0]?.[0]||'home');
   applyingHistory=true;baseShowSection(initialSection);baseShowView(initialView);applyingHistory=false;
   currentSection=initialSection;
-  history.replaceState({section:initialSection,view:initialView},'',`#${encodeURIComponent(initialSection)}/${encodeURIComponent(initialView)}`);
+  history.replaceState({section:initialSection,view:initialView,...(initialKnowledgeRoute?{knowledgeRoute:initialKnowledgeRoute}:{})},'',initialKnowledgeRoute?`#knowledge/${initialKnowledgeRoute.split('/').map(encodeURIComponent).join('/')}`:`#${encodeURIComponent(initialSection)}/${encodeURIComponent(initialView)}`);
 
   const productLoadAll=loadAll;
   loadAll=async function(){

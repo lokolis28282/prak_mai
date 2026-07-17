@@ -99,6 +99,39 @@ CREATE TABLE IF NOT EXISTS work_logs (
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 
+CREATE TABLE IF NOT EXISTS knowledge_articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('instructions', 'specifications')),
+    created_by INTEGER REFERENCES users(id),
+    created_by_name TEXT NOT NULL DEFAULT '',
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL REFERENCES knowledge_articles(id) ON DELETE CASCADE,
+    original_name TEXT NOT NULL,
+    stored_name TEXT NOT NULL UNIQUE,
+    relative_path TEXT NOT NULL UNIQUE,
+    content_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes > 0),
+    uploaded_by INTEGER REFERENCES users(id),
+    uploaded_by_name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS knowledge_article_tags (
+    article_id INTEGER NOT NULL REFERENCES knowledge_articles(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    tag_key TEXT NOT NULL,
+    PRIMARY KEY (article_id, tag_key)
+);
+
 CREATE TABLE IF NOT EXISTS reference_values (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,
@@ -261,6 +294,12 @@ CREATE INDEX IF NOT EXISTS idx_operations_type ON operations(operation_type);
 CREATE INDEX IF NOT EXISTS idx_work_logs_date ON work_logs(work_date);
 CREATE INDEX IF NOT EXISTS idx_work_logs_source ON work_logs(task_source);
 CREATE INDEX IF NOT EXISTS idx_work_logs_status ON work_logs(status);
+CREATE INDEX IF NOT EXISTS idx_knowledge_articles_category_updated
+    ON knowledge_articles(category, is_active, updated_at DESC, title COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachments_article
+    ON knowledge_attachments(article_id, id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_article_tags_tag
+    ON knowledge_article_tags(tag_key, article_id);
 CREATE INDEX IF NOT EXISTS idx_reference_values_kind ON reference_values(kind, is_active, name);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_receipts_serial_unique
     ON stock_receipts(serial_number COLLATE NOCASE) WHERE trim(serial_number) <> '';
@@ -291,6 +330,47 @@ CREATE INDEX IF NOT EXISTS idx_daily_report_rows_date ON daily_report_rows(repor
 CREATE INDEX IF NOT EXISTS idx_deliveries_search ON deliveries(delivery_number, supplier, status);
 CREATE INDEX IF NOT EXISTS idx_delivery_lines_delivery ON delivery_lines(delivery_id, row_number);
 CREATE INDEX IF NOT EXISTS idx_delivery_lines_serial ON delivery_lines(serial_number COLLATE NOCASE);
+"""
+
+# Promoted historical databases deliberately skip the legacy SCHEMA replay.
+# Knowledge owns this additive schema and must still be installed there.
+KNOWLEDGE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS knowledge_articles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('instructions', 'specifications')),
+    created_by INTEGER REFERENCES users(id),
+    created_by_name TEXT NOT NULL DEFAULT '',
+    is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS knowledge_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    article_id INTEGER NOT NULL REFERENCES knowledge_articles(id) ON DELETE CASCADE,
+    original_name TEXT NOT NULL,
+    stored_name TEXT NOT NULL UNIQUE,
+    relative_path TEXT NOT NULL UNIQUE,
+    content_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL CHECK (size_bytes > 0),
+    uploaded_by INTEGER REFERENCES users(id),
+    uploaded_by_name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS knowledge_article_tags (
+    article_id INTEGER NOT NULL REFERENCES knowledge_articles(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    tag_key TEXT NOT NULL,
+    PRIMARY KEY (article_id, tag_key)
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_articles_category_updated
+    ON knowledge_articles(category, is_active, updated_at DESC, title COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_knowledge_attachments_article
+    ON knowledge_attachments(article_id, id);
+CREATE INDEX IF NOT EXISTS idx_knowledge_article_tags_tag
+    ON knowledge_article_tags(tag_key, article_id);
 """
 
 
@@ -326,7 +406,9 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
         # build intentionally did not claim.
         if full_marker is None:
             connection.executescript(SCHEMA)
-        elif connection.execute(
+        else:
+            connection.executescript(KNOWLEDGE_SCHEMA)
+        if full_marker is not None and connection.execute(
             "SELECT 1 FROM reference_values LIMIT 1"
         ).fetchone() is not None:
             # A promoted full DB needs the compatibility/reference population

@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import sqlite3
 import tempfile
 import threading
 import time
@@ -18,13 +19,14 @@ from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Sequence
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import __version__
 from .core.application import ApplicationContext, create_application_context, ensure_application_context
 from .core.context import RuntimeConfig
 from .db import DEFAULT_DB_PATH
 from .importing import parse_csv_bytes, unknown_csv_headers
+from .knowledge import KnowledgeError, KnowledgeNotFound, KnowledgePermissionError
 from .monitoring.facade import MonitoringError
 from .service import WarehouseError, WarehouseService
 from .warehouse.migration_full_review import (
@@ -412,6 +414,8 @@ HTML = HTML.replace(
 # The operational UI is intentionally assembled last: older compatibility
 # replacements above keep the API and forms stable, while this layer exposes a
 # small task-oriented navigation to engineers.
+KNOWLEDGE_SECTION = r'''<section class="view panel" id="knowledge"></section>'''
+
 HOME_SECTION = r'''<section class="view panel home-screen active" id="home">
 <div class="landing-head"><p class="eyebrow">Рабочее пространство</p><h2>Добро пожаловать в ODE</h2><p>Выберите направление работы.</p></div>
 <noscript><div class="noscript-notice">JavaScript отключен. Основные разделы доступны на этой странице; для операций со складом включите JavaScript.</div></noscript>
@@ -419,6 +423,7 @@ HOME_SECTION = r'''<section class="view panel home-screen active" id="home">
 <article class="portal-card"><div class="portal-icon">▣</div><h3>Склад</h3><p>Работа со складом</p><ul><li>Приемка и выдача</li><li>Баланс и поставки</li><li>Инвентаризация</li></ul><button onclick="openWarehouseHub()">Открыть</button></article>
 <article class="portal-card"><div class="portal-icon">▤</div><h3>Отчеты</h3><p>Работа смены</p><ul><li>Ежедневный отчет</li><li>Еженедельный отчет</li><li>История работ</li></ul><button onclick="openTask('reports','daily')">Открыть</button></article>
 <article class="portal-card"><div class="portal-icon">⌁</div><h3>Мониторинг</h3><p>Состояние системы</p><ul><li>Проблемы</li><li>События</li><li>Мониторинг</li></ul><button onclick="openMonitoringHub()">Открыть</button></article>
+<article class="portal-card"><div class="portal-icon">▦</div><h3>База знаний</h3><p>Инструкции и документация</p><ul><li>Рабочие инструкции</li><li>Спецификации</li><li>Документы</li></ul><button onclick="openKnowledgeBase()">Открыть</button></article>
 <article class="portal-card"><div class="portal-icon">●</div><h3>Профиль</h3><p>Инженер смены</p><ul><li>Текущий инженер</li><li>Настройки смены</li><li>Смена инженера</li></ul><button onclick="openShiftProfile()">Открыть</button></article>
 </div></section>'''
 
@@ -437,7 +442,7 @@ HTML = HTML.replace(
     '<header class="top"><div><h1 id="pageTitle">Главная</h1><span class="hint">Отдел дежурных инженеров · Ixcellerate</span></div><div class="profile-actions"><span id="currentUser"></span><button class="button" onclick="loadAll()">Обновить</button><button class="button" onclick="logout()">Сменить инженера / выйти</button><select id="importMode" hidden><option value="soft">Обычная</option><option value="strict">Полная</option></select></div></header>',
 ).replace(
     '</main></div><div class="status" id="status">',
-    HOME_SECTION + '</main></div><div class="status" id="status">',
+    KNOWLEDGE_SECTION + HOME_SECTION + '</main></div><div class="status" id="status">',
 )
 HTML = HTML.replace('<nav class="subnav" id="subnav"></nav>', '<nav class="subnav" id="subnav" style="display:none"></nav>', 1)
 HTML = HTML.replace(
@@ -528,6 +533,7 @@ def _externalized_html(html: str) -> str:
             "warehouse/migration_pilot.js",
             "reports/index.js", "reports/work_logs.js", "reports/daily.js", "reports/weekly.js",
             "monitoring/index.js",
+            "knowledge/index.js",
             "administration/index.js", "administration/profile.js", "administration/users.js",
             "administration/backup.js", "administration/diagnostics.js", "administration/references.js",
             "product.js",
@@ -805,6 +811,24 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_json(200, app_context.warehouse.get_system_status())
                 elif path == "/api/monitoring/status":
                     self._send_json(200, app_context.monitoring.module_status())
+                elif path == "/api/knowledge/articles":
+                    self._send_json(200, app_context.knowledge.list_articles(
+                        self._query(query, "category"),
+                        query=self._query(query, "query"),
+                        tag=self._query(query, "tag"),
+                        page=self._query_int(
+                            query, "page", default=1, minimum=1, maximum=1_000_000
+                        ),
+                        page_size=self._query_int(
+                            query, "page_size", default=20, minimum=1, maximum=100
+                        ),
+                    ))
+                elif match := re.fullmatch(r"/api/knowledge/articles/(\d+)", path):
+                    self._send_json(200, {
+                        "article": app_context.knowledge.get_article(int(match.group(1)))
+                    })
+                elif match := re.fullmatch(r"/api/knowledge/attachments/(\d+)", path):
+                    self._send_knowledge_attachment(int(match.group(1)))
                 elif path == "/api/full-inventory/session":
                     self._send_json(200, app_context.full_inventory.get_session(
                         self._query(query, "session_id")
@@ -1063,6 +1087,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_template("daily_report_template.csv", USER_CSV_TEMPLATES["daily_report"])
                 else:
                     self._send_json(404, {"error": "Страница не найдена"})
+            except KnowledgeNotFound as error:
+                self._send_json(404, {"error": str(error)})
+            except KnowledgePermissionError as error:
+                self._send_json(403, {"error": str(error)})
             except (WarehouseError, WorkspaceError, FullInventoryXlsxError) as error:
                 self._send_json(400, {"error": str(error)})
             except Exception:
@@ -1124,6 +1152,9 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _do_POST(self) -> None:
             parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/knowledge/"):
+                self._knowledge_POST(parsed.path)
+                return
             if parsed.path == "/api/monitoring/manual-search":
                 data = self._read_json_object(100_000)
                 self._send_json(
@@ -1417,6 +1448,90 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(400, {"error": str(error)})
             except Exception:
                 self._send_json(500, {"error": "Внутренняя ошибка сервера"})
+
+        def _knowledge_POST(self, path: str) -> None:
+            try:
+                if path == "/api/knowledge/articles":
+                    article = app_context.knowledge.create_article(
+                        self._read_json_object(300_000)
+                    )
+                    self._send_json(201, {"ok": True, "article": article})
+                    return
+                match = re.fullmatch(r"/api/knowledge/articles/(\d+)/attachments", path)
+                if match:
+                    try:
+                        length = int(self.headers.get("Content-Length", "0"))
+                    except ValueError as error:
+                        raise KnowledgeError("Некорректный размер файла") from error
+                    if length <= 0 or length > app_context.knowledge.MAX_ATTACHMENT_BYTES:
+                        maximum = app_context.knowledge.MAX_ATTACHMENT_BYTES // 1024 // 1024
+                        raise KnowledgeError(
+                            f"Размер файла должен быть от 1 байта до {maximum} МБ"
+                        )
+                    attachment = app_context.knowledge.add_attachment(
+                        int(match.group(1)),
+                        unquote(self.headers.get("X-Filename", "")),
+                        self.headers.get("Content-Type", "application/octet-stream"),
+                        self.rfile.read(length),
+                    )
+                    self._send_json(201, {"ok": True, "attachment": attachment})
+                    return
+                self._send_json(404, {"error": "Страница не найдена"})
+            except KnowledgeNotFound as error:
+                self._send_json(404, {"error": str(error)})
+            except KnowledgePermissionError as error:
+                self._send_json(403, {"error": str(error)})
+            except KnowledgeError as error:
+                self._send_json(400, {"error": str(error)})
+            except (OSError, sqlite3.DatabaseError):
+                self._send_json(500, {"error": "Не удалось сохранить данные базы знаний"})
+
+        def do_PUT(self) -> None:  # noqa: N802
+            self._knowledge_mutation("PUT")
+
+        def do_DELETE(self) -> None:  # noqa: N802
+            self._knowledge_mutation("DELETE")
+
+        def _knowledge_mutation(self, method: str) -> None:
+            path = urlparse(self.path).path
+            origin = self.headers.get("Origin", "")
+            host = self.headers.get("Host", "")
+            if origin and (urlparse(origin).netloc != host or not self._host_allowed(host)):
+                self._send_json(403, {"error": "Источник запроса не разрешен"})
+                return
+            if not self._session_email():
+                self._send_json(401, {"error": "Требуется вход"})
+                return
+            if migration_pilot_status.get("enabled") or migration_full_status.get("read_only"):
+                self._send_json(403, {"error": "База работает только в режиме просмотра"})
+                return
+            match = re.fullmatch(r"/api/knowledge/articles/(\d+)", path)
+            if match is None:
+                self._send_json(404, {"error": "Страница не найдена"})
+                return
+            try:
+                with service.user_context(
+                    self._session_email(),
+                    author_name=self._session_author(),
+                    role_override=self._session_role_override(),
+                ), service.lock:
+                    article_id = int(match.group(1))
+                    if method == "PUT":
+                        article = app_context.knowledge.update_article(
+                            article_id, self._read_json_object(300_000)
+                        )
+                        self._send_json(200, {"ok": True, "article": article})
+                    else:
+                        app_context.knowledge.delete_article(article_id)
+                        self._send_json(200, {"ok": True})
+            except KnowledgeNotFound as error:
+                self._send_json(404, {"error": str(error)})
+            except KnowledgePermissionError as error:
+                self._send_json(403, {"error": str(error)})
+            except KnowledgeError as error:
+                self._send_json(400, {"error": str(error)})
+            except sqlite3.DatabaseError:
+                self._send_json(500, {"error": "Не удалось сохранить данные базы знаний"})
 
         def _import_csv(self, kind: str, preview: bool = False) -> None:
             try:
@@ -1904,6 +2019,25 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _send_template(self, filename: str, text: str) -> None:
             self._send_download(filename, ("\ufeff" + text).encode("utf-8"))
+
+        def _send_knowledge_attachment(self, attachment_id: int) -> None:
+            path, record = app_context.knowledge.attachment_download(attachment_id)
+            body = path.read_bytes()
+            original_name = str(record["original_name"])
+            fallback = "attachment" + Path(original_name).suffix.casefold()
+            self.send_response(200)
+            self.send_header("Content-Type", str(record["content_type"]))
+            self.send_header(
+                "Content-Disposition",
+                f"attachment; filename=\"{fallback}\"; filename*=UTF-8''"
+                f"{quote(original_name, safe='')}",
+            )
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.end_headers()
+            self.wfile.write(body)
 
         def _send_json(self, status: int, data: Any) -> None:
             self._send(status, _json_bytes(data), "application/json; charset=utf-8")

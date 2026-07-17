@@ -63,12 +63,21 @@ change.
 | `work_logs` | Reports | Reports | Reports | no | stay Reports |
 | `daily_report_uploads` | Reports | Reports | Reports | no | stay Reports |
 | `daily_report_rows` | Reports | Reports | Reports | no | stay Reports |
+| `knowledge_articles` | Knowledge | Knowledge | KnowledgeFacade | no | stay Knowledge |
+| `knowledge_attachments` | Knowledge | Knowledge | KnowledgeFacade | no | keep with article lifecycle |
+| `knowledge_article_tags` | Knowledge | Knowledge | KnowledgeFacade | no | keep with article lifecycle |
 | `users` | Administration | Administration, Core current user | Administration | no | stay Administration |
 | `audit_log` | Administration | Administration, Core EventReader, Reports read-only events | Administration/Core infrastructure via shared audit adapter | temporary event source | separate module events later |
 
 Core owns no business table. Monitoring hostname routing не владеет таблицами;
 future Monitoring tables must use `monitoring_` prefix or a separate migration
 mechanism.
+
+Knowledge stores article metadata and tags in SQLite. Attachment bytes are
+stored below the configured `ODE_KNOWLEDGE_UPLOAD_DIR` (the local fallback is
+`data/uploads/knowledge`) and are never committed to Git. Knowledge may append
+article and attachment actions to shared `audit_log`, but does not write
+Warehouse or Reports tables.
 
 Reports does not own Warehouse tables. When daily/weekly reports include
 receipts, issues, deliveries or warehouse problem rows, those records are

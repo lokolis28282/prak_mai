@@ -380,6 +380,13 @@ const originalLoadAll=loadAll;loadAll=async function(){await originalLoadAll();r
 try{initEngineerUX()}catch(error){console.error('Engineer UX initialization failed',error)}
 try{initScenarios()}catch(error){console.error('Scenario initialization failed',error)}
 try{initIssuePairScanner()}catch(error){console.error('Issue pair scanner initialization failed',error)}
+function openKnowledgeBase(){
+ const module=window.ODE?.knowledge;
+ if(!module?.navigate){notify('Модуль базы знаний не загрузился',true);return}
+ module.navigate('home');
+}
+window.openKnowledgeBase=openKnowledgeBase;
+
 function warehouseLanding(){
  const home=document.querySelector('.home-screen');
  if(!home)return;
@@ -387,6 +394,7 @@ function warehouseLanding(){
   warehouse:'M4 9l8-5 8 5v11H4V9zm4 11v-7h8v7M8 9h8',
   report:'M6 3h9l3 3v15H6V3zm3 5h6M9 12h6M9 16h4',
   monitor:'M3 12h4l2-5 4 10 2-5h6',
+  knowledge:'M5 4h6a3 3 0 013 3v13H8a3 3 0 00-3 1V4zm14 0h-5a3 3 0 00-3 3v13h5a3 3 0 013 1V4',
   works:'M5 5h14v14H5V5zm3 4h8M8 13h5',
   profile:'M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9c.8-4 3.1-6 7-6s6.2 2 7 6'
  };
@@ -410,6 +418,7 @@ function warehouseLanding(){
    portalCard({module:'warehouse',route:'warehouse/overview',icon:'warehouse',title:'Склад',subtitle:'Карточки и складские операции',items:['Обзор оборудования','Приход и расход','Поставки и инвентаризация'],onOpen:()=>openWarehouseHub()}),
    portalCard({module:'works',route:'works/worklogs',icon:'works',title:'Работы',subtitle:'Задачи дежурной смены',items:['Журнал работ'],onOpen:()=>openTask('works','worklogs')}),
    portalCard({module:'monitoring',route:'monitoring/monitoring',icon:'monitor',title:'Мониторинг',subtitle:'В разработке',items:['Раздел временно недоступен'],onOpen:()=>openMonitoringHub()}),
+   portalCard({module:'knowledge',route:'knowledge/home',icon:'knowledge',title:'База знаний',subtitle:'Инструкции и документация',items:['Рабочие инструкции','Спецификации оборудования','Прикрепленные документы'],onOpen:()=>openKnowledgeBase()}),
    portalCard({module:'profile',route:'profile/profile',icon:'profile',title:'Профиль',subtitle:'Инженер смены',items:['Личные данные','Смена пароля'],onOpen:()=>openShiftProfile()}),
    portalCard({module:'reports',route:'reports/daily',icon:'report',title:'Отчеты',subtitle:'В разработке',items:['Раздел временно недоступен'],onOpen:()=>openReportsHub()}),
    portalCard({module:'administration',route:'administration/admin_users',icon:'works',title:'Администрирование ODE',subtitle:'Пользователи, база и справочники',items:['Права и пользователи','Backup и проверка БД','Аудит и справочники'],onOpen:()=>openTask('administration','admin_users')})

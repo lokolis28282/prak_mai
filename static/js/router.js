@@ -16,7 +16,7 @@ function showSection(name){
   const entries=sections[name];
   if(!entries||!entries.length){showPlaceholder(name);return}
   currentSection=name;
-  setText('pageTitle',{home:'ODE',monitoring:'Мониторинг',works:'Работы',warehouse:'Склад',reports:'Отчеты',administration:'Администрирование',profile:'Профиль'}[name]||'Раздел');
+  setText('pageTitle',{home:'ODE',monitoring:'Мониторинг',knowledge:'База знаний',works:'Работы',warehouse:'Склад',reports:'Отчеты',administration:'Администрирование',profile:'Профиль'}[name]||'Раздел');
   const nav=byId('subnav');
   nav.style.display=['warehouse','works','administration'].includes(name)?'flex':'none';
   nav.replaceChildren(...entries.map((entry,index)=>renderButton({
@@ -26,6 +26,7 @@ function showSection(name){
     onClick:()=>showView(entry[0])
   })));
   showView(entries[0][0]);
+  if(name==='knowledge')window.ODE?.knowledge?.renderRoute();
 }
 function showView(id){
   const adminMode=id.startsWith('admin_')?id:'';

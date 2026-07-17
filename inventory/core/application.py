@@ -12,6 +12,7 @@ from inventory.service import WarehouseService
 from .context import FeatureFlags, RuntimeConfig
 from .events import AuditLogEventReader, NoopEventPublisher
 from inventory.administration.facade import AdministrationFacade
+from inventory.knowledge.facade import KnowledgeFacade
 from inventory.monitoring.facade import MonitoringFacade
 from inventory.reports.facade import ReportsFacade
 from inventory.warehouse.events import WarehouseEventReader
@@ -26,6 +27,7 @@ class ApplicationContext:
     warehouse: WarehouseFacade
     reports: ReportsFacade
     monitoring: MonitoringFacade
+    knowledge: KnowledgeFacade
     administration: AdministrationFacade
     current_actor: str = ""
     feature_flags: FeatureFlags | None = None
@@ -71,6 +73,7 @@ class ApplicationContext:
             ),
             reports=ReportsFacade(service, warehouse_events=event_reader),
             monitoring=MonitoringFacade(),
+            knowledge=KnowledgeFacade(service),
             administration=AdministrationFacade(service),
             current_actor=current_actor,
             feature_flags=flags,

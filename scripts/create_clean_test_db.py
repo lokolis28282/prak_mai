@@ -50,6 +50,9 @@ DEFAULT_OUTPUT_PATH = ROOT / "data" / "warehouse_test_clean.db"
 # Складские и отчетные таблицы: операционные данные, которые очищаются.
 # Порядок важен — сначала таблицы, ссылающиеся на другие (FK потомки).
 OPERATIONAL_TABLES_IN_DELETE_ORDER = [
+    "knowledge_article_tags",
+    "knowledge_attachments",
+    "knowledge_articles",
     "stock_issue_allocations",
     "stock_issues",
     "delivery_lines",
