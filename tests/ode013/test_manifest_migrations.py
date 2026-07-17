@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import stat
 import unittest
@@ -49,7 +50,8 @@ class ManifestMigrationTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             path = Path(directory) / "clean.db"
             result = MigrationRunner(config(path)).create()
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             self.assertEqual(result.verification.integrity_result, "ok")
             self.assertEqual(result.verification.foreign_key_violations, 0)
             connection = sqlite3.connect(path)
@@ -125,6 +127,7 @@ class ManifestMigrationTests(unittest.TestCase):
                     runner.validate_sources()
                 self.assertEqual(caught.exception.code, expected)
 
+    @unittest.skipIf(os.name == "nt", "requires POSIX symlink support")
     def test_dangling_migration_source_is_typed(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory) / "ddl"

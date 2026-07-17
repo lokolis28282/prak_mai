@@ -2684,7 +2684,7 @@ def write_full_reports(
 
 
 def _fsync_file_and_parent(path: Path) -> None:
-    with path.open("rb") as stream:
+    with path.open("r+b") as stream:
         os.fsync(stream.fileno())
     if hasattr(os, "O_DIRECTORY"):
         descriptor = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)

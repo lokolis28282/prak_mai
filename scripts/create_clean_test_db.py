@@ -290,7 +290,7 @@ def atomic_install_verified_database(source: Path, output: Path) -> None:
     staging = Path(staging_name)
     try:
         shutil.copyfile(source, staging)
-        with open(staging, "rb") as handle:
+        with open(staging, "r+b") as handle:
             os.fsync(handle.fileno())
         if sha256_of(staging) != sha256_of(source):
             raise RuntimeError("проверка SHA-256 временной копии перед установкой не прошла")

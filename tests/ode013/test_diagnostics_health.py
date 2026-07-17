@@ -96,6 +96,7 @@ class DiagnosticsHealthTests(unittest.TestCase):
         self.assertFalse(Path(f"{self.path}-shm").exists())
         self.assertFalse(Path(f"{self.path}-journal").exists())
 
+    @unittest.skipIf(os.name == "nt", "requires unlinking an open SQLite SHM file")
     def test_active_wal_is_rejected_without_checkpoint_or_file_mutation(self) -> None:
         writer = sqlite3.connect(self.path, isolation_level=None)
         try:

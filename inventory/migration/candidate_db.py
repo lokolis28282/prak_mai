@@ -1298,13 +1298,14 @@ def _create_candidate_file(
 
 
 def _fsync_file_and_parent(path: Path) -> None:
-    with path.open("rb") as handle:
+    with path.open("r+b") as handle:
         os.fsync(handle.fileno())
-    directory_fd = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(directory_fd)
-    finally:
-        os.close(directory_fd)
+    if hasattr(os, "O_DIRECTORY"):
+        directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
 
 def _query_text_rows(

@@ -136,7 +136,8 @@ class FrontendStabilizationContractTest(unittest.TestCase):
     def test_compact_navigation_and_placeholders(self) -> None:
         self.assertNotIn("sectionNavItems", self.router)
         self.assertIn("nav.hidden=true", self.router)
-        self.assertIn("Мониторинг — в разработке", self.product)
+        self.assertIn("Инструменты мониторинга", self.product)
+        self.assertIn("window.openMonitoringManualSearch", self.product)
         self.assertIn("Отчёты — в разработке", self.ui)
 
     def test_reference_editor_has_controlled_workflows(self) -> None:

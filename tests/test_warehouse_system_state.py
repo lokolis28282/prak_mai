@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+import os
 import sqlite3
 import threading
 import unittest
@@ -253,7 +254,8 @@ class WarehouseSystemStateTest(FullInventoryFixture, unittest.TestCase):
         self.assertIsInstance(outcome[0], dict)
         lock_path = self.state_root / ".session-create-lock.db"
         self.assertTrue(lock_path.is_file())
-        self.assertEqual(lock_path.stat().st_mode & 0o777, 0o600)
+        if os.name != "nt":
+            self.assertEqual(lock_path.stat().st_mode & 0o777, 0o600)
         with closing(sqlite3.connect(lock_path)) as db:
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
         self.assertEqual(len(list((self.state_root / "previews").glob("*.db"))), 1)

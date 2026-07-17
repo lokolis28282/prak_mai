@@ -83,7 +83,8 @@ class FullInventoryCandidateTest(FullInventoryFixture, unittest.TestCase):
         self.assertEqual(report["projection_difference_count"], 0)
         candidate = self.state_root / "candidates" / report["candidate_file"]
         verified = validate_candidate(candidate)
-        self.assertEqual(verified["permissions"], "0o600")
+        if os.name != "nt":
+            self.assertEqual(verified["permissions"], "0o600")
         with closing(sqlite3.connect(candidate)) as db:
             self.assertEqual(db.execute("PRAGMA application_id").fetchone()[0], 0x4F444531)
             self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 8)
@@ -106,6 +107,7 @@ class FullInventoryCandidateTest(FullInventoryFixture, unittest.TestCase):
         )
         self.assertEqual(first["sha256"], second["sha256"])
 
+    @unittest.skipIf(os.name == "nt", "requires POSIX symlink support")
     def test_candidate_output_symlink_is_rejected_without_touching_target(self) -> None:
         session = self._ready_session()
         digest = self.inventory.preview_summary(session["public_id"])["run"][

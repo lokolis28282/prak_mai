@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sqlite3
 import unicodedata
 import unittest
@@ -133,6 +134,7 @@ class PathPolicyTests(unittest.TestCase):
         )
         self.assertTrue(allowed.external_path_override)
 
+    @unittest.skipIf(os.name == "nt", "requires POSIX symlink support")
     def test_symlink_escape_from_local_root_is_rejected(self) -> None:
         LOCAL_DATABASE_ROOT.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory() as directory:

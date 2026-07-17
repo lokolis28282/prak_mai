@@ -48,6 +48,11 @@ DYNAMIC_ID_WHITELIST = {
     "deliveryFillField",
     "deliveryFillValue",
     "movementViewHeading",
+    # Monitoring builds its manual-search form, result and history lazily.
+    "monitoringManualForm",
+    "monitoringManualHistory",
+    "monitoringManualHost",
+    "monitoringManualResult",
     # Pair scanner controls are created after the Warehouse shell is ready.
     "issuePairPrompt",
     "issueScanModes",

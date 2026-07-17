@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import closing
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -34,7 +35,8 @@ class FullInventoryWorkspaceTest(unittest.TestCase):
         self.assertEqual(result["user_version"], SCHEMA_VERSION)
         self.assertEqual(result["integrity_check"], "ok")
         self.assertEqual(result["foreign_key_check"], 0)
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        if os.name != "nt":
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
     def test_v1_to_v2_repeated_migration_matches_fresh_manifest(self) -> None:
         fresh = create_workspace(self.root / "fresh.db")

@@ -543,11 +543,9 @@ class MigrationRunner:
 
     @staticmethod
     def _fsync_file(path: Path) -> None:
-        descriptor = os.open(path, os.O_RDONLY)
-        try:
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
+        # Windows requires a writable file handle for FlushFileBuffers/fsync.
+        with path.open("r+b") as stream:
+            os.fsync(stream.fileno())
 
     @staticmethod
     def _publish_absent_target(candidate: Path, target: Path) -> None:
@@ -558,11 +556,12 @@ class MigrationRunner:
                 "DATABASE_ALREADY_EXISTS", "Target database already exists"
             ) from exc
         try:
-            directory = os.open(target.parent, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            if hasattr(os, "O_DIRECTORY"):
+                directory = os.open(target.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
             candidate.unlink()
         except BaseException:
             try:

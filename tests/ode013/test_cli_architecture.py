@@ -89,6 +89,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["error"]["code"], "INVALID_CLI_ARGUMENTS")
         self.assertIn("--path", payload["error"]["message"])
 
+    @unittest.skipIf(os.name == "nt", "Windows forbids control characters in filenames")
     def test_human_output_sanitizes_terminal_controls_and_preserves_unicode(self) -> None:
         cases = (
             ("escape-\x1b[31m", "\\x1b[31m"),
@@ -116,6 +117,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(unicode_result.returncode, 0, unicode_result.stderr)
             self.assertIn("кириллица-設備.db", unicode_result.stdout)
 
+    @unittest.skipIf(os.name == "nt", "Windows forbids control characters in filenames")
     def test_json_output_escapes_controls_and_preserves_canonical_path(self) -> None:
         with TemporaryDirectory() as directory:
             path = str(Path(directory) / "json-\x1b-\n-\r-\x07-\u202e.db")

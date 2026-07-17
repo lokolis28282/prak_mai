@@ -37,8 +37,9 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         self.assertIn("['references','Справочники']", self.product)
         self.assertIn("disabled:Number(x.balance)<=0", self.ui)
 
-    def test_unfinished_modules_are_placeholders(self) -> None:
-        self.assertIn("Мониторинг — в разработке", self.product)
+    def test_operational_and_unfinished_modules_are_distinguished(self) -> None:
+        self.assertIn("Инструменты мониторинга", self.product)
+        self.assertIn("window.openMonitoringManualSearch", self.product)
         self.assertIn("Отчёты — в разработке", self.ui)
         self.assertNotIn("Единая модель оборудования", self.product)
         self.assertIn("Администрирование ODE", self.ui)

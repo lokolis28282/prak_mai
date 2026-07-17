@@ -30,13 +30,13 @@ class MonitoringManualSearchTest(unittest.TestCase):
             "Имя\nMN-SRV-01\nМодель\nPowerEdge R760\n"
             "Серийный номер мониторинг\nABC123\n"
             "ЦОД IXcellerate / Маш.зал 1 / Ряд A / Стойка 12 / Unit 20\n"
-            "Технический владелец\nOwner Name owner@x5.ru\nИнформационная система\nERP",
+            "Технический владелец\nOwner Name owner@example.invalid\nИнформационная система\nERP",
             "mn-srv-01",
         )
         self.assertEqual(parsed["host"], "MN-SRV-01")
         self.assertEqual(parsed["model"], "PowerEdge R760")
         self.assertEqual(parsed["serial"], "ABC123")
-        self.assertIn("owner@x5.ru", parsed["owner"])
+        self.assertIn("owner@example.invalid", parsed["owner"])
 
     def test_manual_result_uses_safe_hostname_routing(self) -> None:
         decision = RoutingDecision(
