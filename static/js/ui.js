@@ -417,7 +417,7 @@ function warehouseLanding(){
   renderElement('div',{className:'portal-grid',children:[
    portalCard({module:'warehouse',route:'warehouse/overview',icon:'warehouse',title:'Склад',subtitle:'Карточки и складские операции',items:['Обзор оборудования','Приход и расход','Поставки и инвентаризация'],onOpen:()=>openWarehouseHub()}),
    portalCard({module:'works',route:'works/worklogs',icon:'works',title:'Работы',subtitle:'Задачи дежурной смены',items:['Журнал работ'],onOpen:()=>openTask('works','worklogs')}),
-   portalCard({module:'monitoring',route:'monitoring/monitoring',icon:'monitor',title:'Мониторинг',subtitle:'В разработке',items:['Раздел временно недоступен'],onOpen:()=>openMonitoringHub()}),
+   portalCard({module:'monitoring',route:'monitoring/monitoring',icon:'monitor',title:'Мониторинг',subtitle:'Ручной поиск по Hostname',items:['DCIM и IP-адреса','Рекомендации и сообщения','История поиска'],onOpen:()=>openMonitoringHub()}),
    portalCard({module:'knowledge',route:'knowledge/home',icon:'knowledge',title:'База знаний',subtitle:'Инструкции и документация',items:['Рабочие инструкции','Спецификации оборудования','Прикрепленные документы'],onOpen:()=>openKnowledgeBase()}),
    portalCard({module:'profile',route:'profile/profile',icon:'profile',title:'Профиль',subtitle:'Инженер смены',items:['Личные данные','Смена пароля'],onOpen:()=>openShiftProfile()}),
    portalCard({module:'reports',route:'reports/daily',icon:'report',title:'Отчеты',subtitle:'В разработке',items:['Раздел временно недоступен'],onOpen:()=>openReportsHub()}),

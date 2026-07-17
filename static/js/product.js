@@ -48,8 +48,7 @@
   function openWarehouseProblems(){openTask('warehouse','problems')}
   function openWarehouseEvents(){openTask('warehouse','journal')}
 
-  openMonitoringHub=function(){
-    openTask('monitoring','monitoring');
+  function renderMonitoringHub(){
     const root=byId('monitoring');
     if(!root)return;
     const label=window.ODE?.monitoring?.manualButtonLabel||'сбор информации по Hostname';
@@ -70,6 +69,10 @@
         renderElement('span',{className:'monitoring-tool-open',attrs:{'aria-hidden':'true'},text:'Открыть →'})
       ]})
     ]}));
+  }
+
+  openMonitoringHub=function(){
+    openTask('monitoring','monitoring');
   };
 
   openWarehouseHub=function(){
@@ -830,21 +833,26 @@
     const hash=knowledgeRoute?`#knowledge/${knowledgeRoute.split('/').map(encodeURIComponent).join('/')}`:`#${encodeURIComponent(section)}/${encodeURIComponent(view)}`;
     history[replace?'replaceState':'pushState'](stateValue,'',hash);
   }
+  function renderProductRoute(section,view){
+    if(section==='monitoring'&&view==='monitoring')renderMonitoringHub();
+  }
   showSection=function(name){
     applyingHistory=true;baseShowSection(name);applyingHistory=false;
     const view=(sections[name]&&sections[name][0]&&sections[name][0][0])||name;
+    renderProductRoute(name,view);
     writeLocation(name,view);
   };
-  showView=function(id){baseShowView(id);writeLocation(currentSection,id)};
+  showView=function(id){baseShowView(id);renderProductRoute(currentSection,id);writeLocation(currentSection,id)};
   openTask=function(section,view){
     applyingHistory=true;baseShowSection(section);baseShowView(view);applyingHistory=false;
-    currentSection=section;writeLocation(section,view);
+    currentSection=section;renderProductRoute(section,view);writeLocation(section,view);
   };
   goHome=function(){openTask('home','home');window.scrollTo(0,0)};
   window.addEventListener('popstate',event=>{
     const target=event.state;if(!target)return;
     if(!target.card&&byId('positionModal')?.classList.contains('show'))closePositionCard();
     applyingHistory=true;baseShowSection(target.section);baseShowView(target.view);applyingHistory=false;
+    renderProductRoute(target.section,target.view);
     if(target.section==='knowledge')window.ODE?.knowledge?.renderRoute(target.knowledgeRoute||'home');
   });
   const hashParts=location.hash.replace(/^#/,'').split('/').map(decodeURIComponent);
@@ -853,6 +861,7 @@
   const initialView=initialSection==='knowledge'?'knowledge':(sections[initialSection]||[]).some(entry=>entry[0]===hashParts[1])?hashParts[1]:(sections[initialSection]?.[0]?.[0]||'home');
   applyingHistory=true;baseShowSection(initialSection);baseShowView(initialView);applyingHistory=false;
   currentSection=initialSection;
+  renderProductRoute(initialSection,initialView);
   history.replaceState({section:initialSection,view:initialView,...(initialKnowledgeRoute?{knowledgeRoute:initialKnowledgeRoute}:{})},'',initialKnowledgeRoute?`#knowledge/${initialKnowledgeRoute.split('/').map(encodeURIComponent).join('/')}`:`#${encodeURIComponent(initialSection)}/${encodeURIComponent(initialView)}`);
 
   const productLoadAll=loadAll;
