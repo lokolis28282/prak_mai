@@ -25,6 +25,7 @@ from .core.application import ApplicationContext, create_application_context, en
 from .core.context import RuntimeConfig
 from .db import DEFAULT_DB_PATH
 from .importing import parse_csv_bytes, unknown_csv_headers
+from .monitoring.facade import MonitoringError
 from .service import WarehouseError, WarehouseService
 from .warehouse.migration_full_review import (
     full_migration_requested,
@@ -802,6 +803,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     })
                 elif path == "/api/warehouse/system-status":
                     self._send_json(200, app_context.warehouse.get_system_status())
+                elif path == "/api/monitoring/status":
+                    self._send_json(200, app_context.monitoring.module_status())
                 elif path == "/api/full-inventory/session":
                     self._send_json(200, app_context.full_inventory.get_session(
                         self._query(query, "session_id")
@@ -1100,7 +1103,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     author_name=self._session_author(),
                     role_override=self._session_role_override(),
                 ):
-                    if path.startswith("/api/full-inventory/"):
+                    if path.startswith("/api/full-inventory/") or path == "/api/monitoring/manual-search":
                         self._do_POST()
                     else:
                         with service.lock:
@@ -1112,6 +1115,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(409, {"error": str(error), "code": error.code})
             except (WorkspaceError, FullInventoryXlsxError) as error:
                 self._send_json(400, {"error": str(error), "code": getattr(error, "code", "")})
+            except MonitoringError as error:
+                self._send_json(400, {"error": str(error)})
             except WarehouseError as error:
                 self._send_json(403, {"error": str(error)})
             except Exception:
@@ -1119,6 +1124,15 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _do_POST(self) -> None:
             parsed = urlparse(self.path)
+            if parsed.path == "/api/monitoring/manual-search":
+                data = self._read_json_object(100_000)
+                self._send_json(
+                    200,
+                    app_context.monitoring.manual_search(
+                        data.get("host", ""), data.get("problem", "")
+                    ),
+                )
+                return
             if parsed.path == "/api/full-inventory/sessions":
                 result = app_context.full_inventory.create_session(
                     self._full_inventory_actor(),

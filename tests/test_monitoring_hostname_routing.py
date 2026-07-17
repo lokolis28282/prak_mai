@@ -179,15 +179,20 @@ class MonitoringHostnameRoutingTest(unittest.TestCase):
             ["User.One", "User.Two"],
         )
 
-    def test_facade_exposes_only_the_isolated_routing_capability(self) -> None:
+    def test_facade_exposes_routing_and_manual_search_capabilities(self) -> None:
         self.write_rules([self.tech_rule("server-*")])
-        facade = MonitoringFacade(rules_dir=self.rules_dir)
+        facade = MonitoringFacade(
+            rules_dir=self.rules_dir,
+            collect_dcim=True,
+            development_mock=False,
+        )
         decision = facade.resolve_hostname("server-01")
         self.assertTrue(decision.email_ready)
         status = facade.module_status()
         self.assertTrue(status["capabilities"]["hostname_routing"])
-        self.assertFalse(status["capabilities"]["manual_search"])
-        self.assertFalse(status["enabled"])
+        self.assertTrue(status["capabilities"]["manual_search"])
+        self.assertTrue(status["capabilities"]["external_collection"])
+        self.assertTrue(status["enabled"])
 
 
 class DigitalRulesGenerationTest(unittest.TestCase):

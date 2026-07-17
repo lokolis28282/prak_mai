@@ -50,7 +50,26 @@
 
   openMonitoringHub=function(){
     openTask('monitoring','monitoring');
-    showDevelopmentPlaceholder(byId('monitoring'),'Мониторинг — в разработке','M');
+    const root=byId('monitoring');
+    if(!root)return;
+    const label=window.ODE?.monitoring?.manualButtonLabel||'сбор информации по Hostname';
+    const title=label.charAt(0).toUpperCase()+label.slice(1);
+    root.replaceChildren(renderElement('div',{className:'monitoring-hub',children:[
+      renderElement('div',{className:'landing-head compact monitoring-head',children:[
+        renderElement('p',{className:'eyebrow',text:'Мониторинг'}),
+        renderElement('h2',{text:'Инструменты мониторинга'}),
+        renderElement('p',{text:'Сбор сведений о проблемном оборудовании и подготовка сообщения для группы поддержки.'})
+      ]}),
+      renderElement('button',{className:'monitoring-tool-launcher',attrs:{type:'button','aria-label':title},on:{click:()=>window.openMonitoringManualSearch?.()},children:[
+        renderElement('span',{className:'monitoring-tool-icon',attrs:{'aria-hidden':'true'},text:'H'}),
+        renderElement('span',{className:'monitoring-tool-copy',children:[
+          renderElement('small',{text:'Ручной поиск'}),
+          renderElement('strong',{text:title}),
+          renderElement('span',{text:'DCIM, статус, модель и адресаты письма'})
+        ]}),
+        renderElement('span',{className:'monitoring-tool-open',attrs:{'aria-hidden':'true'},text:'Открыть →'})
+      ]})
+    ]}));
   };
 
   openWarehouseHub=function(){

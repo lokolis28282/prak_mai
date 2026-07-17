@@ -67,6 +67,17 @@
 .inventory-number-summary-card span{display:block;color:var(--muted);font-size:11px;overflow-wrap:anywhere}
 .inventory-number-summary-card strong{display:block;margin-top:6px;font-size:22px}
 .inventory-number-table-wrap{max-height:55vh}.inventory-number-table td:last-child{min-width:240px;white-space:normal}
+
+/* Monitoring manual-search entry point and result details. */
+.monitoring-hub{max-width:900px}.monitoring-head{margin-bottom:22px}
+.monitoring-tool-launcher{display:grid;width:100%;grid-template-columns:48px minmax(0,1fr) auto;gap:16px;align-items:center;padding:18px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--text);text-align:left;cursor:pointer;box-shadow:0 5px 18px #1720330a;transition:border-color .15s,box-shadow .15s,transform .15s}
+.monitoring-tool-launcher:hover{border-color:#93c5fd;box-shadow:0 10px 24px #17203312;transform:translateY(-1px)}
+.monitoring-tool-launcher:focus-visible{outline:3px solid #bfdbfe;outline-offset:2px;border-color:var(--blue)}
+.monitoring-tool-icon{display:grid;width:48px;height:48px;place-items:center;border-radius:8px;background:#eff6ff;color:var(--blue);font-size:20px;font-weight:800}
+.monitoring-tool-copy{display:block;min-width:0}.monitoring-tool-copy small,.monitoring-tool-copy strong,.monitoring-tool-copy>span{display:block}
+.monitoring-tool-copy small{margin-bottom:4px;color:var(--blue);font-size:12px;font-weight:750;text-transform:uppercase}.monitoring-tool-copy strong{font-size:18px}.monitoring-tool-copy>span{margin-top:6px;color:var(--muted)}
+.monitoring-tool-open{color:var(--blue);font-weight:750;white-space:nowrap}.manual-search-pre{max-width:100%;padding:14px;border-radius:8px;background:#f8fafc;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}.manual-search-detail{margin-top:18px}.manual-search-detail .actions{grid-column:auto;margin:12px 0 18px}
+@media(max-width:700px){.monitoring-tool-launcher{grid-template-columns:44px minmax(0,1fr);padding:16px}.monitoring-tool-icon{width:44px;height:44px}.monitoring-tool-open{grid-column:2;margin-top:2px}.manual-search-detail .equipment-details{grid-template-columns:1fr 1fr}}
 .inventory-number-status{display:inline-block;padding:4px 8px;border-radius:999px;font-size:11px;font-weight:750;line-height:1.2}
 .inventory-number-status-success{background:#dcfce7;color:#166534}.inventory-number-status-unchanged{background:#e2e8f0;color:#334155}
 .inventory-number-status-not-found,.inventory-number-status-already-assigned{background:#fef3c7;color:#92400e}
