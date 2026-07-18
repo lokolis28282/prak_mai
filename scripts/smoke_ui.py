@@ -18,7 +18,11 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from inventory.db import hash_password
+from inventory.db import (
+    hash_password,
+    install_knowledge_schema,
+    install_reports_uvr_schema,
+)
 from inventory.core.application import create_application_context
 from inventory.service import WarehouseService
 from inventory.webapp import make_handler
@@ -42,6 +46,11 @@ def main(argv: list[str] | None = None) -> int:
         work = Path(directory)
         database = work / "warehouse.db"
         shutil.copy2(source_database, database)
+        # The smoke contour is disposable and must exercise the current source
+        # schema even when the production copy still awaits its explicit,
+        # backup-guarded module migration.
+        install_reports_uvr_schema(database)
+        install_knowledge_schema(database)
         with closing(sqlite3.connect(database)) as db, db:
             db.execute(
                 """UPDATE users

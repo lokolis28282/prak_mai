@@ -14,6 +14,10 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         cls.core = (ROOT / "static/js/core.js").read_text(encoding="utf-8")
         cls.ui = (ROOT / "static/js/ui.js").read_text(encoding="utf-8")
         cls.product = (ROOT / "static/js/product.js").read_text(encoding="utf-8")
+        cls.reports = (ROOT / "static/js/reports/index.js").read_text(encoding="utf-8")
+        cls.work_logs = (ROOT / "static/js/reports/work_logs.js").read_text(
+            encoding="utf-8"
+        )
         cls.css = (ROOT / "static/css/main.css").read_text(encoding="utf-8")
         cls.review = (ROOT / "static/js/warehouse/migration_pilot.js").read_text(
             encoding="utf-8"
@@ -23,8 +27,9 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         self.assertIn("nav.replaceChildren();", self.router)
         self.assertIn("nav.hidden=true", self.router)
         self.assertNotIn("const sectionNavItems", self.router)
-        self.assertIn("openTask('works','worklogs')", self.ui)
-        self.assertIn("sections.works=[['worklogs','Журнал работ']]", self.product)
+        self.assertIn("openTask('reports', 'worklogs')", self.reports)
+        self.assertIn("sections.works=[['worklogs','УВР']]", self.product)
+        self.assertIn("['worklogs','УВР']", self.product)
         self.assertIn("Добро пожаловать в ODE", self.ui)
 
     def test_warehouse_opens_as_normal_equipment_workspace(self) -> None:
@@ -40,7 +45,12 @@ class UiNavigationArchitectureTest(unittest.TestCase):
     def test_operational_and_unfinished_modules_are_distinguished(self) -> None:
         self.assertIn("Инструменты мониторинга", self.product)
         self.assertIn("window.openMonitoringManualSearch", self.product)
-        self.assertIn("Отчёты — в разработке", self.ui)
+        self.assertIn("reports/worklogs", self.ui)
+        self.assertIn("'warehouse','works','reports','administration'", self.router)
+        self.assertIn("window.loadWorkLogs = load", self.work_logs)
+        self.assertNotIn("let uvrLogs", self.ui)
+        self.assertNotIn("function dailyRow", self.ui)
+        self.assertNotIn("dailyLogRows", self.ui)
         self.assertNotIn("Единая модель оборудования", self.product)
         self.assertIn("Администрирование ODE", self.ui)
 

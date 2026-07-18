@@ -43,8 +43,6 @@ DYNAMIC_ID_WHITELIST = {
     "balanceSummary",
     "balanceScope",
     "cableIssueForm",
-    "dailyLogDate",
-    "dailyLogRows",
     "deliveryScanner",
     "deliveryScanResult",
     "deliveryFillField",

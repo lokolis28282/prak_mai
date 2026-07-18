@@ -36,7 +36,9 @@ class FullInventoryFrontendContractTest(unittest.TestCase):
     def test_permanent_historical_and_demo_messages_are_styled(self) -> None:
         self.assertIn("Склад не инициализирован", self.javascript)
         self.assertIn("DEMO", self.javascript)
+        self.assertIn("историческим расчётом", self.javascript)
         self.assertIn(".warehouse-system-banner", self.css)
+        self.assertIn(".test-circuit-banner+.app .warehouse-system-banner", self.css)
         self.assertIn(".full-inventory-app", self.css)
 
     def test_baseline_timestamp_and_deferred_catalog_limit_are_explicit(self) -> None:

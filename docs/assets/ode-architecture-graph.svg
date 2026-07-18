@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
+  <title id="title">ODE 0.14 — карта связей модулей</title>
+  <desc id="desc">Web и CLI входят в ApplicationContext, который связывает пять независимых фасадов. Warehouse, Reports, Knowledge и Administration используют SQLite с раздельным владением таблицами. Monitoring использует только локальные правила и опциональный DCIM.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071521"/><stop offset="1" stop-color="#10152a"/></linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0l10 5-10 5z" fill="#4fd1c5"/></marker>
+    <style>
+      .title{font:700 30px system-ui,sans-serif;fill:#eef7ff}.meta{font:14px ui-monospace,monospace;fill:#8096ab}.label{font:700 18px system-ui,sans-serif;fill:#f7fbff}.sub{font:13px system-ui,sans-serif;fill:#a9bdd0}.edge{fill:none;stroke:#37c7b5;stroke-width:2;stroke-opacity:.64;marker-end:url(#arrow)}.soft{fill:none;stroke:#8b7cf6;stroke-width:1.5;stroke-opacity:.5;stroke-dasharray:7 7}.node{stroke-width:1.5}.chip{font:12px ui-monospace,monospace;fill:#d9e9f5}.count{font:700 12px ui-monospace,monospace;fill:#56e2ce}
+    </style>
+  </defs>
+  <rect width="1400" height="820" rx="24" fill="url(#bg)"/>
+  <circle cx="700" cy="420" r="265" fill="none" stroke="#2dd4bf" stroke-opacity=".08" stroke-width="85"/>
+  <circle cx="700" cy="420" r="330" fill="none" stroke="#8b5cf6" stroke-opacity=".06" stroke-width="2"/>
+  <text x="56" y="62" class="title">ODE 0.14 · архитектурный граф</text>
+  <text x="56" y="88" class="meta">code-derived snapshot · 6 184 nodes · 26 241 edges · 470 files · 26 HTTP routes</text>
+
+  <path class="edge" d="M215 178C365 178 446 285 570 366"/><path class="edge" d="M215 265C365 265 460 330 570 386"/>
+  <path class="edge" d="M830 385C936 310 1004 206 1110 188"/><path class="edge" d="M830 405C970 365 1040 322 1110 315"/>
+  <path class="edge" d="M830 435C970 445 1040 452 1110 447"/><path class="edge" d="M830 460C954 528 1015 566 1110 574"/>
+  <path class="edge" d="M700 500C700 582 700 625 700 672"/>
+  <path class="soft" d="M1160 228C1080 650 900 719 790 720"/><path class="soft" d="M1160 488C1040 670 900 716 790 720"/>
+  <path class="soft" d="M1160 614C1030 700 910 720 790 720"/>
+  <path class="soft" d="M1160 355C1260 355 1270 260 1320 260"/>
+  <path class="soft" d="M1170 355C1260 355 1270 410 1320 410"/>
+
+  <g transform="translate(56 138)"><rect class="node" width="160" height="80" rx="15" fill="#102d3b" stroke="#31d5c8"/><text x="22" y="34" class="label">Web UI</text><text x="22" y="57" class="sub">HTML · CSS · JS</text></g>
+  <g transform="translate(56 232)"><rect class="node" width="160" height="66" rx="15" fill="#182a46" stroke="#5ca8ff"/><text x="22" y="31" class="label">CLI</text><text x="22" y="52" class="sub">compatibility</text></g>
+
+  <g filter="url(#glow)" transform="translate(570 350)"><rect class="node" width="260" height="150" rx="26" fill="#112d33" stroke="#55e4d2" stroke-width="2"/><text x="36" y="52" class="label">ApplicationContext</text><text x="36" y="79" class="sub">composition root · actor · config</text><rect x="36" y="101" width="80" height="25" rx="12" fill="#174c50"/><text x="53" y="118" class="chip">facades</text><rect x="126" y="101" width="98" height="25" rx="12" fill="#263c5f"/><text x="144" y="118" class="chip">boundaries</text></g>
+
+  <g transform="translate(1110 142)"><rect class="node" width="230" height="92" rx="18" fill="#123b37" stroke="#42d3b7"/><text x="24" y="35" class="label">Warehouse</text><text x="24" y="58" class="sub">S/N · операции · FULL Inventory</text><text x="24" y="78" class="count">525 graph nodes</text></g>
+  <g transform="translate(1110 270)"><rect class="node" width="230" height="92" rx="18" fill="#2c2244" stroke="#a78bfa"/><text x="24" y="35" class="label">Monitoring</text><text x="24" y="58" class="sub">Hostname · DCIM · message preview</text><text x="24" y="78" class="count">isolated boundary</text></g>
+  <g transform="translate(1110 402)"><rect class="node" width="230" height="92" rx="18" fill="#1d3048" stroke="#60a5fa"/><text x="24" y="35" class="label">Reports</text><text x="24" y="58" class="sub">УВР · смена · неделя · export</text><text x="24" y="78" class="count">102 graph nodes</text></g>
+  <g transform="translate(1110 530)"><rect class="node" width="230" height="92" rx="18" fill="#3b2d1c" stroke="#f6b94c"/><text x="24" y="35" class="label">Knowledge</text><text x="24" y="58" class="sub">articles · tags · attachments</text><text x="24" y="78" class="count">role protected</text></g>
+
+  <g transform="translate(610 672)"><rect class="node" width="180" height="92" rx="46" fill="#232640" stroke="#9893ff"/><text x="45" y="37" class="label">SQLite</text><text x="30" y="60" class="sub">warehouse.db</text><text x="43" y="79" class="count">owned tables</text></g>
+  <g transform="translate(1200 675)"><rect class="node" width="140" height="64" rx="14" fill="#172637" stroke="#70849b"/><text x="18" y="28" class="label">Admin</text><text x="18" y="49" class="sub">audit · backup</text></g>
+  <g transform="translate(1260 235)"><circle r="32" cx="32" cy="32" fill="#282142" stroke="#8b7cf6"/><text x="18" y="37" class="chip">JSON</text></g>
+  <g transform="translate(1260 385)"><circle r="32" cx="32" cy="32" fill="#282142" stroke="#8b7cf6"/><text x="18" y="37" class="chip">DCIM</text></g>
+
+  <text x="56" y="760" class="meta">Solid lines: runtime calls · dashed lines: isolated data/integration boundary · no Monitoring → Warehouse/Reports dependency</text>
+</svg>

@@ -42,9 +42,17 @@ Reports:
 
 Monitoring:
 
-- isolated hostname-routing backend; operator UI/collectors remain placeholder;
+- owns isolated hostname routing and the manual operator search flow;
+- may use an explicitly configured optional DCIM collector and local ignored
+  routing rules, but never sends messages automatically;
 - does not import Warehouse, Reports, `WarehouseService` or `WarehouseCore`;
 - exposes `MonitoringFacade.module_status()` and `resolve_hostname()`.
+
+Knowledge:
+
+- owns `knowledge_*` tables and private attachment files;
+- exposes safe Markdown, search and role-checked CRUD through `KnowledgeFacade`;
+- does not import Warehouse, Reports or Monitoring.
 
 Administration:
 

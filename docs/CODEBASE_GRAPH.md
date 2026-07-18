@@ -1,5 +1,11 @@
 # ODE code relationships
 
+![ODE 0.14 architecture graph](assets/ode-architecture-graph.svg)
+
+Снимок Codebase Memory от 2026-07-18 содержит 6 184 nodes, 26 241 edges,
+470 files и 26 распознанных HTTP routes. В Git публикуется только эта
+обобщённая карта; локальный индекс и внутренние данные не публикуются.
+
 GitHub отображает эту Mermaid-диаграмму прямо на странице документа. Она
 показывает поддерживаемые архитектурные связи, а не пытается публиковать
 внутреннюю базу Codebase Memory.
@@ -14,6 +20,7 @@ flowchart TB
   Context --> Warehouse["WarehouseFacade"]
   Context --> Reports["ReportsFacade"]
   Context --> Monitoring["MonitoringFacade"]
+  Context --> Knowledge["KnowledgeFacade"]
   Context --> Admin["AdministrationFacade"]
 
   Warehouse --> Stock["receipts / issues / allocations / balance / history"]
@@ -24,6 +31,8 @@ flowchart TB
   ReportTables --> DB
   Admin --> Security["users / audit / backup / diagnostics"]
   Security --> DB
+  Knowledge --> KnowledgeTables["articles / tags / attachment metadata"]
+  KnowledgeTables --> DB
 
   Monitoring --> Routing["hostname_routing.py"]
   Rules["local ignored Tech/Digital JSON"] --> Routing

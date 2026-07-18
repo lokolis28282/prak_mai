@@ -12,12 +12,13 @@ module-boundary audit. Publish в operational path отсутствует.
 
 ## Warehouse stabilization runtime
 
-Текущий активный read/write модуль — Warehouse. Глобальный shell показывает
+Главный read/write модуль — Warehouse. Глобальный shell показывает
 компактную шапку и module cards; после входа в Склад router использует
-существующий section/view механизм и не создаёт второй router. Monitoring и
-Reports UI заканчиваются на placeholder и не вызывают Warehouse internals.
-Monitoring backend содержит только изолированный hostname routing по локальным
-JSON rules; внешние collectors и email transport отсутствуют.
+существующий section/view механизм и не создаёт второй router. Reports,
+Monitoring и Knowledge подключены через собственные фасады и не вызывают
+Warehouse internals. Monitoring объединяет безопасный hostname routing,
+ручной operator flow и опциональный DCIM collector; email/Rooms transport
+отсутствует, формируется только preview сообщения.
 
 Reference Data имеет один путь:
 
@@ -95,7 +96,8 @@ app.py
  ├─ warehouse/                 receipts, issues, cables, deliveries, balance/history
  ├─ reports/                   work logs, daily/weekly reports
  ├─ administration/            users, audit read, backup/restore, diagnostics
- ├─ monitoring/                isolated hostname routing; UI/collectors future
+ ├─ monitoring/                hostname routing, manual search, optional DCIM
+ ├─ knowledge/                 articles, tags and private attachments
  ├─ shared/                    SQLite/CSV/audit/validation adapters
  ├─ migration/                 offline source/reference/staging bounded context
  └─ db.py                      schema and idempotent migrations

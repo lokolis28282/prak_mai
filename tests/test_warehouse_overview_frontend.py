@@ -14,6 +14,9 @@ class WarehouseOverviewFrontendTest(unittest.TestCase):
         self.assertIn("state.warehouse_type_summary||[]", PRODUCT_JS)
         self.assertIn("openWarehouseBalance(category,row.item_type)", PRODUCT_JS)
         self.assertIn("warehouse-type-card", CSS)
+        self.assertIn("state.warehouse_system?.authoritative", PRODUCT_JS)
+        self.assertIn("Исторические складские данные", PRODUCT_JS)
+        self.assertIn("Фактический баланс появится", PRODUCT_JS)
 
     def test_balance_exposes_type_filter_and_sorting(self) -> None:
         self.assertIn("id:'uxBalanceType'", UI_JS)

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from inventory.db import DEFAULT_DB_PATH, initialize
+from inventory.db import DEFAULT_DB_PATH, install_knowledge_schema
 
 
 def main() -> int:
@@ -20,7 +20,10 @@ def main() -> int:
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="путь к SQLite-базе")
     args = parser.parse_args()
     db_path = Path(args.db).resolve()
-    initialize(db_path)
+    if not db_path.is_file() or db_path.is_symlink():
+        print(f"Некорректный путь к существующей SQLite-базе: {db_path}")
+        return 1
+    install_knowledge_schema(db_path)
     with sqlite3.connect(db_path) as connection:
         tables = {
             str(row[0])

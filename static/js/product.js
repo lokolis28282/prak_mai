@@ -30,13 +30,13 @@
 
   sections.home=[['home','ODE']];
   sections.monitoring=[['monitoring','Мониторинг']];
-  sections.works=[['worklogs','Журнал работ']];
+  sections.works=[['worklogs','УВР']];
   sections.warehouse=[
     ['overview','Обзор склада'],['balance','Оборудование'],['receipt','Приход'],['issue','Расход'],
     ['inventory','Инвентаризация'],['deliveries','Поставки'],['equipment','Перемещения'],
     ['references','Справочники']
   ];
-  sections.reports=[['daily','Ежедневный'],['weekly','Еженедельный'],['journal','Складские операции']];
+  sections.reports=[['worklogs','УВР'],['daily','Отчет за смену'],['weekly','Отчет за неделю'],['journal','Складские операции']];
   sections.administration=[
     ['admin_users','Пользователи'],['admin_permissions','Права'],
     ['admin_backups','Резервные копии'],['admin_database','Проверка базы'],
@@ -111,6 +111,7 @@
     if(!root)return;
     const rows=state.warehouse_type_summary||[];
     const categories=['Оборудование','Компоненты','Кабели'];
+    const historical=!Boolean(state.warehouse_system?.authoritative);
     const categoryLabels={Оборудование:'Оборудование',Компоненты:'Компоненты',Кабели:'Кабели и расходники'};
     const totalPositions=rows.reduce((sum,row)=>sum+Number(row.positions||0),0);
     const categoryCards=categories.map(category=>{
@@ -118,7 +119,7 @@
       return renderButton({className:`warehouse-overview-stat warehouse-overview-stat-${category==='Оборудование'?'equipment':category==='Компоненты'?'components':'cables'}`,onClick:()=>openWarehouseBalance(category),children:[
         renderElement('span',{text:categoryLabels[category]}),
         renderElement('strong',{text:formatNumber(totals.positions)}),
-        renderElement('small',{text:'позиций в наличии'})
+        renderElement('small',{text:historical?'позиций в историческом расчёте':'позиций в наличии'})
       ]});
     });
     const typeGroups=categories.map(category=>{
@@ -134,18 +135,18 @@
             renderElement('span',{className:'warehouse-type-icon',text:warehouseTypeIcon(row.item_type,category)}),
             renderElement('span',{className:'warehouse-type-name',text:balanceTypeLabel(row.item_type)}),
             renderElement('strong',{text:formatNumber(row.positions)}),
-            renderElement('small',{text:`Остаток: ${formatNumber(row.quantity)}`})
+            renderElement('small',{text:`${historical?'Исторический расчёт':'Остаток'}: ${formatNumber(row.quantity)}`})
           ]
         }))})
       ]});
     }).filter(Boolean);
     root.replaceChildren(
       renderElement('div',{className:'warehouse-overview-head',children:[
-        renderElement('div',{children:[renderElement('p',{className:'eyebrow',text:'Склад'}),renderElement('h2',{text:'Всё оборудование — одним взглядом'}),renderElement('p',{text:'Нажмите на категорию или тип, чтобы открыть готовую выборку в балансе.'})]}),
+        renderElement('div',{children:[renderElement('p',{className:'eyebrow',text:'Склад'}),renderElement('h2',{text:historical?'Исторические складские данные':'Всё оборудование — одним взглядом'}),renderElement('p',{text:historical?'Это расчёт по сохранённой истории. Фактический баланс появится только после утверждённой FULL inventory.':'Нажмите на категорию или тип, чтобы открыть готовую выборку в балансе.'})]}),
         renderButton({text:'Открыть весь баланс',className:'button primary',onClick:()=>openWarehouseBalance()})
       ]}),
       renderElement('div',{className:'warehouse-overview-stats',children:[
-        renderElement('div',{className:'warehouse-overview-stat warehouse-overview-stat-total',children:[renderElement('span',{text:'Всего на складе'}),renderElement('strong',{text:formatNumber(totalPositions)}),renderElement('small',{text:'активных позиций'})]}),
+        renderElement('div',{className:'warehouse-overview-stat warehouse-overview-stat-total',children:[renderElement('span',{text:historical?'Исторический расчёт':'Всего на складе'}),renderElement('strong',{text:formatNumber(totalPositions)}),renderElement('small',{text:historical?'расчётных позиций':'активных позиций'})]}),
         ...categoryCards
       ]}),
       renderElement('div',{className:'warehouse-overview-toolbar',children:[

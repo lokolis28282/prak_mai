@@ -54,7 +54,7 @@
     banner.className='warehouse-system-banner';
     if(status?.contour?.demo){
       banner.classList.add('demo');
-      banner.textContent='DEMO — складские операции разрешены только в отдельной disposable базе.';
+      banner.textContent='DEMO — операции разрешены только в disposable базе. Показанный остаток остаётся историческим расчётом, а не результатом полной инвентаризации.';
       return;
     }
     if(status?.state==='DEGRADED'){

@@ -1,6 +1,6 @@
 # Changelog ODE
 
-## Unreleased — Monitoring and Knowledge integration (2026-07-17)
+## ODE 0.14.0 integrated presentation candidate (2026-07-18)
 
 - добавлен рабочий ручной Monitoring flow: hostname/problem validation,
   опциональный Edge/Selenium DCIM collector, ping/classification, безопасная
@@ -13,6 +13,20 @@
   Windows `fsync` для candidate/test database публикации;
 - добавлены конфигурация, документация, API/frontend/security/migration tests;
   локальные routing rules, Edge profile, cookies, БД и вложения не публикуются.
+- интегрирован отдельный Reports changeset: УВР с CRUD/фильтрами, CSV/XLSX
+  import/export, отчёты за смену и неделю; Reports читает складские события
+  только через `WarehouseEventReader`;
+- устранено дублирование Reports JavaScript в монолитном `ui.js`; рабочие
+  сценарии вынесены в `static/js/reports/*`, а Reports subnavigation снова
+  доступна оператору;
+- normal startup promoted historical DB снова byte-stable: установка новых
+  Reports/Knowledge таблиц выполняется только явным backup-guarded скриптом
+  `scripts/migrate_runtime_modules.py`;
+- headless Chrome проходит Warehouse receipt/issue/scanner/balance/history,
+  Monitoring, Knowledge, УВР/сменный отчёт, Profile и Administration без
+  browser/resource/HTTP/API500 ошибок;
+- на Главную GitHub добавлена поддерживаемая SVG/Mermaid карта связей; локальный
+  Codebase Memory index, internal JSON, runtime DB и вложения не коммитятся.
 
 ## ODE 0.14.0 — Full Inventory safety workflow and baseline rehearsal
 

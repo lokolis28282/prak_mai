@@ -51,17 +51,31 @@ with `ODE_MONITORING_COLLECT_DCIM=false`. Mock results are visibly marked and
 must never be presented as real DCIM data. ODE prepares message text and
 recipients but does not send email or Rooms messages.
 
-## Knowledge setup
+## Runtime module setup
 
-The additive migration is idempotent:
+An existing promoted database does not migrate itself during ordinary startup.
+Check readiness first, then run the combined backup-guarded additive migration
+with all ODE writers stopped:
+
+```powershell
+python scripts\migrate_runtime_modules.py --db data\warehouse.db
+python scripts\migrate_runtime_modules.py --db data\warehouse.db --backup-dir C:\ODE_BACKUPS\runtime-modules-20260718 --apply
+```
+
+The backup directory must be new and outside the repository. The command creates
+a byte-copy, a SQLite backup and a JSON manifest, verifies SHA-256, integrity,
+foreign keys and sidecars, then installs Reports UVR references/columns and
+Knowledge tables. Fresh databases already receive the complete current schema.
+
+The Knowledge-only additive installer remains available for controlled legacy
+setups:
 
 ```powershell
 python scripts\migrate_knowledge_base.py --db data\warehouse.db
 ```
 
-Normal runtime initialization also creates the tables, including in a promoted
-historical database that skips the legacy schema replay. Before production use,
-back up the SQLite database and attachment directory together.
+Before production use, back up the SQLite database and attachment directory
+together.
 
 ```text
 ODE_KNOWLEDGE_UPLOAD_DIR=C:\private\ode-knowledge-uploads

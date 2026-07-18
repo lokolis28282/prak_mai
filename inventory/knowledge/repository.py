@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +16,23 @@ from .models import KnowledgeArticle, KnowledgeAttachment
 class KnowledgeRepository:
     def __init__(self, db_path: str | Path):
         self.db_path = Path(db_path)
+
+    def is_ready(self) -> bool:
+        """Check schema readiness without creating or mutating the database."""
+        try:
+            uri = f"file:{self.db_path.resolve().as_posix()}?mode=ro"
+            with closing(sqlite3.connect(uri, uri=True)) as db:
+                tables = {
+                    str(row[0])
+                    for row in db.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+        except sqlite3.Error:
+            return False
+        return {
+            "knowledge_articles", "knowledge_attachments", "knowledge_article_tags",
+        } <= tables
 
     @staticmethod
     def _article_select() -> str:

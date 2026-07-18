@@ -64,6 +64,13 @@ class KnowledgeFacade:
     def category_label(category: str) -> str:
         return CATEGORY_LABELS[category]
 
+    def _require_ready(self) -> None:
+        if not self.repository.is_ready():
+            raise KnowledgeError(
+                "База знаний не инициализирована. Администратор должен выполнить "
+                "проверяемую миграцию runtime-модулей."
+            )
+
     @staticmethod
     def _category(value: Any) -> str:
         category = str(value or "").strip().casefold()
@@ -129,6 +136,7 @@ class KnowledgeFacade:
         page: int = 1,
         page_size: int = 20,
     ) -> dict[str, Any]:
+        self._require_ready()
         normalized = self._category(category)
         clean_query = re.sub(r"\s+", " ", str(query or "").strip())[:200]
         clean_tag = re.sub(r"\s+", " ", str(tag or "").strip())[: self.MAX_TAG_LENGTH]
@@ -154,6 +162,7 @@ class KnowledgeFacade:
         }
 
     def get_article(self, article_id: int) -> dict[str, Any]:
+        self._require_ready()
         if article_id < 1:
             raise KnowledgeNotFound("Статья не найдена")
         article = self.repository.get_article(article_id)
@@ -165,6 +174,7 @@ class KnowledgeFacade:
         return result
 
     def create_article(self, data: dict[str, Any]) -> dict[str, Any]:
+        self._require_ready()
         if not isinstance(data, dict):
             raise KnowledgeError("Данные статьи должны быть объектом")
         title = self._text(data.get("title"), "Название статьи", self.MAX_TITLE_LENGTH)
@@ -190,6 +200,7 @@ class KnowledgeFacade:
         return self.get_article(article_id)
 
     def update_article(self, article_id: int, data: dict[str, Any]) -> dict[str, Any]:
+        self._require_ready()
         if article_id < 1 or self.repository.get_article(article_id) is None:
             raise KnowledgeNotFound("Статья не найдена")
         if not isinstance(data, dict):
@@ -220,6 +231,7 @@ class KnowledgeFacade:
         return self.get_article(article_id)
 
     def delete_article(self, article_id: int) -> None:
+        self._require_ready()
         if article_id < 1:
             raise KnowledgeNotFound("Статья не найдена")
         _, author_name = self._editor()
@@ -287,6 +299,7 @@ class KnowledgeFacade:
         content_type: str,
         payload: bytes,
     ) -> dict[str, Any]:
+        self._require_ready()
         if self.repository.get_article(article_id) is None:
             raise KnowledgeNotFound("Статья не найдена")
         author_id, author_name = self._editor()
@@ -324,6 +337,7 @@ class KnowledgeFacade:
         )
 
     def attachment_download(self, attachment_id: int) -> tuple[Path, dict[str, Any]]:
+        self._require_ready()
         record = self.repository.get_attachment_record(attachment_id)
         if record is None:
             raise KnowledgeNotFound("Файл не найден")

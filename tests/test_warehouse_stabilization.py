@@ -138,7 +138,7 @@ class FrontendStabilizationContractTest(unittest.TestCase):
         self.assertIn("nav.hidden=true", self.router)
         self.assertIn("Инструменты мониторинга", self.product)
         self.assertIn("window.openMonitoringManualSearch", self.product)
-        self.assertIn("Отчёты — в разработке", self.ui)
+        self.assertIn("УВР и отчеты смены", self.ui)
 
     def test_reference_editor_has_controlled_workflows(self) -> None:
         for marker in (

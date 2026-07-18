@@ -18,7 +18,7 @@ function showSection(name){
   currentSection=name;
   setText('pageTitle',{home:'ODE',monitoring:'Мониторинг',knowledge:'База знаний',works:'Работы',warehouse:'Склад',reports:'Отчеты',administration:'Администрирование',profile:'Профиль'}[name]||'Раздел');
   const nav=byId('subnav');
-  nav.style.display=['warehouse','works','administration'].includes(name)?'flex':'none';
+  nav.style.display=['warehouse','works','reports','administration'].includes(name)?'flex':'none';
   nav.replaceChildren(...entries.map((entry,index)=>renderButton({
     text:entry[1],
     className:`subtab ${index?'':'active'}`,

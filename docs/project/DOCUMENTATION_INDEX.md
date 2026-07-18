@@ -13,6 +13,10 @@
 - `docs/MONITORING_HOSTNAME_ROUTING.md` — реализованный изолированный routing
   contract и правила локальных данных.
 - `docs/CODEBASE_GRAPH.md` — GitHub-rendered карта поддерживаемых зависимостей.
+- `docs/MONITORING_KNOWLEDGE_GUIDE.md` — настройка Monitoring/Knowledge и
+  backup-guarded runtime module migration.
+- `RELEASE_REPORT_ODE_0_14_INTEGRATION.md` — integration/release evidence от
+  2026-07-18.
 
 ## Normative target
 

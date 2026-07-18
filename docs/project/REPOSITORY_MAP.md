@@ -27,7 +27,10 @@
 - `inventory/warehouse/` — Warehouse domain/services/repositories.
 - `inventory/administration/` — users/audit/backup/diagnostics.
 - `inventory/reports/` — отдельный Reports context.
-- `inventory/monitoring/` — placeholder.
+- `inventory/monitoring/` — isolated hostname routing and manual DCIM search.
+- `inventory/knowledge/` — searchable articles and private attachments.
+- `scripts/migrate_runtime_modules.py` — backup-guarded additive installation
+  of Reports/Knowledge schema into an existing runtime DB.
 - `inventory/shared/` — SQLite/CSV/validation adapters.
 - `inventory/db.py` — действующая legacy-compatible schema initialization.
 - `data/README.md` — clone/setup policy для installation-owned runtime data.

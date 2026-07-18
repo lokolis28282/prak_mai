@@ -375,6 +375,30 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_article_tags_tag
     ON knowledge_article_tags(tag_key, article_id);
 """
 
+REPORTS_UVR_REFERENCES = {
+    "task_source": (
+        "PNR", "ИЗМ", "ЗНР", "ЗНО", "Сопровождение", "ROOMS", "Time",
+        "Zabbix", "Заказ", "Волна", "DCIM", "ITSM", "Outlook", "Rooms",
+        "Склад", "Другое",
+    ),
+    "task_type": (
+        "ЗНО", "ЗНР", "ИЗМ", "ИНЦ", "Ночные работы", "ПНР", "Работа",
+        "Другое",
+    ),
+    "work_log_status": (
+        "Выполнено", "В работе", "В ожидании", "Ожидание", "Отложено",
+    ),
+    "work_log_section": (
+        "Solar", "Виртуализация", "SALT", "BigData", "ТОРГ", "БД", "Linux",
+        "NTP", "Exchange", "Digital", "USB-hub", "Cognos", "QlikView",
+        "АССД", "X5ID", "CIP", "Подписки микросервис", "Loymax",
+        "GPU-инфраструктура", "УЦ", "Голограмма", "Пополнение TC5",
+        "FnR (F&R)", "Видеоконференции", "Серверы интеграции УПГУ",
+        "Серверы СРК", "WAF Pro — система контроля и защиты веб-приложений",
+        "1C", "APM",
+    ),
+}
+
 
 @contextmanager
 def connect(db_path: str | Path = DEFAULT_DB_PATH) -> Iterator[sqlite3.Connection]:
@@ -408,8 +432,6 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
         # build intentionally did not claim.
         if full_marker is None:
             connection.executescript(SCHEMA)
-        else:
-            connection.executescript(KNOWLEDGE_SCHEMA)
         if full_marker is not None and connection.execute(
             "SELECT 1 FROM reference_values LIMIT 1"
         ).fetchone() is not None:
@@ -660,3 +682,43 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
             )
             default_admin_created = True
     return default_admin_created
+
+
+def install_knowledge_schema(db_path: str | Path = DEFAULT_DB_PATH) -> None:
+    """Install the optional Knowledge schema only when explicitly requested."""
+    with connect(db_path) as connection:
+        connection.executescript(KNOWLEDGE_SCHEMA)
+
+
+def install_reports_uvr_schema(db_path: str | Path = DEFAULT_DB_PATH) -> None:
+    """Install the additive Reports/UVR schema and canonical reference values."""
+    with connect(db_path) as connection:
+        table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='work_logs'"
+        ).fetchone()
+        if table is None:
+            raise sqlite3.OperationalError("work_logs table is missing")
+        columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(work_logs)").fetchall()
+        }
+        if "section" not in columns:
+            connection.execute(
+                "ALTER TABLE work_logs ADD COLUMN section TEXT NOT NULL DEFAULT ''"
+            )
+        if "needs_review" not in columns:
+            connection.execute(
+                "ALTER TABLE work_logs ADD COLUMN needs_review INTEGER NOT NULL "
+                "DEFAULT 0 CHECK (needs_review IN (0, 1))"
+            )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_work_logs_section ON work_logs(section)"
+        )
+        connection.executemany(
+            "INSERT OR IGNORE INTO reference_values(kind, name) VALUES (?, ?)",
+            [
+                (kind, name)
+                for kind, names in REPORTS_UVR_REFERENCES.items()
+                for name in names
+            ],
+        )

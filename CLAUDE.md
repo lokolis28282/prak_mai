@@ -4,8 +4,8 @@
 
 - Единственный активный продуктовый контур — Warehouse на `data/warehouse.db`.
 - Monitoring и Reports принадлежат отдельным направлениям и не связываются со
-  складом. Monitoring UI пока placeholder; hostname routing реализован как
-  изолированный backend capability по локальным ignored JSON rules.
+  складом. Monitoring предоставляет изолированный manual hostname/DCIM flow и
+  routing по локальным ignored JSON rules; Reports — УВР и сменные отчёты.
 - Reference Data runtime: `UI → existing API → ApplicationContext →
   WarehouseFacade → ReferenceDataService → reference_*_v2`.
 - Нельзя hardcode справочники в JS и нельзя переписывать operational raw/S/N
@@ -153,7 +153,8 @@ app.py
    inventory/warehouse/       склад: приход, расход, кабели, поставки, баланс, история
    inventory/reports/         work logs, ежедневные/недельные отчеты
    inventory/administration/  users, роли, аудит, backup/restore, diagnostics
-   inventory/monitoring/      заглушка будущего модуля, изолирован от остальных
+   inventory/monitoring/      manual hostname/DCIM search, изолирован от остальных
+   inventory/knowledge/       статьи, теги, private attachments
             │
             ▼
    inventory/shared/       общие адаптеры SQLite/CSV/валидации
@@ -381,8 +382,8 @@ Stage создаётся датированный report/appendix.
   для этапов «несколько инженеров» и «сервер», требует отдельного решения.
 - Нет корректирующих/сторнирующих операций для ошибочно проведенного
   прихода/расхода.
-- Monitoring UI/collectors/email transport и Kaiten — заглушки; hostname
-  routing backend реализован, недельный отчет — базовая агрегация.
+- Monitoring manual UI и optional DCIM collector реализованы; email/Rooms
+  transport и Kaiten отсутствуют, недельный отчёт — базовая агрегация.
 - Нет автоматического расписания/ротации backup.
 - `inventory/webapp.py` — монолит (см. «Архитектура» выше) — главный источник
   риска регрессий при правке разметки/JS.
