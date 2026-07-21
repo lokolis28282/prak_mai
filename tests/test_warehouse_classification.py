@@ -5,6 +5,7 @@ from inventory.warehouse.classification import (
     canonical_vendor,
     classify_card,
     clean_item_name,
+    operational_category,
 )
 from inventory.warehouse.validators import soft_receipt_source
 
@@ -30,7 +31,20 @@ class WarehouseClassificationTest(unittest.TestCase):
             ("component_type", "Плата", {"item_name": "Компонент CISCO NIM-24A V03"}),
             ("component_type", "Трансивер", {"item_name": "QSFP28-100G-SR4"}),
             ("cable_type", "DAC", {"item_name": "DAC-кабель"}),
+            ("cable_type", "DAC", {"item_name": "Huawei QSFP-DD-400G-CU1M"}),
             ("cable_type", "AOC", {"item_name": "MT-QSFP-100G-AOC-15-CD"}),
+            ("equipment_type", "Система хранения данных", {"item_name": "Полка JBOD 12x20TB HDD"}),
+            ("equipment_type", "Система хранения данных", {"item_name": "Dell PowerStore 5200"}),
+            ("equipment_type", "Межсетевой экран", {"item_name": "Palo Alto PAN-PA-5400"}),
+            ("equipment_type", "Балансировщик нагрузки", {"item_name": "Коммутатор Radware ALTEON D5424S"}),
+            ("equipment_type", "Маршрутизатор", {"item_name": "Коммутатор Cisco ISR4221"}),
+            ("equipment_type", "Сервер", {"item_name": "Сервер GPU 8_H200 Dell XE9680"}),
+            ("component_type", "Плата", {"item_name": "Бэкплейн Lenovo SR590"}),
+            ("component_type", "HBA-адаптер", {"item_name": "RAID-контроллер Dell LPe35002"}),
+            ("component_type", "Сетевой адаптер", {"item_name": "Карта HPE 562 FLR-SFP+"}),
+            ("component_type", "Трансивер", {"item_name": "Сетевой адаптер Huawei OMXD30000"}),
+            ("component_type", "Сетевой адаптер", {"item_name": "Коммутатор PALO ALTO PAN-PA-5400-NC-A"}),
+            ("equipment_type", "Коммутатор", {"item_name": "Сетевой адаптер Huawei XH9230-128DQ"}),
         )
         for field, value, inputs in cases:
             with self.subTest(inputs=inputs):
@@ -49,6 +63,36 @@ class WarehouseClassificationTest(unittest.TestCase):
         self.assertEqual(clean_item_name("#N/A"), UNKNOWN_ITEM_NAME)
         result = classify_card(item_name=UNKNOWN_ITEM_NAME)
         self.assertEqual(result.confidence, "LOW")
+
+    def test_generic_component_label_does_not_override_specific_existing_type(self) -> None:
+        self.assert_type(
+            "component_type",
+            "SSD",
+            item_name="Компонент MICRON 7500 PRO",
+            vendor="Micron",
+            model="7500 PRO",
+            component_type="SSD",
+        )
+
+    def test_operator_facing_categories_are_specific_and_stable(self) -> None:
+        cases = (
+            ("Оборудование", {"equipment_type": "Сервер"}),
+            ("Трансиверы", {"component_type": "Трансивер"}),
+            ("Память", {"component_type": "Оперативная память"}),
+            ("Накопители", {"component_type": "SSD"}),
+            ("Адаптеры и контроллеры", {"component_type": "HBA-адаптер"}),
+            ("Комплектующие", {"component_type": "GPU"}),
+            ("Другое оборудование", {"component_type": "Аксессуар"}),
+            ("Кабели", {"cable_type": "OM4"}),
+            ("Кабельные сборки", {"cable_type": "DAC"}),
+            ("Другое оборудование", {"component_type": "Прочий компонент"}),
+        )
+        for expected, values in cases:
+            with self.subTest(values=values):
+                self.assertEqual(operational_category(**values), expected)
+
+    def test_san_card_is_an_hba_adapter(self) -> None:
+        self.assert_type("component_type", "HBA-адаптер", item_name="Карта SAN Emulex")
 
     def test_soft_import_automatically_classifies_new_cards(self) -> None:
         row = soft_receipt_source({

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -19,6 +20,12 @@ RECEIPT_FIELDS = (
     "vendor", "model", "shelf", "object_name", "datacenter",
     "equipment_type", "component_type", "cable_type", "unit", "quantity",
 )
+
+# Fields the "Неполные строки" data-quality review is allowed to fill.
+# Matches the emptiness check in WarehouseService.data_quality_summary
+# (shelf/vendor/model); project is included because it is shown in the same
+# table and may also be empty. Fill-empty-only: never overwrites a value.
+DATA_QUALITY_FILLABLE_FIELDS = {"project", "shelf", "vendor", "model"}
 
 
 class ReceiptRepository:
@@ -292,6 +299,223 @@ class ReceiptRepository:
             "updated": True,
         }
 
+    def fill_fields(
+        self,
+        receipt_id: int,
+        values: dict[str, Any],
+        *,
+        author: str,
+    ) -> dict[str, Any]:
+        """Fill empty data-quality fields (project/shelf/vendor/model) on an
+        existing card. Never overwrites an already-filled field; conflicts are
+        reported, not applied. Used by the "Неполные строки" review screen."""
+        with connect(self.db_path) as db:
+            fill = self.fill_empty_fields_in_transaction(
+                db, receipt_id, values, allowed_fields=DATA_QUALITY_FILLABLE_FIELDS,
+            )
+            if fill["updated_fields"]:
+                write_audit_entry(
+                    db,
+                    action="RECEIPT_FIELDS_FILLED",
+                    entity_type="stock_receipt",
+                    entity_id=receipt_id,
+                    author=author,
+                    details={"updated_fields": fill["updated_fields"]},
+                )
+            return fill
+
+    @staticmethod
+    def _normalize_fill_date(value: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            raise WarehouseError("Дата не может быть пустой")
+        for date_format in ("%Y-%m-%d", "%d.%m.%Y", "%d/%m/%Y"):
+            try:
+                return datetime.strptime(text, date_format).date().isoformat()
+            except ValueError:
+                pass
+        raise WarehouseError(
+            "Дата должна быть в формате ГГГГ-ММ-ДД, ДД.ММ.ГГГГ или ДД/ММ/ГГГГ"
+        )
+
+    def fill_receipt_date(
+        self,
+        receipt_id: int,
+        receipt_date: str,
+        *,
+        author: str,
+    ) -> dict[str, Any]:
+        """Fill an *empty* receipt_date on a historical card.
+
+        The source date is provenance, so this is fill-empty-only: a card that
+        already has a proven date is never overwritten. The value is validated
+        as a real calendar date and stored ISO-normalized. A dedicated audit
+        code records that the date was entered manually by the duty engineer,
+        not taken from the migration source.
+        """
+        normalized = self._normalize_fill_date(receipt_date)
+        with connect(self.db_path) as db:
+            row = db.execute(
+                "SELECT id, receipt_date FROM stock_receipts WHERE id = ?",
+                (receipt_id,),
+            ).fetchone()
+            if row is None:
+                raise WarehouseError("Складская позиция не найдена")
+            current = str(row["receipt_date"] or "").strip()
+            if current:
+                return {
+                    "receipt_id": receipt_id,
+                    "updated": False,
+                    "receipt_date": current,
+                }
+            db.execute(
+                "UPDATE stock_receipts SET receipt_date = ? WHERE id = ?",
+                (normalized, receipt_id),
+            )
+            write_audit_entry(
+                db,
+                action="RECEIPT_DATE_FILLED",
+                entity_type="stock_receipt",
+                entity_id=receipt_id,
+                author=author,
+                details={"receipt_date": normalized, "manual": True},
+            )
+            return {
+                "receipt_id": receipt_id,
+                "updated": True,
+                "receipt_date": normalized,
+            }
+
+    def correct_duplicate_serial(
+        self,
+        receipt_id: int,
+        new_serial_number: str,
+        *,
+        author: str,
+    ) -> dict[str, Any]:
+        """Correct one of two receipts sharing a duplicate S/N to a distinct
+        value. Requires the new value to be non-empty and not already used by
+        any other card; the old value is kept in the audit entry for
+        provenance. Only the serial_number field changes."""
+        new_serial = str(new_serial_number or "").strip()
+        if not new_serial:
+            raise WarehouseError("Новый S/N не может быть пустым")
+        with connect(self.db_path) as db:
+            row = db.execute(
+                "SELECT id, serial_number FROM stock_receipts WHERE id = ?",
+                (receipt_id,),
+            ).fetchone()
+            if row is None:
+                raise WarehouseError("Складская позиция не найдена")
+            old_serial = str(row["serial_number"] or "").strip()
+            if new_serial.casefold() == old_serial.casefold():
+                raise WarehouseError("Новый S/N совпадает с текущим — дубль не устранён")
+            conflict = db.execute(
+                """SELECT 1 FROM stock_receipts
+                   WHERE id <> ? AND trim(serial_number) <> ''
+                     AND trim(serial_number) = trim(?) COLLATE NOCASE""",
+                (receipt_id, new_serial),
+            ).fetchone()
+            if conflict:
+                raise WarehouseError(f"S/N «{new_serial}» уже используется другой карточкой")
+            try:
+                db.execute(
+                    "UPDATE stock_receipts SET serial_number = ? WHERE id = ?",
+                    (new_serial, receipt_id),
+                )
+            except sqlite3.IntegrityError as error:
+                raise WarehouseError(f"S/N «{new_serial}» уже используется другой карточкой") from error
+            write_audit_entry(
+                db,
+                action="RECEIPT_SERIAL_CORRECTED",
+                entity_type="stock_receipt",
+                entity_id=receipt_id,
+                author=author,
+                details={"old_serial_number": old_serial, "new_serial_number": new_serial},
+            )
+            return {"receipt_id": receipt_id, "old_serial_number": old_serial, "new_serial_number": new_serial}
+
+    # Tables that reference stock_receipts(id): deleting a row referenced by any
+    # of these would break write-off history, delivery links or migration
+    # provenance, so deletion is refused when a reference exists.
+    _RECEIPT_REFERENCES = (
+        ("stock_issue_allocations", "receipt_id", "по позиции есть списания"),
+        ("delivery_lines", "receipt_id", "позиция связана с поставкой"),
+        ("migration_full_identities", "target_receipt_id", "позиция связана с миграцией"),
+        ("migration_full_reconciliation", "target_receipt_id", "позиция связана с миграцией"),
+    )
+
+    def delete_duplicate_receipt(
+        self,
+        receipt_id: int,
+        *,
+        author: str,
+    ) -> dict[str, Any]:
+        """Delete one redundant card that shares its S/N with another card.
+
+        Fail-closed guards:
+        - the row must exist;
+        - its S/N must be non-empty and still present on another card, so this
+          only ever removes a duplicate and never the last card of an S/N;
+        - the row must not be referenced by any write-off allocation, delivery
+          line or migration identity/reconciliation row — otherwise deleting it
+          would break history/balance, so it is refused with a clear message.
+
+        The full deleted row is snapshotted into the audit entry so the action
+        can be reconstructed if needed.
+        """
+        with connect(self.db_path) as db:
+            row = db.execute(
+                "SELECT * FROM stock_receipts WHERE id = ?", (receipt_id,)
+            ).fetchone()
+            if row is None:
+                raise WarehouseError("Складская позиция не найдена")
+            serial = str(row["serial_number"] or "").strip()
+            if not serial:
+                raise WarehouseError(
+                    "Удаление доступно только для дублирующихся карточек"
+                )
+            sibling = db.execute(
+                """SELECT 1 FROM stock_receipts
+                   WHERE id <> ? AND trim(serial_number) <> ''
+                     AND trim(serial_number) = trim(?) COLLATE NOCASE LIMIT 1""",
+                (receipt_id, serial),
+            ).fetchone()
+            if sibling is None:
+                raise WarehouseError(
+                    "Удаление доступно только для дублирующихся карточек: "
+                    "второй карточки с таким S/N нет"
+                )
+            existing_tables = {
+                name
+                for (name,) in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            for table, column, reason in self._RECEIPT_REFERENCES:
+                if table not in existing_tables:
+                    continue
+                referenced = db.execute(
+                    f"SELECT 1 FROM {table} WHERE {column} = ? LIMIT 1",
+                    (receipt_id,),
+                ).fetchone()
+                if referenced:
+                    raise WarehouseError(
+                        f"Удаление заблокировано: {reason}. "
+                        "Удалите дубль без связей."
+                    )
+            snapshot = {key: row[key] for key in row.keys()}
+            db.execute("DELETE FROM stock_receipts WHERE id = ?", (receipt_id,))
+            write_audit_entry(
+                db,
+                action="RECEIPT_DELETED",
+                entity_type="stock_receipt",
+                entity_id=receipt_id,
+                author=author,
+                details={"serial_number": serial, "deleted_row": snapshot},
+            )
+            return {"receipt_id": receipt_id, "serial_number": serial, "deleted": True}
+
     def insert_many(
         self,
         rows: list[dict[str, Any]],
@@ -369,11 +593,17 @@ class ReceiptRepository:
             result.update(str(row[0]).casefold() for row in rows)
         return result
 
-    def receipts(self, limit: int | None = None) -> list[dict[str, Any]]:
+    def receipts(
+        self, limit: int | None = None, *, include_opening: bool = True
+    ) -> list[dict[str, Any]]:
         sql = """SELECT r.*,
                         r.quantity - COALESCE(SUM(a.quantity), 0) AS available
                  FROM stock_receipts r
-                 LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id
+                 LEFT JOIN stock_issue_allocations a ON a.receipt_id = r.id"""
+        if not include_opening:
+            sql += """ WHERE COALESCE(r.is_opening_balance, 0)=0
+                         AND trim(COALESCE(r.responsible, ''))<>'Историческая миграция'"""
+        sql += """
                  GROUP BY r.id ORDER BY r.receipt_date DESC, r.id DESC"""
         params: tuple[int, ...] = ()
         if limit is not None:

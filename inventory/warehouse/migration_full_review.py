@@ -165,10 +165,16 @@ def validate_full_migration_database(
         ).fetchone()[0])
         if reconciliation != EXPECTED_TOTAL_ROWS:
             raise RuntimeError("Full candidate reconciliation count mismatch")
-        if identities != receipts or identities != int(marker["identity_count"]):
+        if identities != int(marker["identity_count"]):
             raise RuntimeError("Full candidate identity/receipt cardinality mismatch")
-        if issues != int(marker["issue_count"]):
+        if requested and receipts != identities:
+            raise RuntimeError("Full candidate identity/receipt cardinality mismatch")
+        if not requested and receipts < identities:
+            raise RuntimeError("Working database lost historical migration receipts")
+        if requested and issues != int(marker["issue_count"]):
             raise RuntimeError("Full candidate issue cardinality mismatch")
+        if not requested and issues < int(marker["issue_count"]):
+            raise RuntimeError("Working database lost historical migration issues")
         if active_admins < 1:
             raise RuntimeError("Full candidate не содержит активного администратора")
     return {

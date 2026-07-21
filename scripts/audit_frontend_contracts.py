@@ -38,6 +38,7 @@ DYNAMIC_ID_WHITELIST = {
     "uvrEditForm",
     # Engineer UX creates these controls after load.
     "activeDrafts",
+    "balanceFilterSummary",
     "balanceKpis",
     "balancePager",
     "balanceSummary",

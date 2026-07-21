@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import csv
+import io
 import shutil
 import sqlite3
 import tempfile
 import unittest
 import re
 import zipfile
-from contextlib import closing
+from contextlib import closing, redirect_stdout
 from datetime import date
 from pathlib import Path
 
@@ -120,8 +121,8 @@ class WarehouseServiceTest(unittest.TestCase):
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
             self.assertIn("ODE/WINDOWS_RELEASE.md", names)
-            self.assertIn("ODE/QA_STAGE_0_12_17.md", names)
-            self.assertIn("ODE/PRODUCT_REVIEW.md", names)
+            self.assertIn("ODE/docs/history/QA_STAGE_0_12_17.md", names)
+            self.assertIn("ODE/docs/history/PRODUCT_REVIEW.md", names)
             self.assertIn("ODE/docs/README.md", names)
             self.assertIn("ODE/start_windows.bat", names)
             self.assertIn("ODE/start_test_windows.bat", names)
@@ -615,6 +616,14 @@ class WarehouseServiceTest(unittest.TestCase):
             self.service.authenticate("lokolis", "new-secure-password")["email"], "lokolis"
         )
 
+    def test_default_admin_creation_does_not_print_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                service = WarehouseService(Path(directory) / "fresh.db")
+        self.assertTrue(service.default_admin_created)
+        self.assertEqual(output.getvalue(), "")
+
     def test_login_and_password_change(self) -> None:
         user = self.service.authenticate("lokolis", "lokolis")
         self.assertTrue(user["must_change_password"])
@@ -1090,8 +1099,13 @@ class WarehouseServiceTest(unittest.TestCase):
         row = next(x for x in self.service.stock_balance() if x["serial_number"] == "SN-STAGE2-001")
         self.assertEqual(row["supplier"], "ООО Поставка")
         self.assertEqual(row["item_type"], "NIC")
-        self.assertEqual(row["category"], "Компоненты")
-        self.assertEqual(self.service.stock_balance(category="Компоненты", item_type="NIC"), [row])
+        self.assertEqual(row["category"], "Адаптеры и контроллеры")
+        self.assertEqual(
+            self.service.stock_balance(
+                category="Адаптеры и контроллеры", item_type="NIC"
+            ),
+            [row],
+        )
 
     def test_daily_report_saves_multiple_work_log_rows_atomically(self) -> None:
         today = date.today().isoformat()

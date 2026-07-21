@@ -214,7 +214,7 @@ class ReferenceDataService:
             ]
 
     def editor_catalog(self) -> dict[str, Any]:
-        self.actor._require_role("admin")
+        self.actor._require_role("admin", "engineer")
         with connect(self.db_path) as db:
             if not self.has_v2(db):
                 raise WarehouseError("Canonical Reference Data недоступны в этой базе")
@@ -312,7 +312,7 @@ class ReferenceDataService:
             return reference_id
 
     def set_active(self, reference_id: int, is_active: bool) -> None:
-        self.actor._require_role("admin")
+        self.actor._require_role("admin", "engineer")
         with connect(self.db_path) as db:
             row = db.execute(
                 """SELECT v.id,v.display_name,d.domain_key FROM reference_values_v2 v

@@ -22,7 +22,7 @@
 0.13 architecture index — в `docs/README.md`, пользовательская инструкция —
 в `README.md`.
 
-Current source: ODE `0.14.0` с FULL Inventory Preview/resolutions и disposable
+Current source: ODE `0.15.0` с FULL Inventory Preview/resolutions и disposable
 baseline rehearsal. Последний фактический ZIP остаётся `0.12.17 RC1`; новый
 Windows artifact не собран.
 
@@ -319,7 +319,7 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 464 tests under
+Current full discover result is 527 tests under
 `-W error::ResourceWarning`. Never run a 51,003-row
 operational import as a performance test.
 

@@ -10,6 +10,7 @@ from inventory import webapp
 ROOT = Path(__file__).resolve().parents[1]
 UI_JS = (ROOT / "static" / "js" / "ui.js").read_text(encoding="utf-8")
 PRODUCT_JS = (ROOT / "static" / "js" / "product.js").read_text(encoding="utf-8")
+TREE_JS = (ROOT / "static" / "js" / "warehouse" / "stock_tree.js").read_text(encoding="utf-8")
 
 
 class ScannerDraftFrontendContractTest(unittest.TestCase):
@@ -43,11 +44,16 @@ class ScannerDraftFrontendContractTest(unittest.TestCase):
         self.assertNotIn("DELETE_SCANNED_ISSUES", UI_JS)
 
     def test_issue_scanner_supports_strict_component_server_pairs(self) -> None:
-        self.assertIn("Пары: компонент → сервер", UI_JS)
+        self.assertIn("Пары: компонент → оборудование", UI_JS)
+        self.assertIn("На одно оборудование", UI_JS)
+        self.assertIn("Списать сканером", UI_JS)
+        self.assertNotIn("Списать на оборудование", UI_JS)
         self.assertIn("kind=issue_target", UI_JS)
         self.assertIn("CONFIRM_SCANNED_ISSUE_PAIRS", UI_JS)
         self.assertIn("source_serial_number:row.serial_number", UI_JS)
         self.assertIn("target_serial_number:row.target_serial_number", UI_JS)
+        self.assertIn("target_item_name", UI_JS)
+        self.assertIn("input.setAttribute('aria-label',input.placeholder)", UI_JS)
         self.assertIn("issueScanSignal(false)", UI_JS)
 
     def test_all_delete_paths_render_save_and_restore_scanner_focus(self) -> None:
@@ -84,6 +90,13 @@ class ScannerDraftFrontendContractTest(unittest.TestCase):
         for label in ("Найден черновик прихода", "Продолжить черновик", "Начать заново", "Удалить черновик"):
             self.assertIn(label, UI_JS)
         self.assertNotIn("document.body.appendChild(panel)", UI_JS)
+        self.assertIn("draftFieldsAreMeaningful", UI_JS)
+        self.assertIn("['receipt_date','responsible','datacenter','unit']", UI_JS)
+
+    def test_receipt_models_are_scoped_by_vendor_and_selected_type(self) -> None:
+        self.assertIn("function receiptWizardModels(data)", UI_JS)
+        self.assertIn("state.warehouse_model_options||[]", UI_JS)
+        self.assertIn("row.item_type", UI_JS)
 
     def test_local_storage_failures_do_not_break_the_interface(self) -> None:
         self.assertIn("function readScanDraft(kind)", UI_JS)
@@ -99,10 +112,10 @@ class ScannerDraftFrontendContractTest(unittest.TestCase):
         self.assertIn("if(sequence!==searchSequence)return", PRODUCT_JS)
 
     def test_balance_search_hides_stale_action_rows_during_debounce(self) -> None:
-        self.assertIn("const sequence=++balanceSearchSequence", PRODUCT_JS)
-        self.assertIn("renderBalanceSearchState('Поиск по всей базе...',true)", PRODUCT_JS)
-        self.assertIn("sequence!==balanceSearchSequence", PRODUCT_JS)
-        self.assertIn("body.setAttribute('aria-busy',busy?'true':'false')", PRODUCT_JS)
+        self.assertIn("const requestGeneration=++generation", TREE_JS)
+        self.assertIn("rootLoading=true;render()", TREE_JS)
+        self.assertIn("requestGeneration!==generation", TREE_JS)
+        self.assertIn("body.setAttribute('aria-busy','true')", TREE_JS)
 
 
 if __name__ == "__main__":

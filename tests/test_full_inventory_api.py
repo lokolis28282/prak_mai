@@ -4,6 +4,7 @@ import io
 import json
 import unittest
 from urllib.parse import urlencode
+from zipfile import ZipFile
 
 from inventory.core.application import create_application_context
 from inventory.webapp import make_handler
@@ -66,10 +67,43 @@ class FullInventoryApiTest(FullInventoryFixture, unittest.TestCase):
             handler._do_GET()
         return handler.captured
 
+    def call_get_download(self, path: str) -> tuple[int, dict[str, str], bytes]:
+        handler = self.handler_type.__new__(self.handler_type)
+        handler.path = path
+        handler.headers = _Headers({})
+        handler.wfile = io.BytesIO()
+        captured_headers: dict[str, str] = {}
+        handler.send_response = lambda status: setattr(handler, "captured_status", status)
+        handler.send_header = lambda name, value: captured_headers.__setitem__(name, value)
+        handler.end_headers = lambda: None
+        with self.legacy_service.user_context("lokolis"):
+            handler._do_GET()
+        return handler.captured_status, captured_headers, handler.wfile.getvalue()
+
+    def test_authenticated_operator_downloads_scan_first_reference_template(self) -> None:
+        status, headers, body = self.call_get_download(
+            "/api/full-inventory/template.xlsx"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            headers["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.assertIn("ODE_FULL_INVENTORY_v1.xlsx", headers["Content-Disposition"])
+        with ZipFile(io.BytesIO(body)) as archive:
+            workbook_xml = archive.read("xl/workbook.xml").decode("utf-8")
+            inventory_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+        for sheet in ("Manifest", "Inventory", "Инструкция", "Справочник", "Номенклатура"):
+            self.assertIn(sheet, workbook_xml)
+        self.assertRegex(inventory_xml, r'<c r="A1"[^>]*>.*SerialNumber')
+
     def test_status_create_upload_preview_and_pagination(self) -> None:
         status, payload = self.call_get("/api/warehouse/system-status")
         self.assertEqual(status, 200)
         self.assertFalse(payload["authoritative"])
+        self.assertTrue(payload["provisional"])
+        self.assertTrue(payload["posting_allowed"])
+        self.assertEqual(payload["balance_kind"], "PROVISIONAL_HISTORICAL")
         self.assertIsNone(payload["baseline_timestamp"])
         status, created = self.call_post("/api/full-inventory/sessions")
         self.assertEqual(status, 201)
@@ -95,6 +129,7 @@ class FullInventoryApiTest(FullInventoryFixture, unittest.TestCase):
         status, active_status = self.call_get("/api/warehouse/system-status")
         self.assertEqual(status, 200)
         self.assertIsNone(active_status["baseline_timestamp"])
+        self.assertTrue(active_status["posting_allowed"])
         for endpoint, key in (("rows", "rows"), ("findings", "findings")):
             status, page = self.call_get(
                 f"/api/full-inventory/{endpoint}?" + urlencode({"session_id": session_id, "limit": 10})
@@ -109,13 +144,13 @@ class FullInventoryApiTest(FullInventoryFixture, unittest.TestCase):
         with self.assertRaisesRegex(Exception, "Недостаточно прав"):
             self.call_post("/api/full-inventory/sessions", role="viewer")
 
-    def test_legacy_warehouse_mutation_returns_stable_409(self) -> None:
+    def test_production_warehouse_mutation_reaches_business_validation(self) -> None:
         status, payload = self.call_post(
             "/api/action",
             json.dumps({"action": "STOCK_RECEIPT"}).encode(),
         )
-        self.assertEqual(status, 409)
-        self.assertEqual(payload["code"], "WAREHOUSE_NOT_INITIALIZED")
+        self.assertEqual(status, 400)
+        self.assertNotEqual(payload.get("code"), "WAREHOUSE_NOT_INITIALIZED")
 
     def test_resolution_revalidate_and_candidate_rehearsal_api(self) -> None:
         session = self.create_session()

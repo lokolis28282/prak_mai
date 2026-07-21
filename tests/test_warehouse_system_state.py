@@ -20,8 +20,8 @@ class WarehouseSystemStateTest(FullInventoryFixture, unittest.TestCase):
     def tearDown(self) -> None:
         self.cleanup_fixture()
 
-    def test_status_transitions_and_rejected_returns_not_initialized(self) -> None:
-        self.assertEqual(self.inventory.system_status()["state"], "NOT_INITIALIZED")
+    def test_status_transitions_and_rejected_returns_provisional_ready(self) -> None:
+        self.assertEqual(self.inventory.system_status()["state"], "READY")
         session = self.create_session()
         self.assertEqual(self.inventory.system_status()["state"], "INVENTORY_IN_PROGRESS")
         uploaded = self.upload(session, self.workbook())
@@ -37,7 +37,7 @@ class WarehouseSystemStateTest(FullInventoryFixture, unittest.TestCase):
         )
         self.assertEqual(rejected["session_status"], "REJECTED")
         self.assertEqual(rejected["rejection_reason"], "USER_CANCELLED")
-        self.assertEqual(self.inventory.system_status()["state"], "NOT_INITIALIZED")
+        self.assertEqual(self.inventory.system_status()["state"], "READY")
         path, _ = self.inventory._find_session(session["public_id"])
         with closing(sqlite3.connect(path)) as db:
             events = db.execute(
@@ -126,11 +126,13 @@ class WarehouseSystemStateTest(FullInventoryFixture, unittest.TestCase):
         self.assertEqual(events[-1][0], "PREVIEW_FAILED")
         self.assertNotIn(str(self.root), events[-1][1])
 
-    def test_system_status_never_claims_ready_in_slice_one(self) -> None:
+    def test_system_status_exposes_non_authoritative_provisional_balance(self) -> None:
         status = self.inventory.system_status()
         self.assertFalse(status["authoritative"])
-        self.assertFalse(status["ready_reachable"])
-        self.assertEqual(status["balance_kind"], "HISTORICAL_CALCULATION")
+        self.assertTrue(status["provisional"])
+        self.assertTrue(status["posting_allowed"])
+        self.assertTrue(status["ready_reachable"])
+        self.assertEqual(status["balance_kind"], "PROVISIONAL_HISTORICAL")
         self.assertIsNone(status["baseline_timestamp"])
 
     def test_stale_preview_and_resolution_requests_fail_closed(self) -> None:

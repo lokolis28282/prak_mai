@@ -3,8 +3,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum
 from pathlib import Path
+
+
+class StrEnum(str, Enum):
+    """Python 3.10-compatible stand-in for enum.StrEnum (added in 3.11).
+
+    README и минимальные требования проекта заявляют Python 3.10+, а
+    `enum.StrEnum` доступен только с 3.11 — без этого shim'а весь runtime
+    (webapp, core, warehouse facade) падает на импорте на 3.10. Поведение
+    для существующего кода эквивалентно: все использования читают
+    `.value`, поэтому разница str(x) vs f"{x}" на смешанных классах не
+    затрагивается.
+    """
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return str(self.value)
 
 
 class SystemState(StrEnum):

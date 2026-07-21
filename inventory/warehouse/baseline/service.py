@@ -24,6 +24,10 @@ from typing import Any, BinaryIO, Iterable
 
 from inventory.shared.reference_normalization import normalize_reference_key
 from inventory.shared.validators import WarehouseError
+from inventory.warehouse.classification import (
+    WAREHOUSE_CATEGORY_ORDER,
+    operational_category,
+)
 
 from .models import (
     ActorSnapshot,
@@ -57,6 +61,7 @@ from .xlsx_parser import (
     FullInventoryXlsxError,
     SourceRow,
     WorkbookInfo,
+    TemplateContext,
     inspect_workbook,
     template_bytes,
 )
@@ -287,17 +292,23 @@ class FullInventoryService:
 
     def system_status(self) -> dict[str, Any]:
         public = {
-            "state": SystemState.NOT_INITIALIZED.value,
+            "state": SystemState.READY.value,
             "authoritative": False,
-            "balance_kind": "HISTORICAL_CALCULATION",
+            "provisional": True,
+            "balance_kind": "PROVISIONAL_HISTORICAL",
             "baseline_timestamp": None,
-            "posting_allowed": False,
+            "posting_allowed": True,
             "active_session": None,
             "degraded_reason": "",
-            "ready_reachable": False,
+            "ready_reachable": True,
         }
         if self._path_error:
-            return {**public, "state": SystemState.DEGRADED.value, "degraded_reason": self._path_error}
+            return {
+                **public,
+                "state": SystemState.DEGRADED.value,
+                "posting_allowed": False,
+                "degraded_reason": self._path_error,
+            }
         try:
             candidates = self._workspace_candidates()
             active = [item for item in candidates if item[1]["session_status"] in ACTIVE_SESSION_STATUSES]
@@ -327,6 +338,7 @@ class FullInventoryService:
             return {
                 **public,
                 "state": SystemState.DEGRADED.value,
+                "posting_allowed": False,
                 "degraded_reason": str(error),
             }
 
@@ -353,7 +365,9 @@ class FullInventoryService:
         if len(correlation_id) < 16:
             raise WarehouseError("Некорректный correlation ID")
         status = self.system_status()
-        if status["state"] != SystemState.NOT_INITIALIZED.value:
+        if status["state"] == SystemState.DEGRADED.value:
+            raise WarehouseError("FULL inventory workspace недоступен")
+        if status.get("active_session") is not None:
             raise WarehouseError("Активная FULL inventory session уже существует")
         session_id = _uuid7()
         opaque = uuid.uuid4().hex
@@ -1717,5 +1731,153 @@ class FullInventoryService:
         return self._public_session(updated)
 
     @staticmethod
-    def template() -> bytes:
-        return template_bytes()
+    def _template_quantity(value: object) -> str:
+        try:
+            result = Decimal(str(value or "0"))
+        except InvalidOperation:
+            return str(value or "")
+        return format(result.normalize(), "f") if result else "0"
+
+    def _template_context(self) -> TemplateContext:
+        """Build download-only hints from a read-only snapshot of active Warehouse data."""
+
+        reference_version = ""
+        try:
+            reference_version = self.reference_fingerprint().hex()
+        except (WorkspaceError, sqlite3.Error):
+            pass
+
+        reference_values: dict[str, set[str]] = {
+            key: set() for key in (
+                "datacenter", "shelf", "unit_of_measure", "vendor",
+                "equipment_type", "component_type", "cable_type",
+            )
+        }
+        nomenclature: dict[tuple[str, ...], list[Decimal | int]] = {}
+        observed_types: set[tuple[str, str]] = set()
+        try:
+            with closing(_read_only_db(self.operational_db)) as db:
+                tables = {
+                    str(row[0])
+                    for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                }
+                if {"reference_domains_v2", "reference_values_v2"}.issubset(tables):
+                    for row in db.execute(
+                        """SELECT d.domain_key,v.display_name,v.canonical_value
+                           FROM reference_values_v2 v
+                           JOIN reference_domains_v2 d ON d.id=v.domain_id
+                           WHERE d.active=1 AND v.active=1
+                             AND v.approval_status='APPROVED'
+                           ORDER BY d.domain_key,v.display_name COLLATE NOCASE"""
+                    ):
+                        domain = str(row["domain_key"])
+                        if domain in reference_values:
+                            value = str(row["display_name"] or row["canonical_value"] or "").strip()
+                            if value:
+                                reference_values[domain].add(value)
+                if {"stock_receipts", "stock_issue_allocations"}.issubset(tables):
+                    rows = db.execute(
+                        """WITH allocations AS (
+                               SELECT receipt_id,SUM(quantity) issued
+                               FROM stock_issue_allocations GROUP BY receipt_id
+                           ), lots AS (
+                               SELECT trim(r.item_name) item_name,trim(r.vendor) vendor,
+                                      trim(r.model) model,trim(r.equipment_type) equipment_type,
+                                      trim(r.component_type) component_type,trim(r.cable_type) cable_type,
+                                      trim(r.unit) unit,trim(r.serial_number) serial_number,
+                                      r.quantity-COALESCE(a.issued,0) balance
+                               FROM stock_receipts r
+                               LEFT JOIN allocations a ON a.receipt_id=r.id
+                           )
+                           SELECT item_name,vendor,model,equipment_type,component_type,cable_type,unit,
+                                  CASE WHEN serial_number<>'' THEN 'SERIALIZED'
+                                       WHEN cable_type<>'' THEN 'CABLE' ELSE 'BULK' END item_kind,
+                                  COUNT(*) positions,SUM(balance) balance
+                           FROM lots
+                           GROUP BY item_name,vendor,model,equipment_type,component_type,cable_type,unit,item_kind
+                           ORDER BY item_name COLLATE NOCASE,vendor COLLATE NOCASE,model COLLATE NOCASE"""
+                    ).fetchall()
+                    for row in rows:
+                        equipment_type = str(row["equipment_type"] or "")
+                        component_type = str(row["component_type"] or "")
+                        cable_type = str(row["cable_type"] or "")
+                        category = operational_category(
+                            equipment_type=equipment_type,
+                            component_type=component_type,
+                            cable_type=cable_type,
+                        )
+                        item_type = cable_type or component_type or equipment_type or "Прочее оборудование"
+                        field = "cable_type" if cable_type else "component_type" if component_type else "equipment_type"
+                        observed_types.add((field, item_type))
+                        vendor = str(row["vendor"] or "")
+                        if vendor:
+                            reference_values["vendor"].add(vendor)
+                        key = (
+                            category,
+                            item_type,
+                            str(row["item_kind"]),
+                            str(row["item_name"] or "Историческая позиция — наименование не восстановлено"),
+                            vendor,
+                            str(row["model"] or ""),
+                            str(row["unit"] or "шт"),
+                        )
+                        aggregate = nomenclature.setdefault(key, [0, Decimal("0")])
+                        aggregate[0] = int(aggregate[0]) + int(row["positions"] or 0)
+                        aggregate[1] = Decimal(aggregate[1]) + Decimal(str(row["balance"] or 0))
+        except sqlite3.Error:
+            pass
+
+        type_values: set[tuple[str, str]] = set(observed_types)
+        for domain in ("equipment_type", "component_type", "cable_type"):
+            type_values.update((domain, value) for value in reference_values[domain])
+        field_labels = {
+            "equipment_type": "Тип оборудования",
+            "component_type": "Тип компонента",
+            "cable_type": "Тип кабеля",
+        }
+        category_rank = {name: index for index, name in enumerate(WAREHOUSE_CATEGORY_ORDER)}
+        type_rows: list[tuple[str, ...]] = []
+        for field, value in sorted(
+            type_values,
+            key=lambda pair: (
+                category_rank.get(operational_category(**{pair[0]: pair[1]}), 999),
+                pair[1].casefold(),
+            ),
+        ):
+            category = operational_category(**{field: value})
+            is_cable = field == "cable_type"
+            uom_hint = "шт" if category == "Кабельные сборки" else "шт или м" if is_cable else "шт"
+            type_rows.append((
+                category,
+                field_labels[field],
+                value,
+                "CABLE" if is_cable else "SERIALIZED",
+                "SERIALIZED",
+                uom_hint,
+                "Скопируйте точное наименование из «Номенклатуры»",
+                "Без S/N — CABLE; с S/N — SERIALIZED" if is_cable else "S/N обязателен, Quantity = 1",
+            ))
+
+        nomenclature_rows = tuple(
+            (*key, str(values[0]), self._template_quantity(values[1]))
+            for key, values in sorted(
+                nomenclature.items(),
+                key=lambda item: (
+                    category_rank.get(item[0][0], 999),
+                    item[0][1].casefold(), item[0][3].casefold(),
+                    item[0][4].casefold(), item[0][5].casefold(),
+                ),
+            )
+        )
+        return TemplateContext(
+            reference_version=reference_version,
+            warehouse_codes=tuple(sorted(reference_values["datacenter"], key=str.casefold)),
+            location_codes=tuple(sorted(reference_values["shelf"], key=str.casefold)),
+            uom_codes=tuple(sorted(reference_values["unit_of_measure"], key=str.casefold)),
+            vendors=tuple(sorted(reference_values["vendor"], key=str.casefold)),
+            type_rows=tuple(type_rows),
+            nomenclature_rows=nomenclature_rows,
+        )
+
+    def template(self) -> bytes:
+        return template_bytes(self._template_context())

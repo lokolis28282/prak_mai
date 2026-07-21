@@ -175,8 +175,30 @@ class Stage01217Test(unittest.TestCase):
             for row in self.service.warehouse_type_summary()
         }
         self.assertEqual(summary[("Оборудование", "Сервер")]["positions"], 2)
-        self.assertEqual(summary[("Оборудование", "Трансивер")]["positions"], 1)
-        self.assertEqual(summary[("Компоненты", "RAM")]["quantity"], 1)
+        self.assertEqual(summary[("Трансиверы", "Трансивер")]["positions"], 1)
+        self.assertEqual(summary[("Память", "RAM")]["quantity"], 1)
+        model_options = {
+            (row["vendor"], row["item_type"], row["model"])
+            for row in self.service.warehouse_model_options()
+        }
+        self.assertIn(("Dell", "Сервер", "R760"), model_options)
+        self.assertIn(("Cisco", "Трансивер", "QSFP-100G"), model_options)
+        self.assertNotIn(("Cisco", "Сервер", "QSFP-100G"), model_options)
+
+        self.service.add_stock_receipt(**self.receipt(
+            serial_number="ODE-17-UNKNOWN", inventory_number="ODE-17-UNKNOWN-INV",
+            item_name="Неизвестный компонент", equipment_type="",
+            component_type="Прочий компонент", model="Unknown", quantity=1,
+        ))
+        summary = {
+            (row["category"], row["item_type"]): row
+            for row in self.service.warehouse_type_summary()
+        }
+        self.assertEqual(summary[("Другое оборудование", "Прочий компонент")]["quantity"], 1)
+        self.assertEqual(
+            self.service.stock_balance(category="Другое оборудование")[0]["serial_number"],
+            "ODE-17-UNKNOWN",
+        )
 
         # Filtering is performed in SQL before LIMIT, so a type outside the
         # first unfiltered row remains discoverable in a large warehouse.

@@ -20,7 +20,12 @@ from ..db import DEFAULT_DB_PATH, connect, hash_password, initialize, verify_pas
 from ..importing import PREVIEW_ERROR_LIMIT, PREVIEW_ROW_LIMIT
 from ..shared.helpers import STRICT_REFERENCES, WarehouseError
 from ..warehouse.references import ReferenceDataService
-from ..warehouse.classification import canonical_vendor, classify_card, infer_vendor
+from ..warehouse.classification import (
+    canonical_vendor,
+    classify_card,
+    infer_vendor,
+    operational_category,
+)
 
 
 class WarehouseCore:
@@ -102,11 +107,8 @@ class WarehouseCore:
             if not self.db_path.is_file():
                 raise FileNotFoundError(self.db_path)
             self.default_admin_created = False
-        if self.default_admin_created:
-            print(
-                "Создан администратор ODE: email lokolis, пароль lokolis. "
-                "Смените пароль после первого входа."
-            )
+        # Bootstrap credentials are documented for the local compatibility
+        # runtime, but must never be echoed into application or CI logs.
         self.reference_catalog = ReferenceDataService(self)
 
     @staticmethod
@@ -119,19 +121,7 @@ class WarehouseCore:
     def _operational_category(
         equipment_type: Any, component_type: Any, cable_type: Any
     ) -> str:
-        equipment = str(equipment_type or "").strip().casefold()
-        component = str(component_type or "").strip().casefold()
-        if str(cable_type or "").strip():
-            return "Кабели"
-        if component in {"аксессуар", "accessory"}:
-            return "Аксессуары"
-        if component in {"прочий компонент", "other"}:
-            return "Прочее"
-        if component:
-            return "Компоненты"
-        if equipment in {"прочее оборудование", "other"} or not equipment:
-            return "Прочее"
-        return "Оборудование"
+        return operational_category(equipment_type, component_type, cable_type)
 
     def authenticate(
         self, email: str, password: str, *, record_login: bool = True
@@ -307,19 +297,67 @@ class WarehouseCore:
         }
         rows: list[dict[str, Any]] = []
         with connect(self.db_path) as db:
-            for row in db.execute("SELECT created_at event_date,responsible engineer,CASE WHEN is_opening_balance=1 THEN 'Начальный остаток' ELSE 'Приход' END action,serial_number,item_name,quantity,'' comment FROM stock_receipts ORDER BY id DESC LIMIT ?", (limit,)):
-                rows.append(dict(row))
-            for row in db.execute("SELECT created_at event_date,responsible engineer,'Расход' action,source_serial_number serial_number,source_item_name item_name,quantity,comment FROM stock_issues ORDER BY id DESC LIMIT ?", (limit,)):
-                rows.append(dict(row))
-            for row in db.execute("SELECT event_date,author engineer,action,details,entity_id FROM audit_log WHERE action LIKE 'DELIVERY_%' OR action IN ('RECEIPT_IMPORT','ISSUE_IMPORT') ORDER BY id DESC LIMIT ?", (limit,)):
+            for row in db.execute("""SELECT id history_id,NULLIF(trim(receipt_date),'') event_date,responsible engineer,
+                    CASE WHEN is_opening_balance=1 OR trim(COALESCE(responsible,''))='Историческая миграция'
+                         THEN 'Начальный остаток' ELSE 'Приход' END action,
+                    serial_number,inventory_number,item_name,quantity,'' comment,
+                    CASE WHEN is_opening_balance=1 OR trim(COALESCE(responsible,''))='Историческая миграция' THEN 1 ELSE 0 END is_opening_balance
+                    FROM stock_receipts
+                    ORDER BY CASE WHEN is_opening_balance=1 OR trim(COALESCE(responsible,''))='Историческая миграция' THEN 1 ELSE 0 END ASC,
+                             NULLIF(trim(receipt_date),'') DESC,id DESC LIMIT ?""", (limit,)):
+                item = dict(row)
+                item["_history_source"] = "receipt"
+                rows.append(item)
+            for row in db.execute("SELECT id history_id,NULLIF(trim(issue_date),'') event_date,responsible engineer,'Расход' action,source_serial_number serial_number,'' inventory_number,source_item_name item_name,quantity,comment,0 is_opening_balance FROM stock_issues ORDER BY NULLIF(trim(issue_date),'') DESC,id DESC LIMIT ?", (limit,)):
+                item = dict(row)
+                item["_history_source"] = "issue"
+                rows.append(item)
+            for row in db.execute("""SELECT o.id history_id,o.operation_date event_date,
+                    o.responsible engineer,'Перемещение' action,
+                    e.serial_number,e.inventory_number,e.model item_name,o.quantity,
+                    trim(o.basis || CASE WHEN src.code IS NOT NULL OR dst.code IS NOT NULL
+                        THEN '; ' || COALESCE(src.code,'') || ' -> ' || COALESCE(dst.code,'')
+                        ELSE '' END) comment,0 is_opening_balance
+                    FROM operations o JOIN equipment e ON e.id=o.equipment_id
+                    LEFT JOIN locations src ON src.id=o.from_location_id
+                    LEFT JOIN locations dst ON dst.id=o.to_location_id
+                    WHERE o.operation_type='MOVE'
+                    ORDER BY o.operation_date DESC,o.id DESC LIMIT ?""", (limit,)):
+                item = dict(row)
+                item["_history_source"] = "movement"
+                rows.append(item)
+            for row in db.execute("SELECT id history_id,event_date,author engineer,action,details,entity_id FROM audit_log WHERE action LIKE 'DELIVERY_%' OR action IN ('RECEIPT_IMPORT','ISSUE_IMPORT') ORDER BY event_date DESC,id DESC LIMIT ?", (limit,)):
                 details = json.loads(row["details"] or "{}") if str(row["details"] or "").startswith("{") else {}
                 rows.append({"event_date": row["event_date"], "engineer": row["engineer"],
                     "action": labels.get(row["action"], "Изменение склада"),
                     "serial_number": details.get("serial_number", ""),
+                    "inventory_number": details.get("inventory_number", ""),
+                    "entity_id": row["entity_id"],
                     "item_name": details.get("item_name", ""), "quantity": details.get("quantity", ""),
-                    "comment": details.get("filename", "") or details.get("reason", "")})
-        rows.sort(key=lambda x: str(x.get("event_date", "")), reverse=True)
-        return rows[:limit]
+                    "comment": details.get("filename", "") or details.get("reason", ""),
+                    "is_opening_balance": 0, "history_id": row["history_id"],
+                    "_history_source": "audit"})
+
+        def sort_key(item: dict[str, Any]) -> tuple[datetime, int, str]:
+            raw_date = str(item.get("event_date") or "").strip()
+            try:
+                event_time = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                if event_time.tzinfo is not None:
+                    event_time = event_time.replace(tzinfo=None)
+            except ValueError:
+                event_time = datetime.min
+            return (
+                event_time,
+                int(item.get("history_id") or 0),
+                str(item.get("_history_source") or ""),
+            )
+
+        rows.sort(key=sort_key, reverse=True)
+        result = rows[:limit]
+        for item in result:
+            item.pop("history_id", None)
+            item.pop("_history_source", None)
+        return result
 
     @property
     def backup_dir(self) -> Path:
@@ -1775,16 +1813,33 @@ class WarehouseCore:
                        LEFT JOIN allocations a ON a.receipt_id = r.id
                    ), positions AS (
                        SELECT CASE
+                                  WHEN lower(trim(cable_type)) IN ('aoc','dac') THEN 'Кабельные сборки'
                                   WHEN trim(cable_type) <> '' THEN 'Кабели'
-                                  WHEN lower(trim(component_type)) IN ('аксессуар','accessory')
-                                      THEN 'Аксессуары'
-                                  WHEN lower(trim(component_type)) IN ('прочий компонент','other')
-                                      THEN 'Прочее'
-                                  WHEN trim(component_type) <> '' THEN 'Компоненты'
-                                  WHEN lower(trim(equipment_type)) IN ('прочее оборудование','other')
-                                      THEN 'Прочее'
+                                  WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')) = 'Трансивер'
+                                       OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))) = 'transceiver'
+                                      THEN 'Трансиверы'
+                                  WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')) = 'Оперативная память'
+                                       OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))) IN ('memory','ram')
+                                      THEN 'Память'
+                                  WHEN lower(trim(COALESCE(NULLIF(component_type,''),NULLIF(equipment_type,''),'')))
+                                       IN ('ssd','hdd') THEN 'Накопители'
+                                  WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))
+                                       IN ('Сетевой адаптер','HBA-адаптер','RAID-контроллер')
+                                       OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')))
+                                       IN ('nic','hba','raid controller')
+                                      THEN 'Адаптеры и контроллеры'
+                                  WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')) = 'Аксессуар'
+                                       OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))) = 'accessory'
+                                      THEN 'Другое оборудование'
+                                  WHEN trim(component_type) = 'Прочий компонент'
+                                       OR lower(trim(component_type)) = 'other'
+                                      THEN 'Другое оборудование'
+                                  WHEN trim(component_type) <> '' THEN 'Комплектующие'
+                                  WHEN trim(equipment_type) = 'Прочее оборудование'
+                                       OR lower(trim(equipment_type)) = 'other'
+                                      THEN 'Другое оборудование'
                                   WHEN trim(equipment_type) <> '' THEN 'Оборудование'
-                                  ELSE 'Прочее'
+                                  ELSE 'Другое оборудование'
                               END AS category,
                               COALESCE(
                                   NULLIF(trim(equipment_type), ''),
@@ -1805,10 +1860,14 @@ class WarehouseCore:
                    GROUP BY category, item_type
                    ORDER BY CASE category
                                 WHEN 'Оборудование' THEN 1
-                                WHEN 'Компоненты' THEN 2
-                                WHEN 'Аксессуары' THEN 3
-                                WHEN 'Кабели' THEN 4
-                                ELSE 5
+                                WHEN 'Трансиверы' THEN 2
+                                WHEN 'Память' THEN 3
+                                WHEN 'Накопители' THEN 4
+                                WHEN 'Адаптеры и контроллеры' THEN 5
+                                WHEN 'Комплектующие' THEN 6
+                                WHEN 'Кабели' THEN 7
+                                WHEN 'Кабельные сборки' THEN 8
+                                ELSE 9
                             END,
                             positions DESC, item_type COLLATE NOCASE"""
             ).fetchall()
@@ -1821,6 +1880,34 @@ class WarehouseCore:
             }
             for row in rows
         ]
+
+    def warehouse_model_options(self) -> list[dict[str, Any]]:
+        """Return model choices scoped by the actually observed vendor and item type."""
+        with connect(self.db_path) as db:
+            rows = db.execute(
+                """WITH allocations AS (
+                       SELECT receipt_id, SUM(quantity) AS issued
+                       FROM stock_issue_allocations GROUP BY receipt_id
+                   ), lots AS (
+                       SELECT trim(r.vendor) AS vendor, trim(r.model) AS model,
+                              COALESCE(
+                                  NULLIF(trim(r.equipment_type), ''),
+                                  NULLIF(trim(r.component_type), ''),
+                                  NULLIF(trim(r.cable_type), ''),
+                                  'Без типа'
+                              ) AS item_type,
+                              r.quantity - COALESCE(a.issued, 0) AS balance
+                       FROM stock_receipts r
+                       LEFT JOIN allocations a ON a.receipt_id = r.id
+                   )
+                   SELECT vendor, model, item_type, COUNT(*) AS positions
+                   FROM lots
+                   WHERE balance > 0.0000001 AND vendor <> '' AND model <> ''
+                   GROUP BY vendor, model, item_type
+                   ORDER BY vendor COLLATE NOCASE, item_type COLLATE NOCASE,
+                            positions DESC, model COLLATE NOCASE"""
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def stock_balance(
         self,
@@ -1919,16 +2006,33 @@ class WarehouseCore:
                           object_name, equipment_type, component_type, cable_type,
                           datacenter,
                           CASE
+                              WHEN lower(trim(cable_type)) IN ('aoc','dac') THEN 'Кабельные сборки'
                               WHEN trim(cable_type) <> '' THEN 'Кабели'
-                              WHEN lower(trim(component_type)) IN ('аксессуар','accessory')
-                                  THEN 'Аксессуары'
-                              WHEN lower(trim(component_type)) IN ('прочий компонент','other')
-                                  THEN 'Прочее'
-                              WHEN trim(component_type) <> '' THEN 'Компоненты'
-                              WHEN lower(trim(equipment_type)) IN ('прочее оборудование','other')
-                                  THEN 'Прочее'
+                              WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')) = 'Трансивер'
+                                   OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))) = 'transceiver'
+                                  THEN 'Трансиверы'
+                              WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')) = 'Оперативная память'
+                                   OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))) IN ('memory','ram')
+                                  THEN 'Память'
+                              WHEN lower(trim(COALESCE(NULLIF(component_type,''),NULLIF(equipment_type,''),'')))
+                                   IN ('ssd','hdd') THEN 'Накопители'
+                              WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))
+                                   IN ('Сетевой адаптер','HBA-адаптер','RAID-контроллер')
+                                   OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')))
+                                   IN ('nic','hba','raid controller')
+                                  THEN 'Адаптеры и контроллеры'
+                              WHEN trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),'')) = 'Аксессуар'
+                                   OR lower(trim(COALESCE(NULLIF(trim(component_type),''),NULLIF(trim(equipment_type),''),''))) = 'accessory'
+                                  THEN 'Другое оборудование'
+                              WHEN trim(component_type) = 'Прочий компонент'
+                                   OR lower(trim(component_type)) = 'other'
+                                  THEN 'Другое оборудование'
+                              WHEN trim(component_type) <> '' THEN 'Комплектующие'
+                              WHEN trim(equipment_type) = 'Прочее оборудование'
+                                   OR lower(trim(equipment_type)) = 'other'
+                                  THEN 'Другое оборудование'
                               WHEN trim(equipment_type) <> '' THEN 'Оборудование'
-                              ELSE 'Прочее'
+                              ELSE 'Другое оборудование'
                           END AS category,
                           COALESCE(
                               NULLIF(trim(equipment_type), ''),
@@ -2348,6 +2452,86 @@ class WarehouseCore:
         for row in history:
             row.pop("sort_id", None)
         return {"position": card, "history": history}
+
+    def update_position_card(
+        self, serial_number: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Update descriptive fields of one serialized card without changing identity/history."""
+
+        actor = self._require_write()
+        serial_number = self._required(str(serial_number or ""), "S/N")
+        editable = (
+            "item_name", "supplier", "vendor", "model", "project", "shelf",
+            "object_name", "datacenter", "equipment_type", "component_type",
+            "cable_type", "unit",
+        )
+        normalized: dict[str, str] = {}
+        for field in editable:
+            value = str(fields.get(field, "") or "").strip()
+            if len(value) > (1000 if field == "item_name" else 255):
+                raise WarehouseError(f"Поле «{field}» слишком длинное")
+            normalized[field] = value
+        # Обязательны только идентификационно значимые поля: наименование и
+        # тип (проверяется ниже). Остальные — описательные (поставщик, объект,
+        # ЦОД, единица, вендор, модель, проект, полка) — могут быть пустыми:
+        # у 99% исторических карточек «Объект» и у части «Поставщик» изначально
+        # пусты, и требование их заполнения блокировало бы любое редактирование.
+        normalized["item_name"] = self._required(normalized["item_name"], "наименование")
+        selected_types = [
+            field for field in ("equipment_type", "component_type", "cable_type")
+            if normalized[field]
+        ]
+        if len(selected_types) != 1:
+            raise WarehouseError("Выберите ровно один тип карточки")
+
+        with self.lock, connect(self.db_path) as db:
+            rows = db.execute(
+                "SELECT * FROM stock_receipts WHERE serial_number=? COLLATE NOCASE ORDER BY id",
+                (serial_number,),
+            ).fetchall()
+            if len(rows) != 1:
+                raise WarehouseError(
+                    "Карточка не найдена" if not rows
+                    else "Для S/N найдено несколько карточек; автоматическое редактирование заблокировано"
+                )
+            row = rows[0]
+            type_field = selected_types[0]
+            if normalized[type_field] != str(row[type_field] or ""):
+                if self.reference_catalog.has_v2(db):
+                    exists = db.execute(
+                        """SELECT 1 FROM reference_values_v2 v
+                           JOIN reference_domains_v2 d ON d.id=v.domain_id
+                           WHERE d.domain_key=? AND v.display_name=? COLLATE NOCASE
+                             AND v.active=1 AND v.approval_status='APPROVED'""",
+                        (type_field, normalized[type_field]),
+                    ).fetchone()
+                else:
+                    exists = db.execute(
+                        """SELECT 1 FROM reference_values
+                           WHERE kind=? AND name=? COLLATE NOCASE AND is_active=1""",
+                        (type_field, normalized[type_field]),
+                    ).fetchone()
+                if exists is None:
+                    raise WarehouseError("Выбранный тип отсутствует в активном справочнике")
+            before = {field: str(row[field] or "") for field in editable}
+            changed = {
+                field: {"before": before[field], "after": normalized[field]}
+                for field in editable if before[field] != normalized[field]
+            }
+            if changed:
+                assignments = ",".join(f"{field}=?" for field in editable)
+                db.execute(
+                    f"UPDATE stock_receipts SET {assignments} WHERE id=?",
+                    (*[normalized[field] for field in editable], int(row["id"])),
+                )
+                self._audit(
+                    db, "EQUIPMENT_CARD_UPDATED", "stock_receipt", int(row["id"]),
+                    {"serial_number": str(row["serial_number"]), "changed": changed,
+                     "actor_id": actor["id"]},
+                )
+        result = self.position_card(serial_number=serial_number)["position"]
+        result["updated"] = bool(changed)
+        return result
 
     def _prepare_issue(
         self, source: dict[str, Any], references: dict[str, set[str]], line: int | None = None
@@ -2966,13 +3150,20 @@ class WarehouseCore:
                 (limit,),
             ).fetchall()
             duplicate_rows = db.execute(
-                """WITH problems AS (
-                       SELECT serial_number, COUNT(*) AS count
+                """WITH dup AS (
+                       SELECT serial_number
                          FROM stock_receipts WHERE trim(serial_number) <> ''
                         GROUP BY serial_number COLLATE NOCASE HAVING COUNT(*) > 1
+                   ), problems AS (
+                       SELECT r.id, r.receipt_date AS date, r.item_name,
+                              r.serial_number, r.inventory_number, r.vendor,
+                              r.model, r.quantity
+                         FROM stock_receipts r
+                         JOIN dup ON r.serial_number = dup.serial_number COLLATE NOCASE
                    )
-                   SELECT problems.*, COUNT(*) OVER() AS _total_count
-                     FROM problems LIMIT ?""",
+                   SELECT problems.*, (SELECT COUNT(*) FROM dup) AS _total_count
+                     FROM problems
+                    ORDER BY serial_number COLLATE NOCASE, id LIMIT ?""",
                 (limit,),
             ).fetchall()
             negative_rows = db.execute(

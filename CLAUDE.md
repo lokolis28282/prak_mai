@@ -21,7 +21,7 @@
 подробности — в `docs/README.md` (индекс архитектурной документации) и в
 `README.md` (пользовательская инструкция).
 
-Current source/runtime metadata: ODE `0.14.0`; последний фактический ZIP
+Current source/runtime metadata: ODE `0.15.0`; последний фактический ZIP
 остаётся `0.12.17 RC1`. Новый Windows artifact не собран.
 
 ## Текущий локальный контур (2026-07-14)
@@ -317,7 +317,7 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 464 tests under
+Current full discover result is 527 tests under
 `-W error::ResourceWarning`. Never run a 51,003-row
 operational import as a performance test.
 
@@ -376,7 +376,7 @@ Stage создаётся датированный report/appendix.
 5. Актуальные release-заметки хранить в `RELEASE_REPORT_ODE_*.md`; release-
    архивы находятся в `release/` и не коммитятся.
 
-## Известные ограничения (source/runtime 0.14.0; ZIP 0.12.17 RC1)
+## Известные ограничения (source/runtime 0.15.0; ZIP 0.12.17 RC1)
 
 - SQLite не рассчитана на активную многопользовательскую запись — актуально
   для этапов «несколько инженеров» и «сервер», требует отдельного решения.

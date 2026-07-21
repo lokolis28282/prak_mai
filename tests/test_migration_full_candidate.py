@@ -137,6 +137,16 @@ class FullMigrationCandidateTest(unittest.TestCase):
             self.assertEqual(stats["cards"], 50_000)
             self.assertEqual(stats["issues"], 18_798)
             self.assertGreater(len(service.references()), 800)
+            with closing(sqlite3.connect(promoted)) as connection, connection:
+                connection.execute(
+                    """INSERT INTO stock_receipts(
+                           receipt_date,responsible,item_name,supplier,vendor,
+                           object_name,datacenter,cable_type,unit,quantity,is_opening_balance
+                       ) VALUES('2026-07-18','test','Патчкорд UTP 1м','test','test',
+                                'test','Ixcellerate','UTP','шт',1,1)"""
+                )
+            grown = validate_full_migration_database(promoted, enabled=False)
+            self.assertEqual(grown["receipts"], 50_001)
             initialized_sha = sha256_file(promoted)
             WarehouseService(promoted)
             self.assertEqual(sha256_file(promoted), initialized_sha)

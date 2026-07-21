@@ -30,21 +30,29 @@ class FullInventoryFrontendContractTest(unittest.TestCase):
         self.assertNotIn("/approve", self.javascript)
         self.assertNotIn("/publish", self.javascript.casefold())
         self.assertIn("candidate-rehearsal", self.javascript)
-        self.assertIn("публикация отключена", self.javascript)
+        self.assertIn("активация выполняется отдельным контролируемым этапом", self.javascript)
+        for technical_term in ("FULL inventory session", "Preview rows", "Disposable baseline rehearsal"):
+            self.assertNotIn(technical_term, self.javascript)
         self.assertIn("COMPATIBILITY", self.javascript.upper())
 
-    def test_permanent_historical_and_demo_messages_are_styled(self) -> None:
-        self.assertIn("Склад не инициализирован", self.javascript)
+    def test_inventory_and_demo_messages_are_styled(self) -> None:
+        self.assertNotIn("Показанные остатки рассчитаны", self.javascript)
+        self.assertIn("banner.hidden=true", self.javascript)
         self.assertIn("DEMO", self.javascript)
-        self.assertIn("историческим расчётом", self.javascript)
+        self.assertIn("disposable базе", self.javascript)
+        self.assertIn("status?.posting_allowed", self.javascript)
         self.assertIn(".warehouse-system-banner", self.css)
         self.assertIn(".test-circuit-banner+.app .warehouse-system-banner", self.css)
         self.assertIn(".full-inventory-app", self.css)
 
     def test_baseline_timestamp_and_deferred_catalog_limit_are_explicit(self) -> None:
         self.assertIn("baseline_timestamp", self.javascript)
-        self.assertIn("Catalog/Model", self.javascript)
-        self.assertIn("не выполняет автоматическое linking", self.javascript)
+        self.assertIn("Автоматическое сопоставление моделей пока не выполняется", self.javascript)
+        self.assertIn("Начать полную инвентаризацию", self.javascript)
+        self.assertIn("Скачать XLSX для сканирования", self.javascript)
+        self.assertIn("актуальные типы, наименования и полки", self.javascript)
+        self.assertIn("Как сформировать фактический баланс", self.javascript)
+        self.assertIn("этот список станет новым фактическим балансом", self.javascript)
         current_state = (
             ROOT / "docs/project/reviews/2026-07-16_FULL_INVENTORY_SLICE_1_CURRENT_STATE.md"
         ).read_text(encoding="utf-8")

@@ -103,6 +103,16 @@ class DeliveryRepository:
         with connect(self.db_path) as db:
             return [dict(row) for row in db.execute(sql, params).fetchall()]
 
+    def get_delivery_line_selection(self, delivery_id: int) -> list[dict[str, Any]]:
+        """Return the compact, unpaginated selection state for one delivery."""
+        with connect(self.db_path) as db:
+            rows = db.execute(
+                """SELECT id, state FROM delivery_lines
+                   WHERE delivery_id=? ORDER BY row_number,id""",
+                (delivery_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def delivery_line_summary(self, delivery_id: int) -> dict[str, int]:
         with connect(self.db_path) as db:
             row = db.execute(

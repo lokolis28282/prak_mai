@@ -52,7 +52,7 @@ class IssueWriteService:
 
     def validate_issue_target(self, serial_number: str) -> dict[str, Any]:
         self._require_write()
-        serial = self._required(str(serial_number).strip().upper(), "S/N сервера")
+        serial = self._required(str(serial_number).strip().upper(), "S/N целевого оборудования")
         with connect(self.repository.db_path) as db:
             row = db.execute(
                 """SELECT serial_number, item_name, model, datacenter, shelf
@@ -66,7 +66,7 @@ class IssueWriteService:
         if row is None:
             return {
                 "serial_number": serial, "found": False, "valid": False,
-                "error": "Целевой сервер с таким S/N не найден",
+                "error": "Целевое оборудование с таким S/N не найдено",
             }
         return {
             "serial_number": serial, "found": True, "valid": True,
@@ -143,7 +143,7 @@ class IssueWriteService:
             source = str(pair.get("source_serial_number", "")).strip().upper()
             target = str(pair.get("target_serial_number", "")).strip().upper()
             if not source or not target:
-                raise WarehouseError(f"Строка {line}: укажите S/N компонента и S/N сервера")
+                raise WarehouseError(f"Строка {line}: укажите S/N компонента и S/N целевого оборудования")
             source_key = source.casefold()
             if source_key in seen_sources:
                 raise WarehouseError(f"Строка {line}: S/N компонента повторяется в списке")

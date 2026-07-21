@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from inventory.core.application import create_application_context
 from inventory.service import WarehouseError, WarehouseService
-from inventory.webapp import make_handler
+from inventory.webapp import LOGIN_HTML, make_handler
 
 
 class _Headers(dict[str, str]):
@@ -56,6 +56,25 @@ class WebappSecurityTest(unittest.TestCase):
         handler.headers = _Headers({"Cookie": cookie})
         return handler._session_email()
 
+    def _data(self, cookie: str) -> tuple[int, dict[str, Any]]:
+        handler = self.handler_class.__new__(self.handler_class)
+        handler.path = "/api/data"
+        handler.headers = _Headers({"Cookie": cookie})
+        handler._send_json = lambda status, data: setattr(
+            handler, "captured", (status, data)
+        )
+        handler.do_GET()
+        return handler.captured
+
+    def _logout(self, cookie: str) -> tuple[int, dict[str, Any]]:
+        handler = self.handler_class.__new__(self.handler_class)
+        handler.headers = _Headers({"Cookie": cookie})
+        handler._send_json = lambda status, data: setattr(
+            handler, "captured", (status, data)
+        )
+        handler._logout()
+        return handler.captured
+
     def _action(self, cookie: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         handler = self.handler_class.__new__(self.handler_class)
@@ -82,6 +101,38 @@ class WebappSecurityTest(unittest.TestCase):
 
         with patch("inventory.webapp.time.monotonic", return_value=100.0 + 12 * 60 * 60 + 1):
             self.assertEqual(self._session_email(cookie), "")
+
+    def test_engineer_sessions_keep_their_own_selected_identity(self) -> None:
+        first_status, _, first_cookie = self._login({
+            "mode": "engineer", "full_name": "Иванов Иван Иванович",
+        })
+        second_status, _, second_cookie = self._login({
+            "mode": "engineer", "full_name": "Петров Пётр Петрович",
+        })
+
+        self.assertEqual((first_status, second_status), (200, 200))
+        first_data = self._data(first_cookie)[1]["current_user"]
+        second_data = self._data(second_cookie)[1]["current_user"]
+        self.assertEqual(first_data["display_name"], "Иванов Иван Иванович")
+        self.assertEqual(second_data["display_name"], "Петров Пётр Петрович")
+        self.assertEqual(first_data["position"], "Дежурный инженер")
+        self.assertEqual(second_data["position"], "Дежурный инженер")
+        self.assertNotEqual(first_cookie, second_cookie)
+
+    def test_logout_clears_selected_engineer_session(self) -> None:
+        status, _, cookie = self._login({
+            "mode": "engineer", "full_name": "Иванов Иван Иванович",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(self._data(cookie)[0], 200)
+        self.assertEqual(self._logout(cookie)[0], 200)
+        self.assertEqual(self._session_email(cookie), "")
+
+    def test_login_form_uses_explicit_submit_mode(self) -> None:
+        self.assertIn('data-mode="engineer"', LOGIN_HTML)
+        self.assertIn('data-mode="admin"', LOGIN_HTML)
+        self.assertIn("e.submitter?.dataset.mode", LOGIN_HTML)
+        self.assertNotIn("data.mode=credentials?'admin':'engineer'", LOGIN_HTML)
 
     def test_session_store_is_bounded_and_evicts_oldest_session(self) -> None:
         user = self.service.user_by_email("lokolis")

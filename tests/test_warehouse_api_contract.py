@@ -84,11 +84,99 @@ class WarehouseReadApiContractTest(unittest.TestCase):
     def test_api_data_contract_keys_and_plain_json(self) -> None:
         status, payload, _ = self._call_get("/api/data")
         self.assertEqual(status, 200)
-        for key in ("stats", "equipment", "operations", "categories", "locations", "balance", "deliveries", "warehouse_history", "current_user"):
+        for key in ("stats", "equipment", "operations", "categories", "locations", "balance", "deliveries", "warehouse_history", "warehouse_model_options", "current_user"):
             self.assertIn(key, payload)
         self.assertIsInstance(payload["balance"], list)
         self.assertTrue(any(row["serial_number"] == "API-CONTRACT-1" for row in payload["balance"]))
+        self.assertTrue(any(
+            row["vendor"] == "Dell" and row["item_type"] == "Сервер" and row["model"] == "R650"
+            for row in payload["warehouse_model_options"]
+        ))
         json.dumps(payload)
+
+    def test_recent_receipts_exclude_system_opening_balance_rows(self) -> None:
+        with closing(sqlite3.connect(self.db_path)) as db:
+            db.execute(
+                "UPDATE stock_receipts SET is_opening_balance=1 WHERE serial_number=?",
+                ("API-CONTRACT-1",),
+            )
+            db.commit()
+        self.service.add_stock_receipt(**{
+            "receipt_date": "2026-07-12", "responsible": "Тестов Инженер",
+            "item_name": "Трансивер тестовый", "project": "Digital",
+            "serial_number": "API-RECENT-2", "inventory_number": "INV-RECENT-2",
+            "supplier": "Поставщик", "vendor": "Cisco", "model": "QSFP-100G",
+            "shelf": "A-02", "object_name": "Склад", "datacenter": "Ixcellerate",
+            "equipment_type": "", "component_type": "Трансивер", "cable_type": "",
+            "unit": "шт", "quantity": "1",
+        })
+        self.service.add_stock_receipt(**{
+            "receipt_date": "2026-07-13", "responsible": "Историческая миграция",
+            "item_name": "Историческая позиция", "project": "Digital",
+            "serial_number": "API-HISTORICAL-3", "inventory_number": "",
+            "supplier": "", "vendor": "", "model": "", "shelf": "",
+            "object_name": "", "datacenter": "", "equipment_type": "",
+            "component_type": "Трансивер", "cable_type": "", "unit": "шт", "quantity": "1",
+        })
+        self.service.add_stock_issue(
+            issue_date="2026-07-13", responsible="Тестов Инженер",
+            task_type="ПНР", task_number="API-DATE",
+            target_serial_number="API-CONTRACT-1", target_hostname="",
+            source_serial_number="API-RECENT-2", source_item_name="",
+            source_cable_type="", quantity="1", comment="",
+        )
+        overview = self.context.warehouse.get_overview()
+        serials = [row["serial_number"] for row in overview["recent_receipts"]]
+        self.assertIn("API-RECENT-2", serials)
+        self.assertNotIn("API-CONTRACT-1", serials)
+        self.assertNotIn("API-HISTORICAL-3", serials)
+        self.assertTrue(any(
+            row["serial_number"] == "API-RECENT-2" and not row["is_opening_balance"]
+            for row in overview["warehouse_history"]
+        ))
+        self.assertTrue(any(
+            row["serial_number"] == "API-RECENT-2" and row["event_date"] == "2026-07-12"
+            for row in overview["warehouse_history"]
+        ))
+        self.assertTrue(any(
+            row["serial_number"] == "API-RECENT-2" and row["action"] == "Расход"
+            and row["event_date"] == "2026-07-13"
+            for row in overview["warehouse_history"]
+        ))
+        self.assertTrue(any(
+            row["serial_number"] == "API-HISTORICAL-3" and row["is_opening_balance"]
+            for row in overview["warehouse_history"]
+        ))
+
+    def test_warehouse_history_is_sorted_by_date_then_newest_id(self) -> None:
+        for serial in ("API-ORDER-1", "API-ORDER-2"):
+            self.service.add_stock_receipt(**{
+                "receipt_date": "2026-07-14", "responsible": "Тестов Инженер",
+                "item_name": "Тест порядка", "project": "Digital",
+                "serial_number": serial, "inventory_number": "INV-" + serial,
+                "supplier": "Поставщик", "vendor": "Dell", "model": "R650",
+                "shelf": "A-01", "object_name": "Склад", "datacenter": "Ixcellerate",
+                "equipment_type": "Сервер", "component_type": "", "cable_type": "",
+                "unit": "шт", "quantity": "1",
+            })
+
+        rows = [
+            row for row in self.context.warehouse.get_overview()["warehouse_history"]
+            if row.get("serial_number") in {"API-ORDER-1", "API-ORDER-2"}
+        ]
+        self.assertEqual(
+            [row["serial_number"] for row in rows],
+            ["API-ORDER-2", "API-ORDER-1"],
+        )
+
+    def test_empty_warehouse_history_is_returned_as_an_empty_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "empty.db"
+            service = WarehouseService(db_path)
+            context = create_application_context(
+                db_path, service=service, warehouse_contour="demo"
+            )
+            self.assertEqual(context.warehouse.get_overview()["warehouse_history"], [])
 
     def test_balance_endpoint_filters_and_csv_contract(self) -> None:
         status, payload, _ = self._call_get("/api/balance?query=API-CONTRACT-1")
@@ -114,7 +202,7 @@ class WarehouseReadApiContractTest(unittest.TestCase):
         })
         query = urlencode({
             "query": "SSD", "project": "Digital", "supplier": "Поставщик",
-            "vendor": "Samsung", "category": "Компоненты", "item_type": "SSD",
+            "vendor": "Samsung", "category": "Накопители", "item_type": "SSD",
             "stock_state": "positive", "sort_by": "model", "sort_dir": "desc",
             "limit": "1", "offset": "0",
         })

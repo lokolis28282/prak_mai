@@ -91,6 +91,46 @@ class ReceiptWriteService:
             author=self.audit_author(),
         )
 
+    def fill_receipt_fields(self, receipt_id: int, values: dict[str, Any]) -> dict[str, Any]:
+        """Fill empty project/shelf/vendor/model on a card from the
+        "Неполные строки" data-quality review. Fill-empty-only."""
+        self._require_write()
+        return self.repository.fill_fields(
+            int(receipt_id),
+            {key: values.get(key, "") for key in ("project", "shelf", "vendor", "model")},
+            author=self.audit_author(),
+        )
+
+    def fill_receipt_date(self, receipt_id: int, receipt_date: str) -> dict[str, Any]:
+        """Fill an empty receipt_date on a card from the "Неполные строки"
+        review. Fill-empty-only; the value is validated and audited as manual."""
+        self._require_write()
+        return self.repository.fill_receipt_date(
+            int(receipt_id),
+            str(receipt_date or ""),
+            author=self.audit_author(),
+        )
+
+    def correct_duplicate_serial(self, receipt_id: int, new_serial_number: str) -> dict[str, Any]:
+        """Correct one of two receipts sharing a duplicate S/N from the
+        "Дубли S/N" data-quality review."""
+        self._require_write()
+        return self.repository.correct_duplicate_serial(
+            int(receipt_id),
+            str(new_serial_number or "").strip().upper(),
+            author=self.audit_author(),
+        )
+
+    def delete_duplicate_receipt(self, receipt_id: int) -> dict[str, Any]:
+        """Delete one redundant card from the "Дубли S/N" review. Only removes a
+        card that still shares its S/N with another and has no downstream links
+        (write-offs, deliveries, migration); refused otherwise."""
+        self._require_write()
+        return self.repository.delete_duplicate_receipt(
+            int(receipt_id),
+            author=self.audit_author(),
+        )
+
     def preview_inventory_number_import(
         self,
         rows: Iterable[dict[str, Any]],

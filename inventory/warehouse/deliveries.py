@@ -37,6 +37,22 @@ class DeliveryReadService:
     def get_delivery_lines(self, delivery_id: int, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         return self.repository.get_delivery_lines(int(delivery_id), filters)
 
+    def get_delivery_selection(self, delivery_id: int) -> dict[str, Any]:
+        delivery_id = int(delivery_id)
+        if self.repository.get_delivery(delivery_id) is None:
+            raise WarehouseError("Поставка не найдена")
+        rows = self.repository.get_delivery_line_selection(delivery_id)
+        waiting = "ожидается"
+        return {
+            "delivery_id": delivery_id,
+            "all_ids": [int(row["id"]) for row in rows],
+            "waiting_ids": [
+                int(row["id"])
+                for row in rows
+                if str(row.get("state") or "").strip().casefold() == waiting
+            ],
+        }
+
     def search_deliveries(self, query: str) -> list[dict[str, Any]]:
         return self.repository.list_deliveries(query)
 

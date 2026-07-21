@@ -28,13 +28,13 @@ Evidence: `reviews/2026-07-15_WAREHOUSE_OPERATIONAL_ACCEPTANCE.md`.
 - зафиксировать release candidate и data-separation gate.
 
 Scanner Operations 0.13.4 реализован как проверяемый compatibility slice:
-строгий массовый расход и пары `компонент → сервер`. Следующий W1 slice —
-явная граница legacy history / `NOT_INITIALIZED`, затем FULL inventory Preview
-и approval baseline. До baseline scanner mutations используются только в
-disposable test contour.
+строгий массовый расход и пары `компонент → сервер`. До baseline текущие
+receipts/issues образуют рабочий provisional-баланс, поэтому обычные и scanner
+mutations разрешены в production contour. Права, S/N-first проверки и
+транзакционные ограничения не снимаются.
 
 ODE 0.14 добавил следующую цепочку без изменения рабочей БД:
-`NOT_INITIALIZED → FULL session → XLSX → Preview → resolutions → revalidation
+`PROVISIONAL_HISTORICAL → FULL session → XLSX → Preview → resolutions → revalidation
 → READY_FOR_APPROVAL → disposable target-schema candidate`. Candidate создаёт
 initial snapshot и projection и проходит target domain invariants. Реальный
 approval/publish/cutover остаётся отдельным controlled change с backup,

@@ -3,15 +3,15 @@
     NOT_INITIALIZED:'Не инициализирован',
     INVENTORY_IN_PROGRESS:'Инвентаризация выполняется',
     INVENTORY_REVIEW:'Требуется проверка',
-    BASELINE_PUBLISHING:'Публикация baseline',
-    READY:'Готов к складским операциям',
+    BASELINE_PUBLISHING:'Активация первоначального баланса',
+    READY:'Предварительный баланс активен',
     DEGRADED:'Состояние не удалось доказать'
   };
   const SESSION_LABELS={
     DRAFT:'Черновик',UPLOADED:'Файл загружен',PREVIEWING:'Проверка файла',
     REVIEW_REQUIRED:'Есть блокирующие замечания',
-    READY_FOR_APPROVAL:'Preview готов к будущему согласованию',
-    FAILED:'Ошибка Preview',REJECTED:'Отменено'
+    READY_FOR_APPROVAL:'Проверка завершена, требуется согласование',
+    FAILED:'Ошибка проверки',REJECTED:'Отменено'
   };
   const MUTATION_IDS=[
     'stockReceiptForm','scanReceiptForm','stockIssueForm','scanIssueForm',
@@ -50,23 +50,24 @@
   function renderBanner(status){
     const banner=document.getElementById('warehouseSystemBanner');
     if(!banner)return;
-    banner.hidden=false;
+    banner.hidden=true;
+    banner.replaceChildren();
     banner.className='warehouse-system-banner';
     if(status?.contour?.demo){
+      banner.hidden=false;
       banner.classList.add('demo');
-      banner.textContent='DEMO — операции разрешены только в disposable базе. Показанный остаток остаётся историческим расчётом, а не результатом полной инвентаризации.';
+      banner.textContent='DEMO — операции выполняются только в disposable базе и не затрагивают рабочий склад.';
       return;
     }
     if(status?.state==='DEGRADED'){
+      banner.hidden=false;
       banner.classList.add('degraded');
-      banner.textContent='Состояние склада не удалось доказать. Все складские записи заблокированы. '+String(status.degraded_reason||'');
-      return;
+      banner.textContent='Модуль полной инвентаризации требует проверки. Обычные складские операции сохраняют доступность. '+String(status.degraded_reason||'');
     }
-    banner.textContent='Склад не инициализирован. Показанные остатки рассчитаны по историческим данным и не подтверждены полной инвентаризацией.';
   }
 
   function applyPostingUi(status){
-    const allowed=Boolean(status?.contour?.demo);
+    const allowed=Boolean(status?.posting_allowed);
     document.body.dataset.warehouseAuthoritative=String(Boolean(status?.authoritative));
     document.body.dataset.warehousePostingAllowed=String(allowed);
     document.body.dataset.warehouseBaselineTimestamp=status?.baseline_timestamp===null?'':String(status?.baseline_timestamp||'');
@@ -74,7 +75,8 @@
       const root=document.getElementById(id);if(!root)continue;
       const controls=root.matches('input,button,select,textarea')?[root]:[...root.querySelectorAll('input,button,select,textarea')];
       for(const control of controls){
-        if(!allowed){control.disabled=true;control.title='WAREHOUSE_NOT_INITIALIZED';}
+        control.disabled=!allowed;
+        control.title=allowed?'':'WAREHOUSE_POSTING_UNAVAILABLE';
       }
     }
   }
@@ -92,7 +94,7 @@
   async function createSession(){
     try{
       await request('/api/full-inventory/sessions',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-      notify('FULL inventory session создана');await refreshStatus();
+      notify('Полная инвентаризация начата');await refreshStatus();
     }catch(error){notify(error.message,true)}
   }
 
@@ -119,7 +121,7 @@
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({session_id:session.public_id})
       });
-      notify('Preview построен');findingsOffset=0;rowsOffset=0;await refreshStatus();
+      notify('Предварительная проверка завершена');findingsOffset=0;rowsOffset=0;await refreshStatus();
     }catch(error){notify(error.message,true);await refreshStatus()}
   }
 
@@ -131,7 +133,7 @@
       if(replacement==='')return;
     }
     if(['CHOOSE_CATALOG_ITEM','CHOOSE_TARGET_LOCATION','LINK_EXISTING_EQUIPMENT'].includes(action)){
-      target=window.prompt('Canonical target / подтверждённое значение:','')??'';
+      target=window.prompt('Подтверждённое значение:','')??'';
       if(!target.trim())return;
     }
     const reason=window.prompt('Причина решения (обязательно):','Проверено инженером')??'';
@@ -165,24 +167,24 @@
   async function buildCandidateRehearsal(){
     const session=statusSession();if(!session)return;
     try{
-      notify('Собираем disposable baseline-кандидат…');
+      notify('Собираем проверочную копию первоначального баланса…');
       const result=await request('/api/full-inventory/candidate-rehearsal',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({session_id:session.public_id})
       });
-      notify(`Candidate проверен: ${result.snapshot_item_count} позиций`);await refreshStatus();
+      notify(`Проверочная копия готова: ${result.snapshot_item_count} позиций`);await refreshStatus();
     }catch(error){notify(error.message,true)}
   }
 
   async function rejectSession(){
     const session=statusSession();if(!session)return;
-    if(!confirm('Отменить эту FULL inventory session? Evidence останется в workspace.'))return;
+    if(!confirm('Отменить текущую инвентаризацию? Загруженный файл и результаты проверки сохранятся для аудита.'))return;
     try{
       await request('/api/full-inventory/reject',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({session_id:session.public_id})
       });
-      notify('Session отменена');await refreshStatus();
+      notify('Инвентаризация отменена');await refreshStatus();
     }catch(error){notify(error.message,true)}
   }
 
@@ -195,7 +197,7 @@
     const table=node('table',{children:[
       node('thead',{children:[node('tr',{children:['Строка','Уровень','Код','Поле','Сообщение','Решение'].map(text=>node('th',{text}))})]}),
       node('tbody',{children:payload.findings.length?payload.findings.map(item=>node('tr',{children:[
-        node('td',{text:item.source_row_number||'—'}),node('td',{text:item.blocking?'BLOCKING':item.severity}),
+        node('td',{text:item.source_row_number||'—'}),node('td',{text:item.blocking?'Блокирующее':item.severity==='WARNING'?'Предупреждение':item.severity}),
         node('td',{text:item.code}),node('td',{text:item.field_code||'—'}),node('td',{text:item.message}),
         item.finding_status==='RESOLVED'?node('td',{text:'Решено'}):node('td',{children:[
           item.field_code?button('Исправить',()=>recordResolution(item,'CORRECT_VALUE')):null,
@@ -218,20 +220,20 @@
     const params=new URLSearchParams({session_id:session.public_id,limit:String(pageSize),offset:String(rowsOffset)});
     const payload=await request('/api/full-inventory/rows?'+params);
     const table=node('table',{children:[
-      node('thead',{children:[node('tr',{children:['Строка','RowId','Тип','Статус','S/N','Локация','Подготовка baseline'].map(text=>node('th',{text}))})]}),
+      node('thead',{children:[node('tr',{children:['Строка','ID строки','Тип','Статус','S/N','Место хранения','Действие'].map(text=>node('th',{text}))})]}),
       node('tbody',{children:payload.rows.length?payload.rows.map(item=>node('tr',{children:[
         node('td',{text:item.source_row_number}),node('td',{text:item.source_row_id}),
         node('td',{text:item.stock_subject_kind}),node('td',{text:item.row_status}),
         node('td',{text:item.raw?.SerialNumber||'—'}),node('td',{text:item.raw?.LocationCode||'—'}),
         node('td',{children:[
-          button('Выбрать каталог',()=>recordResolution(item,'CHOOSE_CATALOG_ITEM')),
-          item.stock_subject_kind==='SERIALIZED'?button('Создать equipment',()=>recordResolution(item,'CREATE_NEW_EQUIPMENT_CANDIDATE')):null
+          button('Выбрать карточку',()=>recordResolution(item,'CHOOSE_CATALOG_ITEM')),
+          item.stock_subject_kind==='SERIALIZED'?button('Создать новую карточку',()=>recordResolution(item,'CREATE_NEW_EQUIPMENT_CANDIDATE')):null
         ]})
-      ]})):[node('tr',{children:[node('td',{className:'empty',attrs:{colspan:7},text:'Preview rows отсутствуют'})]})]})
+      ]})):[node('tr',{children:[node('td',{className:'empty',attrs:{colspan:7},text:'Строки предварительной проверки отсутствуют'})]})]})
     ]});
     return node('section',{className:'box full-inventory-evidence',children:[
       node('div',{className:'full-inventory-section-head',children:[
-        node('h3',{text:`Preview rows (${payload.total})`}),
+        node('h3',{text:`Проверенные строки (${payload.total})`}),
         node('div',{children:[
           button('Назад',async()=>{rowsOffset=Math.max(0,rowsOffset-pageSize);await renderApp()},{disabled:rowsOffset===0}),
           button('Далее',async()=>{rowsOffset+=pageSize;await renderApp()},{disabled:rowsOffset+pageSize>=payload.total})
@@ -247,29 +249,41 @@
     const session=statusSession();
     const canOperate=state?.current_user?.role==='admin'||state?.current_user?.role==='engineer';
     const header=node('div',{className:'full-inventory-head',children:[
-      node('div',{children:[node('p',{className:'eyebrow',text:'Первоначальный учёт'}),node('h2',{text:'Полная инвентаризация склада'}),node('p',{text:'XLSX проверяется во внешнем workspace. Рабочая база и historical rows не изменяются.'})]}),
+      node('div',{children:[node('p',{className:'eyebrow',text:'Первоначальный учёт'}),node('h2',{text:'Полная инвентаризация склада'}),node('p',{text:'Сначала загрузите заполненный XLSX. Проверка выполняется на отдельной безопасной копии и не меняет рабочую базу.'})]}),
       node('div',{className:'full-inventory-status',children:[node('span',{text:'Состояние'}),node('strong',{text:STATUS_LABELS[currentStatus.state]||currentStatus.state})]})
     ]});
     const actions=node('div',{className:'full-inventory-actions',children:[
-      node('a',{className:'button',text:'Скачать XLSX-шаблон',attrs:{href:'/api/full-inventory/template.xlsx'}}),
-      !session?button('Создать FULL session',createSession,{primary:true,disabled:!canOperate}):null
+      node('a',{className:'button',text:'Скачать XLSX для сканирования',attrs:{href:'/api/full-inventory/template.xlsx'}}),
+      !session?button('Начать полную инвентаризацию',createSession,{primary:true,disabled:!canOperate}):null
     ]});
     const children=[header,actions];
+    if(!session){
+      children.push(node('section',{className:'box full-inventory-guide',children:[
+        node('h3',{text:'Как сформировать фактический баланс'}),
+        node('ol',{children:[
+          node('li',{text:'Скачайте XLSX. В нём уже будут актуальные типы, наименования и полки на отдельных листах.'}),
+          node('li',{text:'Загрузите заполненный XLSX и исправьте блокирующие замечания.'}),
+          node('li',{text:'Проверьте итоговые количества и передайте результат администратору на согласование.'}),
+          node('li',{text:'После контролируемой активации этот список станет новым фактическим балансом.'})
+        ]}),
+        node('p',{className:'compatibility-notice',text:'До активации операции выполняются относительно текущего предварительного баланса.'})
+      ]}));
+    }
     if(currentStatus.state==='DEGRADED'){
-      children.push(node('div',{className:'full-inventory-error',text:currentStatus.degraded_reason||'Workspace недоступен'}));
+      children.push(node('div',{className:'full-inventory-error',text:currentStatus.degraded_reason||'Хранилище инвентаризации недоступно'}));
     }
     if(session){
       children.push(node('section',{className:'box',children:[
         node('div',{className:'full-inventory-section-head',children:[
-          node('div',{children:[node('h3',{text:SESSION_LABELS[session.session_status]||session.session_status}),node('p',{text:`Session ${session.public_id}`})]}),
-          button('Отменить session',rejectSession,{disabled:!canOperate||session.session_status==='PREVIEWING'})
+          node('div',{children:[node('h3',{text:SESSION_LABELS[session.session_status]||session.session_status}),node('p',{text:`Номер инвентаризации: ${session.public_id}`})]}),
+          button('Отменить инвентаризацию',rejectSession,{disabled:!canOperate||session.session_status==='PREVIEWING'})
         ]}),
         node('div',{className:'cards full-inventory-summary',children:[
           summaryCard('Строк',session.row_count||0),summaryCard('Блокеров',session.blocker_count||0),
           summaryCard('Предупреждений',session.warning_count||0),summaryCard('Информационных',session.informational_count||0)
         ]}),
-        node('p',{className:'compatibility-notice',text:'Локации сопоставлены через временный compatibility mapping. Перед публикацией первоначального baseline потребуется подтверждение target warehouse/location.'}),
-        node('p',{className:'compatibility-notice',text:'Проверка Catalog/Model и определение нового оборудования отложены до Slice 2 / Equipment integration. Preview не выполняет автоматическое linking по Vendor/Model.'})
+        node('p',{className:'compatibility-notice',text:'Перед активацией первоначального баланса потребуется подтвердить соответствие мест хранения.'}),
+        node('p',{className:'compatibility-notice',text:'Автоматическое сопоставление моделей пока не выполняется. Новые и неоднозначные позиции потребуют ручного решения на следующем этапе.'})
       ]}));
       if(['DRAFT','UPLOADED'].includes(session.session_status)){
         const fileInput=node('input',{attrs:{type:'file',accept:'.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}});
@@ -280,7 +294,7 @@
         const uploadLabel=node('label',{className:'button primary',text:session.session_status==='DRAFT'?'Выбрать XLSX':'Заменить XLSX'});
         uploadLabel.append(fileInput);fileInput.className='file-input';
         const uploadActions=[uploadLabel];
-        if(session.session_status==='UPLOADED')uploadActions.push(button('Построить Preview',buildPreview,{primary:true,disabled:!canOperate}));
+        if(session.session_status==='UPLOADED')uploadActions.push(button('Проверить файл',buildPreview,{primary:true,disabled:!canOperate}));
         children.push(node('div',{className:'full-inventory-upload',children:uploadActions}));
       }
       if(['REVIEW_REQUIRED','READY_FOR_APPROVAL'].includes(session.session_status)){
@@ -296,9 +310,9 @@
         catch(error){children.push(node('div',{className:'full-inventory-error',text:error.message}))}
         if(session.session_status==='READY_FOR_APPROVAL'&&state?.current_user?.role==='admin'){
           children.push(node('section',{className:'box',children:[
-            node('h3',{text:'Disposable baseline rehearsal'}),
-            node('p',{text:'Создаёт и полностью проверяет отдельную ODE target DB. Рабочая БД не заменяется; публикация отключена.'}),
-            button('Собрать baseline-кандидат',buildCandidateRehearsal,{primary:true})
+            node('h3',{text:'Проверочная сборка первоначального баланса'}),
+            node('p',{text:'Создаёт и полностью проверяет отдельную копию базы. Рабочая база не заменяется; активация выполняется отдельным контролируемым этапом.'}),
+            button('Собрать проверочную копию',buildCandidateRehearsal,{primary:true})
           ]}));
         }
       }

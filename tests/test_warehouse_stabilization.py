@@ -72,10 +72,9 @@ class CanonicalReferenceRuntimeTest(unittest.TestCase):
         self.assertEqual([row["name"] for row in self.service.reference_models("xFusion")], ["2288H"])
         self.assertEqual(self.service.reference_models("Huawei"), [])
 
-    def test_reference_editor_requires_backend_admin_permission(self) -> None:
+    def test_reference_editor_is_available_to_engineer(self) -> None:
         with self.service.user_context("lokolis", role_override="engineer"):
-            with self.assertRaises(WarehouseError):
-                self.service.reference_editor_catalog()
+            self.assertIn("domains", self.service.reference_editor_catalog())
 
     def test_used_value_is_deactivated_not_physically_deleted(self) -> None:
         self.service.set_reference_active(1, False)

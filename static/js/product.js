@@ -32,9 +32,9 @@
   sections.monitoring=[['monitoring','Мониторинг']];
   sections.works=[['worklogs','УВР']];
   sections.warehouse=[
-    ['overview','Обзор склада'],['balance','Оборудование'],['receipt','Приход'],['issue','Расход'],
-    ['inventory','Инвентаризация'],['deliveries','Поставки'],['equipment','Перемещения'],
-    ['references','Справочники']
+    ['overview','Обзор склада'],['balance','Остатки'],['receipt','Приход'],['issue','Расход'],
+    ['inventory','Инвентаризация'],['deliveries','Поставки'],
+    ['references','Справочники'],['journal','Все события']
   ];
   sections.reports=[['worklogs','УВР'],['daily','Отчет за смену'],['weekly','Отчет за неделю'],['journal','Складские операции']];
   sections.administration=[
@@ -81,13 +81,14 @@
 
   function warehouseTypeIcon(type,category){
     const value=String(type||'').toLocaleLowerCase();
-    if(category==='Кабели')return '〰';
+    if(category==='Кабели'||category==='Кабельные сборки')return '〰';
     if(/сервер|server/.test(value))return '▣';
     if(/трансив|sfp|qsfp/.test(value))return '⇄';
     if(/коммут|switch|сетев/.test(value))return '⌁';
     if(/диск|ssd|hdd/.test(value))return '◉';
     if(/памят|ram|dimm/.test(value))return '▤';
-    return category==='Компоненты'?'◇':'◆';
+    if(category==='Комплектующие'||category==='Другое оборудование')return '◇';
+    return '◆';
   }
 
   function warehouseCategoryTotals(rows,category){
@@ -95,6 +96,49 @@
       positions:result.positions+Number(row.positions||0),
       quantity:result.quantity+Number(row.quantity||0)
     }),{positions:0,quantity:0});
+  }
+
+  function warehouseOverviewKpiTile(title,value,onClick,{className='',valueClassName=''}={}){
+    return renderButton({className:`warehouse-overview-kpi ${className}`.trim(),onClick,children:[
+      renderElement('span',{text:title}),
+      renderElement('strong',{className:valueClassName,text:value})
+    ]});
+  }
+
+  function renderWarehouseOperationalKpis(){
+    const stats=state.stats||{};
+    const received=Number(stats.received_today||0),issued=Number(stats.issued_today||0);
+    const net=received-issued,blockers=Number(stats.data_quality_blockers||0),review=Number(stats.data_quality_review||0);
+    return renderElement('div',{className:'warehouse-overview-kpis',children:[
+      warehouseOverviewKpiTile('Принято сегодня',formatNumber(received),()=>openTask('warehouse','receipt'),{className:'good'}),
+      warehouseOverviewKpiTile('Выдано сегодня',formatNumber(issued),()=>openTask('warehouse','issue'),{className:'warn'}),
+      warehouseOverviewKpiTile('Изменение за смену',`${net>=0?'+':''}${formatNumber(net)}`,openWarehouseEvents,{valueClassName:net>=0?'good':'bad'}),
+      warehouseOverviewKpiTile('Ошибки учёта',formatNumber(blockers),openWarehouseProblems,{className:blockers>0?'bad':'good'}),
+      warehouseOverviewKpiTile('Данные для уточнения',formatNumber(review),openWarehouseProblems,{className:review>0?'warn':''}),
+      warehouseOverviewKpiTile('Активные поставки',formatNumber(stats.deliveries),()=>openTask('warehouse','deliveries'))
+    ]});
+  }
+
+  const warehouseFeedActionTone={RECEIPT_CREATE:'good',RECEIPT_IMPORT:'good',ISSUE_CREATE:'warn',ISSUE_IMPORT:'warn'};
+
+  function renderWarehouseActivityFeed(){
+    const events=(state.warehouse_history||[]).filter(row=>!Number(row.is_opening_balance||0)).slice(0,6);
+    const list=events.length?events.map(row=>{
+      const code=historyActionCode(row);
+      return renderElement('div',{className:'warehouse-feed-item',children:[
+        renderElement('i',{className:warehouseFeedActionTone[code]||'neutral'}),
+        renderElement('span',{text:historyActionLabel(code)}),
+        renderElement('small',{text:row.serial_number||row.item_name||row.entity_id||''}),
+        renderElement('time',{text:row.event_date||'Дата не указана'})
+      ]});
+    }):[renderElement('div',{className:'warehouse-feed-empty',text:'Операций пока нет'})];
+    return renderElement('div',{className:'panel warehouse-activity-feed',children:[
+      renderElement('div',{className:'warehouse-overview-toolbar',children:[
+        renderElement('div',{children:[renderElement('h3',{text:'Последние операции'}),renderElement('p',{text:'Обновляется после каждого прихода и расхода.'})]}),
+        renderButton({text:'Все события',className:'button',onClick:openWarehouseEvents})
+      ]}),
+      renderElement('div',{className:'warehouse-feed-list',children:list})
+    ]});
   }
 
   function openWarehouseBalance(category='',type=''){
@@ -110,53 +154,49 @@
     const root=byId('overview');
     if(!root)return;
     const rows=state.warehouse_type_summary||[];
-    const categories=['Оборудование','Компоненты','Кабели'];
-    const historical=!Boolean(state.warehouse_system?.authoritative);
-    const categoryLabels={Оборудование:'Оборудование',Компоненты:'Компоненты',Кабели:'Кабели и расходники'};
+    const categories=[
+      'Оборудование','Трансиверы','Память','Накопители',
+      'Адаптеры и контроллеры','Комплектующие','Кабели','Кабельные сборки','Другое оборудование'
+    ];
+    const categoryLabels={
+      Оборудование:'Оборудование',Трансиверы:'Трансиверы',Память:'Оперативная память',
+      Накопители:'Накопители', 'Адаптеры и контроллеры':'Адаптеры и контроллеры',
+      Комплектующие:'Прочие комплектующие',Кабели:'Кабели',
+      'Кабельные сборки':'Кабельные сборки','Другое оборудование':'Другое оборудование'
+    };
+    const categoryClasses={
+      Оборудование:'equipment',Трансиверы:'transceivers',Память:'memory',
+      Накопители:'drives','Адаптеры и контроллеры':'adapters',
+      Комплектующие:'components',Кабели:'cables','Кабельные сборки':'assemblies','Другое оборудование':'other'
+    };
     const totalPositions=rows.reduce((sum,row)=>sum+Number(row.positions||0),0);
+    const totalQuantity=rows.reduce((sum,row)=>sum+Number(row.quantity||0),0);
     const categoryCards=categories.map(category=>{
       const totals=warehouseCategoryTotals(rows,category);
-      return renderButton({className:`warehouse-overview-stat warehouse-overview-stat-${category==='Оборудование'?'equipment':category==='Компоненты'?'components':'cables'}`,onClick:()=>openWarehouseBalance(category),children:[
+      return renderButton({className:`warehouse-overview-stat warehouse-overview-stat-${categoryClasses[category]}`,onClick:()=>openWarehouseBalance(category),children:[
         renderElement('span',{text:categoryLabels[category]}),
-        renderElement('strong',{text:formatNumber(totals.positions)}),
-        renderElement('small',{text:historical?'позиций в историческом расчёте':'позиций в наличии'})
+        renderElement('strong',{text:formatNumber(totals.quantity)}),
+        renderElement('small',{text:`${formatNumber(totals.positions)} складских позиций`})
       ]});
     });
-    const typeGroups=categories.map(category=>{
-      const items=rows.filter(row=>row.category===category);
-      if(!items.length)return null;
-      return renderElement('section',{className:'warehouse-type-group',children:[
-        renderElement('div',{className:'warehouse-type-heading',children:[
-          renderElement('h3',{text:categoryLabels[category]}),
-          renderButton({text:'Показать все',className:'warehouse-link-button',onClick:()=>openWarehouseBalance(category)})
-        ]}),
-        renderElement('div',{className:'warehouse-type-grid',children:items.map(row=>renderButton({
-          className:'warehouse-type-card',onClick:()=>openWarehouseBalance(category,row.item_type),children:[
-            renderElement('span',{className:'warehouse-type-icon',text:warehouseTypeIcon(row.item_type,category)}),
-            renderElement('span',{className:'warehouse-type-name',text:balanceTypeLabel(row.item_type)}),
-            renderElement('strong',{text:formatNumber(row.positions)}),
-            renderElement('small',{text:`${historical?'Исторический расчёт':'Остаток'}: ${formatNumber(row.quantity)}`})
-          ]
-        }))})
-      ]});
-    }).filter(Boolean);
     root.replaceChildren(
       renderElement('div',{className:'warehouse-overview-head',children:[
-        renderElement('div',{children:[renderElement('p',{className:'eyebrow',text:'Склад'}),renderElement('h2',{text:historical?'Исторические складские данные':'Всё оборудование — одним взглядом'}),renderElement('p',{text:historical?'Это расчёт по сохранённой истории. Фактический баланс появится только после утверждённой FULL inventory.':'Нажмите на категорию или тип, чтобы открыть готовую выборку в балансе.'})]}),
+        renderElement('div',{children:[renderElement('p',{className:'eyebrow',text:'Склад'}),renderElement('h2',{text:'Текущий баланс склада'}),renderElement('p',{text:'Нажмите на категорию или тип, чтобы открыть готовую выборку в остатках.'})]}),
         renderButton({text:'Открыть весь баланс',className:'button primary',onClick:()=>openWarehouseBalance()})
       ]}),
       renderElement('div',{className:'warehouse-overview-stats',children:[
-        renderElement('div',{className:'warehouse-overview-stat warehouse-overview-stat-total',children:[renderElement('span',{text:historical?'Исторический расчёт':'Всего на складе'}),renderElement('strong',{text:formatNumber(totalPositions)}),renderElement('small',{text:historical?'расчётных позиций':'активных позиций'})]}),
+        renderElement('div',{className:'warehouse-overview-stat warehouse-overview-stat-total',children:[renderElement('span',{text:'Всего на складе'}),renderElement('strong',{text:formatNumber(totalQuantity)}),renderElement('small',{text:`${formatNumber(totalPositions)} активных позиций`})]}),
         ...categoryCards
       ]}),
-      renderElement('div',{className:'warehouse-overview-toolbar',children:[
-        renderElement('div',{children:[renderElement('h3',{text:'По типам'}),renderElement('p',{text:'Серверы, трансиверы, диски и остальные типы из справочника.'})]}),
+      renderWarehouseOperationalKpis(),
+      renderWarehouseActivityFeed(),
+      renderElement('div',{className:'warehouse-overview-toolbar warehouse-overview-actions',children:[
         renderElement('div',{children:[
           renderButton({text:'Принять',className:'button',onClick:()=>openTask('warehouse','receipt')}),
-          renderButton({text:'Выдать',className:'button',onClick:()=>openTask('warehouse','issue')})
+          renderButton({text:'Выдать',className:'button',onClick:()=>openTask('warehouse','issue')}),
+          renderButton({text:'Все типы',className:'button',onClick:()=>openWarehouseBalance()})
         ]})
-      ]}),
-      ...typeGroups
+      ]})
     );
   }
 
@@ -174,7 +214,7 @@
     const intro=balance?.querySelector(':scope > .import-box');
     if(intro){
       const title=intro.querySelector('strong'),description=intro.querySelector('p');
-      if(title)title.textContent='Карточки оборудования';
+      if(title)title.textContent='Складские позиции';
       if(description)description.textContent='Поиск по S/N, инвентарному номеру, наименованию, поставщику, категории и размещению.';
     }
     if(movement&&!byId('movementViewHeading')){
@@ -379,9 +419,98 @@
     if(line.cable_type)return 'cable_type';
     return 'equipment_type';
   }
+  const deliverySelection={deliveryId:0,selected:new Set(),loading:false};
+  function resetDeliverySelection(deliveryId=deliverySelection.deliveryId){
+    deliverySelection.deliveryId=Number(deliveryId)||0;
+    deliverySelection.selected.clear();
+    syncDeliverySelectionView();
+  }
+  function syncDeliverySelectionView(){
+    document.querySelectorAll('#deliveryLines .delivery-check').forEach(checkbox=>{
+      checkbox.checked=deliverySelection.selected.has(Number(checkbox.value));
+    });
+    const trigger=byId('deliverySelectTrigger');
+    if(trigger){
+      const count=deliverySelection.selected.size;
+      trigger.setAttribute('aria-label',count?`Выбрать все. Выбрано строк: ${count}`:'Выбрать все');
+    }
+  }
+  function closeDeliverySelectionMenu(returnFocus=false){
+    const menu=byId('deliverySelectMenu'),trigger=byId('deliverySelectTrigger');
+    if(menu)menu.hidden=true;
+    if(trigger)trigger.setAttribute('aria-expanded','false');
+    if(returnFocus)trigger?.focus();
+  }
+  function openDeliverySelectionMenu(){
+    const menu=byId('deliverySelectMenu'),trigger=byId('deliverySelectTrigger');
+    if(!menu||deliverySelection.loading)return;
+    menu.hidden=false;trigger?.setAttribute('aria-expanded','true');
+    menu.querySelector('[role="menuitem"]')?.focus();
+  }
+  async function applyDeliverySelection(mode){
+    if(!currentDelivery||deliverySelection.loading)return;
+    const deliveryId=Number(currentDelivery);
+    deliverySelection.loading=true;
+    try{
+      const response=await request('/api/delivery-selection?'+new URLSearchParams({id:String(deliveryId)}));
+      if(deliveryId!==Number(currentDelivery))return;
+      const ids=mode==='waiting'?response.waiting_ids:response.all_ids;
+      deliverySelection.selected=new Set((ids||[]).map(Number));
+      syncDeliverySelectionView();
+      if(mode==='waiting'&&!deliverySelection.selected.size){
+        notify('В поставке нет позиций в состоянии «Ожидается».');
+      }
+    }catch(error){
+      notify(error.message,true);
+    }finally{
+      deliverySelection.loading=false;
+      closeDeliverySelectionMenu();
+    }
+  }
+  function deliverySelectionMenu(){
+    const trigger=renderElement('button',{
+      className:'delivery-select-trigger',
+      attrs:{id:'deliverySelectTrigger',type:'button','aria-haspopup':'menu','aria-expanded':'false','aria-controls':'deliverySelectMenu'},
+      children:[renderElement('span',{text:'Выбрать все'}),renderElement('span',{className:'delivery-select-arrow',attrs:{'aria-hidden':'true'},text:'▾'})],
+      on:{click:event=>{
+        event.stopPropagation();
+        if(byId('deliverySelectMenu')?.hidden)openDeliverySelectionMenu();
+        else closeDeliverySelectionMenu();
+      },keydown:event=>{
+        if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();openDeliverySelectionMenu()}
+      }}
+    });
+    const item=(text,mode)=>renderElement('button',{
+      className:'delivery-select-item',attrs:{type:'button',role:'menuitem',tabindex:'-1'},text,
+      on:{click:event=>{event.stopPropagation();applyDeliverySelection(mode)}}
+    });
+    const menu=renderElement('div',{
+      className:'delivery-select-menu',attrs:{id:'deliverySelectMenu',role:'menu','aria-label':'Групповой выбор строк',hidden:true},
+      children:[item('Выбрать все','all'),item('Выбрать только в состоянии «Ожидается»','waiting')],
+      on:{keydown:event=>{
+        const items=[...event.currentTarget.querySelectorAll('[role="menuitem"]')],index=items.indexOf(document.activeElement);
+        if(event.key==='Escape'){event.preventDefault();closeDeliverySelectionMenu(true)}
+        if(event.key==='ArrowDown'){event.preventDefault();items[(index+1+items.length)%items.length]?.focus()}
+        if(event.key==='ArrowUp'){event.preventDefault();items[(index-1+items.length)%items.length]?.focus()}
+      }}
+    });
+    return renderElement('div',{className:'delivery-select',children:[trigger,menu]});
+  }
+  selectedDeliveryLineIds=function(){return [...deliverySelection.selected]};
+  window.clearDeliverySelection=()=>resetDeliverySelection(deliverySelection.deliveryId);
+  document.addEventListener('click',event=>{
+    if(!event.target.closest?.('.delivery-select'))closeDeliverySelectionMenu();
+  });
   function deliveryLineRow(line){
     const checkbox=renderInput({type:'checkbox',value:String(line.id)});
     checkbox.className='delivery-check';checkbox.disabled=line.state==='Принято';
+    checkbox.checked=deliverySelection.selected.has(Number(line.id));
+    checkbox.addEventListener('change',()=>{
+      const lineId=Number(line.id);
+      if(checkbox.checked)deliverySelection.selected.add(lineId);
+      else deliverySelection.selected.delete(lineId);
+      syncDeliverySelectionView();
+    });
     return renderElement('tr',{children:[
       renderElement('td',{children:[checkbox]}),textCell(line.serial_number),
       textCell(`${line.state||''}${line.error_text?' · '+line.error_text:''}`),
@@ -394,7 +523,9 @@
   }
   openDelivery=async function(id,offset=0){
     try{
-      currentDelivery=Number(id);
+      const deliveryId=Number(id);
+      if(deliverySelection.deliveryId!==deliveryId)resetDeliverySelection(deliveryId);
+      currentDelivery=deliveryId;
       const pageSize=500,response=await request('/api/delivery?'+new URLSearchParams({id:String(id),limit:String(pageSize),offset:String(offset)}));
       const delivery=response.delivery,summary=response.summary||{},root=byId('deliveryCard');
       const title=renderElement('div',{children:[
@@ -433,6 +564,7 @@
         headers:['','S/N','Состояние','Наименование','Модель','Вендор','ЦОД','Полка','Объект','Тип','Кол-во'],
         rows:response.lines||[],empty:'В поставке нет строк',rowRenderer:deliveryLineRow
       });
+      table.querySelector('thead th')?.replaceChildren(deliverySelectionMenu());
       table.querySelector('tbody').id='deliveryLines';
       const shownFrom=summary.total?offset+1:0,shownTo=Math.min(offset+(response.lines||[]).length,summary.total||0);
       const pager=renderElement('div',{className:'delivery-pager',children:[
@@ -443,6 +575,7 @@
       root.replaceChildren(renderElement('div',{className:'box',children:[
         header,stats,scannerBox,tools,renderElement('div',{className:'table-wrap',children:[table]}),pager
       ]}));
+      syncDeliverySelectionView();
       scanner.focus();
     }catch(error){notify(error.message,true)}
   };
@@ -465,98 +598,25 @@
     }catch(error){notify(error.message,true)}finally{input.value=''}
   };
 
-  let initialBalanceRows=[],balanceSearchTimer=0,balanceSearchSequence=0,balancePageOffset=0,balanceHasMore=false;
-  function renderBalanceSearchState(message,busy=false){
-    const body=byId('balanceBody');
-    if(body){
-      body.setAttribute('aria-busy',busy?'true':'false');
-      body.replaceChildren(renderElement('tr',{children:[
-        renderElement('td',{className:'empty',attrs:{colspan:12},text:message})
-      ]}));
-    }
-    setText('balanceLimit',message);
-  }
+  // Compatibility names are retained for extensions that used the former
+  // flat balance loader. The tree owns paging, filtering and stale responses.
+  const BALANCE_CHUNK_SIZE=100;
+  let initialBalanceRows=[],balanceSearchTimer=0,balanceSearchSequence=0,balancePageOffset=0,balanceHasMore=false,balanceLoadingMore=false;
   function initServerBalanceSearch(){
-    const input=byId('balanceQuery');
-    if(!input||input.dataset.serverSearch==='true')return;
-    input.dataset.serverSearch='true';
-    const controls=[input,byId('uxBalanceCategory'),byId('uxBalanceType'),byId('uxBalanceProject'),byId('uxBalanceSupplier'),byId('uxBalanceVendor'),byId('uxBalanceStock'),byId('uxBalanceSort')].filter(Boolean);
-    const refresh=event=>{
-      clearTimeout(balanceSearchTimer);balanceSearchTimer=0;
-      const sequence=++balanceSearchSequence;
-      balancePageOffset=0;
-      const params=currentBalanceParams();
-      const hasFilters=[...params.entries()].some(([key,value])=>!['limit','offset'].includes(key)&&value&&!(key==='sort_by'&&value==='item_name')&&!(key==='sort_dir'&&value==='asc'));
-      if(!hasFilters){
-        state.balance=initialBalanceRows.slice();
-        balanceHasMore=Boolean(state.balance_truncated);
-        renderSimpleBalance();
-        byId('balanceBody')?.setAttribute('aria-busy','false');
-        setBalanceScope(Boolean(state.balance_truncated));
-        return;
-      }
-      if(!state.balance_truncated&&!params.get('query')){
-        state.balance=initialBalanceRows.slice();renderSimpleBalance();setBalanceScope(false);return;
-      }
-      renderBalanceSearchState('Поиск по всей базе...',true);
-      setBalanceScope(false,'Поиск по всей базе...');
-      balanceSearchTimer=window.setTimeout(()=>{
-        balanceSearchTimer=0;searchBalanceOnServer(params,sequence);
-      },event?.target===input?220:0);
-    };
-    controls.forEach(control=>{control.oninput=refresh;control.onchange=refresh});
+    window.warehouseStockTree?.attach();
   }
   function currentBalanceParams(){
-    const sort=(byId('uxBalanceSort')?.value||'item_name:asc').split(':');
-    return new URLSearchParams({
-      query:byId('balanceQuery')?.value.trim()||'',category:byId('uxBalanceCategory')?.value||'',
-      item_type:byId('uxBalanceType')?.value||'',project:byId('uxBalanceProject')?.value||'',
-      supplier:byId('uxBalanceSupplier')?.value||'',vendor:byId('uxBalanceVendor')?.value||'',
-      stock_state:byId('uxBalanceStock')?.value||'',sort_by:sort[0]||'item_name',
-      sort_dir:sort[1]||'asc',limit:'500',offset:String(balancePageOffset)
-    });
+    return new URLSearchParams({limit:String(BALANCE_CHUNK_SIZE),offset:String(balancePageOffset)});
   }
-  function setBalanceScope(truncated,message=''){
-    let note=byId('balanceScope');
-    if(!note){
-      note=renderElement('p',{className:'balance-scope',attrs:{id:'balanceScope'}});
-      document.querySelector('#balance .filters')?.insertAdjacentElement('afterend',note);
-    }
-    note.textContent=message||(truncated?'Показана ограниченная выборка. Используйте поиск, чтобы найти позицию во всей базе.':'Показаны все позиции.');
-    renderBalancePager();
+  function setBalanceScope(){
+    window.warehouseStockTree?.render();
   }
-  function renderBalancePager(){
-    let pager=byId('balancePager');
-    if(!pager){pager=renderElement('div',{className:'balance-pager',attrs:{id:'balancePager'}});byId('balanceScope')?.insertAdjacentElement('afterend',pager)}
-    const page=Math.floor(balancePageOffset/500)+1;
-    pager.replaceChildren(
-      renderButton({text:'← Предыдущая',className:'button',disabled:balancePageOffset===0,onClick:()=>changeBalancePage(-1)}),
-      renderElement('span',{text:`Страница ${page} · строки ${balancePageOffset+1}–${balancePageOffset+state.balance.length}`}),
-      renderButton({text:'Следующая →',className:'button',disabled:!balanceHasMore,onClick:()=>changeBalancePage(1)})
-    );
-  }
-  function changeBalancePage(direction){
-    balancePageOffset=Math.max(0,balancePageOffset+direction*500);
+  function installBalanceInfiniteScroll(){}
+  async function searchBalanceOnServer(){
     const sequence=++balanceSearchSequence;
-    renderBalanceSearchState('Загружаем страницу...',true);
-    searchBalanceOnServer(currentBalanceParams(),sequence);
-  }
-  async function searchBalanceOnServer(params,sequence=++balanceSearchSequence){
-    try{
-      const expected=params.toString();
-      const response=await request('/api/balance?'+expected);
-      if(sequence!==balanceSearchSequence||currentBalanceParams().toString()!==expected)return;
-      state.balance=response.rows||[];
-      balancePageOffset=Number(response.offset||0);
-      balanceHasMore=Boolean(response.has_more);
-      renderSimpleBalance();
-      byId('balanceBody')?.setAttribute('aria-busy','false');
-      setBalanceScope(Boolean(response.has_more),response.has_more?'Есть следующая страница результатов.':`Показано позиций на странице: ${state.balance.length}`);
-    }catch(error){
-      if(sequence===balanceSearchSequence){
-        notify(error.message,true);renderBalanceSearchState('Поиск не выполнен');setBalanceScope(false,'Поиск не выполнен');
-      }
-    }
+    const result=await window.warehouseStockTree?.refresh({clearCache:true});
+    if(sequence!==balanceSearchSequence)return;
+    return result;
   }
 
   function inventoryNumberAssignment(card,key){
@@ -617,6 +677,78 @@
       &&Boolean(position.full_reconciliation_id||position.pilot_selection_id);
   }
 
+  function cardTypeCategory(field,value){
+    const type=String(value||'').toLocaleLowerCase();
+    if(field==='cable_type')return ['aoc','dac'].includes(type)?'Кабельные сборки':'Кабели';
+    if(field==='equipment_type')return ['прочее оборудование','other'].includes(type)?'Другое оборудование':'Оборудование';
+    if(['трансивер','transceiver'].includes(type))return 'Трансиверы';
+    if(['оперативная память','memory','ram'].includes(type))return 'Память';
+    if(['ssd','hdd'].includes(type))return 'Накопители';
+    if(['сетевой адаптер','nic','hba-адаптер','hba','raid-контроллер','raid controller'].includes(type))return 'Адаптеры и контроллеры';
+    if(['аксессуар','accessory','прочий компонент','other'].includes(type))return 'Другое оборудование';
+    return 'Комплектующие';
+  }
+
+  function positionCardEditor(card,key){
+    if(!card.serial_number||!['admin','engineer'].includes(state.current_user?.role))return null;
+    const categories=['Оборудование','Трансиверы','Память','Накопители','Адаптеры и контроллеры','Комплектующие','Кабели','Кабельные сборки','Другое оборудование'];
+    const currentField=card.cable_type?'cable_type':card.component_type?'component_type':'equipment_type';
+    const currentType=card[currentField]||'';
+    const currentCategory=card.category||cardTypeCategory(currentField,currentType);
+    const category=renderSelect({name:'category',value:currentCategory,options:categories,required:true});
+    const type=renderSelect({name:'item_type',required:true});
+    const availableTypes=selectedCategory=>{
+      const fields=selectedCategory==='Оборудование'?['equipment_type']
+        :['Кабели','Кабельные сборки'].includes(selectedCategory)?['cable_type']
+        :selectedCategory==='Другое оборудование'?['equipment_type','component_type']
+        :['component_type'];
+      const values=fields.flatMap(field=>refsOf(field).map(value=>[`${field}:${value}`,value]))
+        .filter(([key,value])=>cardTypeCategory(key.split(':')[0],value)===selectedCategory);
+      const currentKey=`${currentField}:${currentType}`;
+      if(currentType&&!values.some(([value])=>value===currentKey))values.unshift([currentKey,currentType]);
+      type.replaceChildren(...values.map(([value,label])=>renderElement('option',{attrs:{value},text:label})));
+      if(values.some(([value])=>value===currentKey)&&selectedCategory===currentCategory)type.value=currentKey;
+    };
+    availableTypes(currentCategory);
+    category.addEventListener('change',()=>availableTypes(category.value));
+    const referenceSelect=(label,name,kind,value,required=false)=>{
+      const values=[...new Set([value,...refsOf(kind)].filter(Boolean))].map(item=>[item,item]);
+      if(!required)values.unshift(['','Не указано']);
+      return renderElement('label',{children:[renderElement('span',{text:label}),renderSelect({name,value,options:values,required})]});
+    };
+    const form=renderElement('form',{className:'equipment-card-editor',children:[
+      renderElement('div',{className:'equipment-card-editor-head',children:[renderElement('h3',{text:'Редактировать карточку'}),renderElement('p',{text:'S/N и история операций не изменяются.'})]}),
+      renderElement('label',{children:[renderElement('span',{text:'Категория'}),category]}),
+      renderElement('label',{children:[renderElement('span',{text:'Тип'}),type]}),
+      renderElement('label',{children:[renderElement('span',{text:'Наименование'}),renderInput({name:'item_name',value:card.item_name||'',required:true})]}),
+      referenceSelect('Поставщик','supplier','supplier',card.supplier||''),
+      referenceSelect('Вендор','vendor','vendor',card.vendor||''),
+      renderElement('label',{children:[renderElement('span',{text:'Модель'}),renderInput({name:'model',value:card.model||''})]}),
+      referenceSelect('Проект','project','project',card.project||''),
+      referenceSelect('ЦОД','datacenter','datacenter',card.datacenter||''),
+      referenceSelect('Полка','shelf','shelf',card.shelf||''),
+      renderElement('label',{children:[renderElement('span',{text:'Объект'}),renderInput({name:'object_name',value:card.object_name||''})]}),
+      referenceSelect('Единица','unit','unit',card.unit||''),
+      renderButton({text:'Сохранить карточку',className:'button primary',type:'submit'})
+    ]});
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      const values=Object.fromEntries(new FormData(form));
+      const separator=String(values.item_type||'').indexOf(':');
+      const typeField=String(values.item_type||'').slice(0,separator),itemType=String(values.item_type||'').slice(separator+1);
+      const fields={item_name:values.item_name,supplier:values.supplier,vendor:values.vendor,model:values.model,project:values.project,shelf:values.shelf,object_name:values.object_name,datacenter:values.datacenter,unit:values.unit,equipment_type:'',component_type:'',cable_type:''};
+      if(!['equipment_type','component_type','cable_type'].includes(typeField)){notify('Выберите тип карточки',true);return}
+      fields[typeField]=itemType;
+      const submit=form.querySelector('button[type="submit"]');submit.disabled=true;
+      try{
+        const response=await actionJson({action:'UPDATE_POSITION_CARD',serial_number:card.serial_number,fields});
+        notify(response.position?.updated===false?'Изменений нет':'Карточка обновлена');
+        await loadAll();await openPositionCard(key);
+      }catch(error){notify(error.message,true)}finally{submit.disabled=false}
+    });
+    return form;
+  }
+
   function reviewRowScore(row,position){
     const same=(left,right)=>String(left||'').toLocaleLowerCase()===String(right||'').toLocaleLowerCase();
     let score=0;
@@ -658,6 +790,10 @@
       .replaceAll('MIGRATION_CONFLICT_RECORDED','Зафиксировано расхождение исторических данных')
       .replaceAll('MIGRATION_NUMERIC_IDENTITY_PROVISIONAL','Историческая карточка требует проверки администратора')
       .replaceAll('MIGRATION_SERIAL_QUARANTINED','Историческая запись изолирована администратором')
+      .replaceAll('WAREHOUSE_CARD_RECLASSIFIED','Категория карточки изменена')
+      .replaceAll('RECEIPT_FIELDS_FILLED','Данные карточки дополнены')
+      .replaceAll('RECEIPT_DATE_FILLED','Дата поступления уточнена')
+      .replaceAll('RECEIPT_SERIAL_CORRECTED','S/N карточки исправлен')
       .replace(/Исторический приход\s*\(миграция\)/gi,'Исторический приход')
       .replace(/Исторический расход\s*\(миграция\)/gi,'Исторический расход')
       .replace(/Миграционное начальное состояние/gi,'Восстановленная историческая запись')
@@ -706,27 +842,28 @@
       const location=[card.datacenter,card.object_name,card.shelf,card.rack_row,card.rack_unit].filter(Boolean).join(' · ');
       const details=[
         ['S/N',card.serial_number],['Инвентарный №',card.inventory_number],
-        ['Каноническое название',card.canonical_name||migration.canonical_item_name||card.item_name],['Исходное название',card.source_name||migration.source_item_name||card.item_name],
+        ['Наименование',card.canonical_name||migration.canonical_item_name||card.item_name],
         ['Вендор',card.vendor||migration.vendor],['Модель',card.model||migration.model],['Part Number',card.part_number||migration.part_number],
         ['Категория',card.category||migration.category],['Тип оборудования',card.item_type||card.equipment_type||migration.equipment_type||migration.component_type],
-        ['Текущее местоположение',location],['Hostname',card.hostname],['Проект',card.project],['ЦОД',card.datacenter],
-        ['Полка',card.shelf],['Ряд',card.rack_row],['Юнит',card.rack_unit],
+        ['Текущее местоположение',location],['Hostname',card.hostname],['Проект',card.project],
         ['Статус',card.status],['Поставщик',card.supplier],['Поставка',card.delivery_number],['Заказ',card.order_number],
         ['Дата поступления',card.receipt_date],['Инженер',publicText(card.responsible)],['Комментарий',publicText(card.comment)]
       ];
+      if(technicalContext)details.splice(3,0,['Исходное название',card.source_name||migration.source_item_name||card.item_name]);
       const rawHistory=response.history||[];
       currentPositionHistory=(technicalContext?rawHistory:rawHistory.filter(row=>{
         const technicalPayload=`${row.event_type||''} ${row.responsible||''} ${row.comment||''}`;
         return !/MIGRATION_[A-Z_]+|full-warehouse-migration|source_row_hash/i.test(technicalPayload);
       })).map(row=>technicalContext?row:{
         ...row,event_type:userFacingHistoryText(row.event_type),task:userFacingHistoryText(row.task),
-        responsible:userFacingHistoryText(row.responsible),comment:userFacingHistoryText(row.comment)
+        responsible:userFacingHistoryText(row.responsible),comment:userFacingHistoryText(typeof historyDetailText==='function'?historyDetailText(row):row.comment)
       });
-      const detailList=renderElement('dl',{className:'equipment-details',children:details.map(([label,value])=>
+      const detailList=renderElement('dl',{className:'equipment-details',children:details.filter(([label,value])=>value||['S/N','Инвентарный №','Статус'].includes(label)).map(([label,value])=>
         renderElement('div',{className:'equipment-field',children:[renderElement('dt',{text:label}),renderElement('dd',{text:value||'—'})]})
       )});
-      const detailChildren=[detailList],assignment=inventoryNumberAssignment(card,key);
+      const detailChildren=[detailList],assignment=inventoryNumberAssignment(card,key),editor=positionCardEditor(card,key);
       if(assignment)detailChildren.push(assignment);
+      if(editor)detailChildren.push(editor);
       const receipts=currentPositionHistory.filter(row=>/приход|поступ|восстановлен/i.test(row.event_type||''));
       const issues=currentPositionHistory.filter(row=>/расход|выдан|списан/i.test(row.event_type||''));
       detailChildren.push(renderElement('section',{className:'equipment-history-summaries',children:[
@@ -835,18 +972,27 @@
     history[replace?'replaceState':'pushState'](stateValue,'',hash);
   }
   function renderProductRoute(section,view){
+    const balanceBody=byId('balanceBody');
+    if(section==='warehouse'&&view==='balance')renderSimpleBalance();
+    else if(balanceBody?.childElementCount)balanceBody.replaceChildren();
+    const referenceBody=byId('referenceBody');
+    if(section==='warehouse'&&view==='references')renderReferences();
+    else if(referenceBody?.childElementCount)referenceBody.replaceChildren();
+    const historyBody=byId('operationBody');
+    if((section==='warehouse'||section==='reports')&&view==='journal')renderWarehouseHistory();
+    else if(historyBody?.childElementCount)historyBody.replaceChildren();
     if(section==='monitoring'&&view==='monitoring')renderMonitoringHub();
   }
   showSection=function(name){
     applyingHistory=true;baseShowSection(name);applyingHistory=false;
     const view=(sections[name]&&sections[name][0]&&sections[name][0][0])||name;
     renderProductRoute(name,view);
-    writeLocation(name,view);
+    writeLocation(name,view);window.scrollTo(0,0);
   };
-  showView=function(id){baseShowView(id);renderProductRoute(currentSection,id);writeLocation(currentSection,id)};
+  showView=function(id){baseShowView(id);renderProductRoute(currentSection,id);writeLocation(currentSection,id);window.scrollTo(0,0)};
   openTask=function(section,view){
     applyingHistory=true;baseShowSection(section);baseShowView(view);applyingHistory=false;
-    currentSection=section;renderProductRoute(section,view);writeLocation(section,view);
+    currentSection=section;renderProductRoute(section,view);writeLocation(section,view);window.scrollTo(0,0);
   };
   goHome=function(){openTask('home','home');window.scrollTo(0,0)};
   window.addEventListener('popstate',event=>{
@@ -868,9 +1014,11 @@
   const productLoadAll=loadAll;
   loadAll=async function(){
     await productLoadAll();
+    window.clearDeliverySelection?.();
     initialBalanceRows=(state.balance||[]).slice();
-    balancePageOffset=0;balanceHasMore=Boolean(state.balance_truncated);
-    initServerBalanceSearch();setBalanceScope(Boolean(state.balance_truncated));renderWarehouseOverview();
+    balancePageOffset=0;balanceHasMore=false;balanceLoadingMore=false;
+    clearTimeout(balanceSearchTimer);balanceSearchTimer=0;
+    initServerBalanceSearch();window.warehouseStockTree?.invalidate();renderWarehouseOverview();
   };
   // 0.12.17.1: ODE always opens the four-module launcher built by
   // warehouseLanding() (static/js/ui.js). renderDashboard() (KPI overview,

@@ -25,8 +25,14 @@ class WarehousePostingGuardTest(unittest.TestCase):
     def tearDown(self) -> None:
         self.temporary.cleanup()
 
-    def test_production_and_unknown_modes_fail_closed(self) -> None:
-        for mode in ("production", "unknown", ""):
+    def test_production_is_writable_and_unknown_modes_fail_closed(self) -> None:
+        production = PostingPolicy(
+            self.production, mode="production", production_db_path=self.production
+        )
+        production.assert_mutation_allowed("receipt")
+        self.assertTrue(production.status()["posting_allowed"])
+        self.assertTrue(production.status()["provisional_balance"])
+        for mode in ("unknown", ""):
             with self.subTest(mode=mode):
                 policy = PostingPolicy(
                     self.production, mode=mode, production_db_path=self.production
@@ -47,13 +53,27 @@ class WarehousePostingGuardTest(unittest.TestCase):
         with self.assertRaises(WarehousePostingBlocked):
             blocked.assert_mutation_allowed("scanner")
 
-    def test_facade_blocks_production_but_explicit_demo_works(self) -> None:
+    def test_facade_allows_production_and_explicit_demo(self) -> None:
         production_service = WarehouseService(self.production)
         production_context = create_application_context(
             self.production, service=production_service, warehouse_contour="production"
         )
-        with self.assertRaises(WarehousePostingBlocked):
-            production_context.warehouse.create_receipt({})
+        production_context.warehouse.assert_posting_allowed("receipt")
+        self.assertTrue(production_context.warehouse.get_system_status()["posting_allowed"])
+        receipt_id = production_context.warehouse.create_receipt({
+            "receipt_date": "2026-07-18",
+            "responsible": "Production contour test",
+            "item_name": "Test server",
+            "serial_number": "PRODUCTION-CONTOUR-1",
+            "supplier": "Не указан",
+            "vendor": "Не указан",
+            "object_name": "Test warehouse",
+            "datacenter": "Ixcellerate",
+            "equipment_type": "Сервер",
+            "unit": "шт",
+            "quantity": 1,
+        })
+        self.assertGreater(receipt_id, 0)
         demo_service = WarehouseService(self.demo)
         demo_context = create_application_context(
             self.demo, service=demo_service, warehouse_contour="demo"

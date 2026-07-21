@@ -23,6 +23,7 @@ from .migration_full_review import (
 from .migration_pilot_review import MigrationPilotReviewService
 from .previews import WarehousePreviewStore
 from .receipt_imports import ReceiptWriteService
+from .stock_tree import WarehouseStockTreeQuery
 from .baseline.posting_policy import PostingPolicy
 from .baseline.service import FullInventoryService
 
@@ -89,6 +90,7 @@ class WarehouseFacade:
             service.db_path,
             actor_provider=service,
         )
+        self.stock_tree = WarehouseStockTreeQuery(service.db_path)
 
     def _guard_posting(self, operation: str) -> None:
         if self.posting_policy is None:
@@ -105,7 +107,8 @@ class WarehouseFacade:
             return {
                 "state": "DEGRADED",
                 "authoritative": False,
-                "balance_kind": "HISTORICAL_CALCULATION",
+                "provisional": False,
+                "balance_kind": "UNAVAILABLE",
                 "baseline_timestamp": None,
                 "posting_allowed": False,
                 "degraded_reason": "FULL inventory service не настроен",
@@ -113,7 +116,7 @@ class WarehouseFacade:
         result = self.full_inventory.system_status()
         if self.posting_policy is not None:
             result["contour"] = self.posting_policy.status()
-            result["posting_allowed"] = self.posting_policy.demo
+            result["posting_allowed"] = self.posting_policy.allowed
         return result
 
     def receipts(self, *args: Any, **kwargs: Any) -> Any:
@@ -160,6 +163,22 @@ class WarehouseFacade:
     def confirm_inventory_number_import(self, preview_id: str) -> dict[str, Any]:
         self._guard_posting("confirm_inventory_number_import")
         return _plain(self.receipt_writer.confirm_inventory_number_import(preview_id))
+
+    def fill_receipt_fields(self, receipt_id: int, values: dict[str, Any]) -> dict[str, Any]:
+        self._guard_posting("fill_receipt_fields")
+        return _plain(self.receipt_writer.fill_receipt_fields(int(receipt_id), dict(values)))
+
+    def fill_receipt_date(self, receipt_id: int, receipt_date: str) -> dict[str, Any]:
+        self._guard_posting("fill_receipt_date")
+        return _plain(self.receipt_writer.fill_receipt_date(int(receipt_id), receipt_date))
+
+    def correct_duplicate_serial(self, receipt_id: int, new_serial_number: str) -> dict[str, Any]:
+        self._guard_posting("correct_duplicate_serial")
+        return _plain(self.receipt_writer.correct_duplicate_serial(int(receipt_id), new_serial_number))
+
+    def delete_duplicate_receipt(self, receipt_id: int) -> dict[str, Any]:
+        self._guard_posting("delete_duplicate_receipt")
+        return _plain(self.receipt_writer.delete_duplicate_receipt(int(receipt_id)))
 
     def create_receipt_batch(self, rows: list[dict[str, Any]]) -> dict[str, Any]:
         self._guard_posting("create_receipt_batch")
@@ -402,12 +421,20 @@ class WarehouseFacade:
     def reference_data(self, *args: Any, **kwargs: Any) -> Any:
         return _plain(self.service.reference_data(*args, **kwargs))
 
-    def get_overview(self) -> dict[str, Any]:
+    def get_overview(self, *, include_balance: bool = True) -> dict[str, Any]:
         quality = self.service.data_quality_summary(limit=200)
         problems = quality["problems"]
         problem_counts = quality["counts"]
         stats = _plain(self.service.dashboard_stats())
         stats["problems"] = sum(problem_counts.values())
+        stats["data_quality_blockers"] = (
+            int(problem_counts.get("unmatched_issues", 0))
+            + int(problem_counts.get("negative_balances", 0))
+        )
+        stats["data_quality_review"] = (
+            int(problem_counts.get("duplicate_serials", 0))
+            + int(problem_counts.get("incomplete_rows", 0))
+        )
         return {
             "stats": stats,
             "equipment": _plain(self.service.equipment()),
@@ -416,15 +443,16 @@ class WarehouseFacade:
             "locations": _plain(self.service.reference_data("locations")),
             "references": _plain(self.service.references(active_only=True)),
             "reference_kinds": _plain(self.service.REFERENCE_KINDS),
-            "balance": self.get_balance(limit=500),
-            "balance_limit": 500,
+            "balance": self.get_balance(limit=500) if include_balance else [],
+            "balance_limit": 500 if include_balance else 0,
             "balance_truncated": int(stats["cards"]) > 500,
-            "recent_receipts": self.receipts(limit=20),
+            "recent_receipts": self.receipts(limit=20, include_opening=False),
             "problems": _plain({key: rows[:200] for key, rows in problems.items()}),
             "problem_counts": problem_counts,
             "deliveries": self.list_deliveries(limit=100),
             "warehouse_categories": self.get_warehouse_categories(),
             "warehouse_type_summary": self.get_warehouse_type_summary(),
+            "warehouse_model_options": self.get_warehouse_model_options(),
             "warehouse_history": self.get_warehouse_history(),
         }
 
@@ -434,6 +462,23 @@ class WarehouseFacade:
     ) -> list[dict[str, Any]]:
         return _plain(self.service.stock_balance(
             **(filters or {}), limit=limit, offset=offset
+        ))
+
+    def get_stock_tree(
+        self,
+        *,
+        level: str = "category",
+        path: dict[str, str] | None = None,
+        filters: dict[str, str] | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        return _plain(self.stock_tree.fetch(
+            level=level,
+            path=path,
+            filters=filters,
+            limit=limit,
+            offset=offset,
         ))
 
     def get_warehouse_history(
@@ -512,6 +557,9 @@ class WarehouseFacade:
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         return _plain(self.delivery_reader.get_delivery_lines(delivery_id, filters))
+
+    def get_delivery_selection(self, delivery_id: int) -> dict[str, Any]:
+        return _plain(self.delivery_reader.get_delivery_selection(delivery_id))
 
     def search_deliveries(self, query: str) -> list[dict[str, Any]]:
         return _plain(self.delivery_reader.search_deliveries(query))
@@ -594,6 +642,12 @@ class WarehouseFacade:
             datacenter=filters.get("datacenter", ""),
             include_migration_audit=False,
         ))
+
+    def update_position_card(
+        self, serial_number: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        self._guard_posting("update_position_card")
+        return _plain(self.service.update_position_card(serial_number, dict(fields)))
 
     def list_migration_pilot_rows(
         self,
@@ -679,6 +733,9 @@ class WarehouseFacade:
 
     def get_warehouse_type_summary(self) -> list[dict[str, Any]]:
         return _plain(self.service.warehouse_type_summary())
+
+    def get_warehouse_model_options(self) -> list[dict[str, Any]]:
+        return _plain(self.service.warehouse_model_options())
 
     def export_balance_rows(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         return self.get_balance(filters)

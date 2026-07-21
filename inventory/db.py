@@ -676,7 +676,7 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
                        must_change_password
                    ) VALUES (?, ?, ?, ?, ?, 'admin', 1)""",
                 (
-                    "Александр", "Мерненко", "Администратор / дежурный инженер",
+                    "Александр", "Мерненко", "Дежурный инженер",
                     "lokolis", hash_password("lokolis"),
                 ),
             )

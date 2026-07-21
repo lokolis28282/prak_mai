@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 
+import os
 import shutil
 import socket
 import sqlite3
@@ -26,7 +27,18 @@ from inventory.db import (
 from inventory.core.application import create_application_context
 from inventory.service import WarehouseService
 from inventory.webapp import make_handler
-CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+CHROME_CANDIDATES = [
+    Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+    Path(os.environ.get("PROGRAMFILES", "")) / "Google/Chrome/Application/chrome.exe",
+    Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Google/Chrome/Application/chrome.exe",
+    Path(os.environ.get("LOCALAPPDATA", "")) / "Google/Chrome/Application/chrome.exe",
+    Path(os.environ.get("PROGRAMFILES", "")) / "Microsoft/Edge/Application/msedge.exe",
+    Path(os.environ.get("PROGRAMFILES(X86)", "")) / "Microsoft/Edge/Application/msedge.exe",
+]
+
+
+def browser_binary() -> Path | None:
+    return next((path for path in CHROME_CANDIDATES if path.is_file()), None)
 
 def free_port() -> int:
     with socket.socket() as sock:
@@ -36,13 +48,20 @@ def free_port() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--db", type=Path, default=ROOT / "data" / "warehouse.db")
+    parser.add_argument("--browser", type=Path)
+    parser.add_argument("--node", default=shutil.which("node"))
     args = parser.parse_args(argv)
-    if not CHROME.exists():
-        raise SystemExit(f"Chrome не найден: {CHROME}")
+    browser = args.browser or browser_binary()
+    if browser is None or not browser.is_file():
+        raise SystemExit("Chrome или Edge не найден")
+    if not args.node:
+        raise SystemExit("Node.js не найден")
     source_database = args.db.resolve()
     if not source_database.is_file():
         raise SystemExit(f"База не найдена: {source_database}")
-    with tempfile.TemporaryDirectory(prefix="ode_ui_smoke_") as directory:
+    with tempfile.TemporaryDirectory(
+        prefix="ode_ui_smoke_", ignore_cleanup_errors=True
+    ) as directory:
         work = Path(directory)
         database = work / "warehouse.db"
         shutil.copy2(source_database, database)
@@ -73,7 +92,8 @@ def main(argv: list[str] | None = None) -> int:
         app_url = f"http://127.0.0.1:{server.server_port}"
         debug_port = free_port()
         chrome = subprocess.Popen([
-            str(CHROME), "--headless=new", "--disable-gpu", "--no-sandbox",
+            str(browser), "--headless=new", "--disable-gpu", "--no-sandbox",
+            "--disable-breakpad", "--disable-crash-reporter", "--noerrdialogs",
             f"--remote-debugging-port={debug_port}", f"--user-data-dir={work / 'chrome'}",
             app_url,
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -91,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError("DevTools Chrome не запустился")
             print("smoke: devtools ready", flush=True)
             result = subprocess.run(
-                ["node", str(ROOT / "tests" / "headless_smoke.js"), app_url, str(debug_port)],
+                [args.node, str(ROOT / "tests" / "headless_smoke.js"), app_url, str(debug_port)],
                 cwd=ROOT, text=True, capture_output=True, timeout=180,
             )
             print(result.stdout.strip(), flush=True)
@@ -100,10 +120,24 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         finally:
             print("smoke: cleanup", flush=True)
-            chrome.terminate()
-            try: chrome.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                chrome.kill(); chrome.wait(timeout=5)
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/PID", str(chrome.pid), "/T", "/F"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if chrome.poll() is None:
+                    chrome.kill()
+                try:
+                    chrome.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            else:
+                chrome.terminate()
+                try: chrome.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    chrome.kill(); chrome.wait(timeout=5)
             server.shutdown(); server.server_close(); thread.join(timeout=5)
             print("smoke: stopped", flush=True)
 

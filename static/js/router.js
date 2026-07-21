@@ -34,7 +34,7 @@ function showView(id){
   document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===actual));
   document.querySelectorAll('.subtab').forEach(x=>x.classList.toggle('active',x.dataset.view===id));
   if(id==='worklogs')loadWorkLogs();
-  if(id==='admin_references'){window.renderReferenceEditor?.();return}
+  if(id==='admin_references'||id==='references'){window.renderReferenceEditor?.();return}
   if(id==='daily'&&typeof buildShift==='function')buildShift();
   if(id==='weekly'&&typeof buildWeek==='function')buildWeek();
   if(adminMode){setAdminMode(adminMode);loadAdmin()}

@@ -42,9 +42,42 @@ class FullInventoryXlsxTest(FullInventoryFixture, unittest.TestCase):
         path = self.root / "template.xlsx"
         path.write_bytes(template_bytes())
         workbook = inspect_workbook(path)
-        self.assertEqual(workbook.sheets, ("Manifest", "Inventory"))
+        self.assertEqual(workbook.sheets, (
+            "Manifest", "Inventory", "Инструкция", "Справочник", "Номенклатура",
+        ))
+        self.assertEqual(workbook.unknown_sheets, ())
         self.assertEqual(workbook.manifest["TemplateId"].display_value, "ODE-FULL-INVENTORY")
         self.assertEqual(workbook.manifest["TemplateVersion"].display_value, "1.0")
+        with ZipFile(path) as archive:
+            inventory_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+            self.assertRegex(inventory_xml, r'<c r="A1"[^>]*>.*SerialNumber')
+            self.assertIn("ItemKinds", inventory_xml)
+            self.assertIn("dataValidations", inventory_xml)
+            workbook_xml = archive.read("xl/workbook.xml").decode("utf-8")
+            self.assertIn("definedNames", workbook_xml)
+            self.assertIn("Справочник", workbook_xml)
+
+    def test_service_template_embeds_current_reference_snapshot(self) -> None:
+        path = self.root / "service-template.xlsx"
+        path.write_bytes(self.inventory.template())
+        workbook = inspect_workbook(path)
+        self.assertEqual(
+            workbook.manifest["ReferenceVersion"].display_value,
+            self.inventory.reference_fingerprint().hex(),
+        )
+        self.assertEqual(workbook.manifest["WarehouseCode"].display_value, "Ixcellerate")
+        with ZipFile(path) as archive:
+            inventory_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+            self.assertIn("LocationCodes", inventory_xml)
+            self.assertIn("WarehouseCodes", inventory_xml)
+            self.assertIn("UOMCodes", inventory_xml)
+            lookup_xml = archive.read("xl/worksheets/sheet4.xml").decode("utf-8")
+            self.assertIn("Оперативная память", lookup_xml)
+            self.assertIn("Трансивер", lookup_xml)
+            self.assertIn("AOC", lookup_xml)
+            self.assertIn("Кабельные сборки", lookup_xml)
+            self.assertIn("1-1", lookup_xml)
+            self.assertIn("шт", lookup_xml)
 
     def test_inventory_rows_are_reiterable_stream_not_materialized_tuple(self) -> None:
         source = self.workbook(rows=[

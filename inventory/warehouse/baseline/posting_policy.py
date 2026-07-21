@@ -1,4 +1,4 @@
-"""Fail-closed posting policy for the pre-baseline Warehouse."""
+"""Posting policy for working and disposable Warehouse contours."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _same_file(left: Path, right: Path) -> bool:
 
 
 class PostingPolicy:
-    """Allow mutations only for an explicitly configured disposable contour."""
+    """Allow configured working writes while keeping demo isolated from production."""
 
     VALID_MODES = {"production", "demo"}
 
@@ -53,24 +53,26 @@ class PostingPolicy:
     def demo(self) -> bool:
         return self.mode == "demo" and not self._configuration_error
 
+    @property
+    def allowed(self) -> bool:
+        return self.mode in self.VALID_MODES and not self._configuration_error
+
     def status(self) -> dict[str, object]:
         return {
             "mode": self.mode or "unknown",
             "demo": self.demo,
-            "posting_allowed": self.demo,
+            "posting_allowed": self.allowed,
+            "provisional_balance": self.mode == "production" and self.allowed,
             "configuration_ok": not self._configuration_error,
             "configuration_error": self._configuration_error,
         }
 
     def assert_mutation_allowed(self, operation: str = "") -> None:
-        if self.demo:
+        if self.allowed:
             return
         detail = f" ({operation})" if operation else ""
         if self._configuration_error:
             raise WarehousePostingBlocked(
                 f"WAREHOUSE_NOT_INITIALIZED: {self._configuration_error}{detail}"
             )
-        raise WarehousePostingBlocked(
-            "WAREHOUSE_NOT_INITIALIZED: склад доступен только для просмотра "
-            f"до публикации initial baseline{detail}"
-        )
+        raise WarehousePostingBlocked(f"WAREHOUSE_NOT_INITIALIZED: запись запрещена{detail}")

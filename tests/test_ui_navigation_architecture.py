@@ -38,7 +38,7 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         self.assertIn("uxBalanceSupplier", self.ui)
         self.assertIn("uxBalanceVendor", self.ui)
         self.assertIn("warehouse-summary", self.ui)
-        self.assertIn("['equipment','Перемещения']", self.product)
+        self.assertNotIn("['equipment','Перемещения']", self.product)
         self.assertIn("['references','Справочники']", self.product)
         self.assertIn("disabled:Number(x.balance)<=0", self.ui)
 
@@ -57,13 +57,16 @@ class UiNavigationArchitectureTest(unittest.TestCase):
     def test_hidden_contract_cannot_be_overridden_by_component_display(self) -> None:
         self.assertIn("[hidden]{display:none!important}", self.css)
 
+    def test_product_navigation_resets_scroll_position(self) -> None:
+        self.assertGreaterEqual(self.product.count("window.scrollTo(0,0)"), 3)
+
     def test_reference_placeholders_are_not_duplicated_as_values(self) -> None:
         self.assertIn("values.filter(x=>x&&x!==placeholder)", self.ui)
         self.assertIn("xs.filter(x=>x&&x!==label)", self.ui)
 
     def test_equipment_card_is_shared_and_hides_technical_details_by_default(self) -> None:
         for label in (
-            "Каноническое название",
+            "Наименование",
             "Исходное название",
             "Part Number",
             "Текущее местоположение",
@@ -77,6 +80,8 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         ):
             self.assertIn(label, self.product)
         self.assertIn("if(response.migration&&technicalContext)", self.product)
+        self.assertIn("if(technicalContext)details.splice", self.product)
+        self.assertIn("Категория карточки изменена", self.product)
         self.assertIn("isMigrationAdministrationContext", self.product)
         self.assertIn("userFacingHistoryText", self.product)
 

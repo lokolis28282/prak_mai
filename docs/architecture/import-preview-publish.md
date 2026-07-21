@@ -17,8 +17,18 @@ Parser contract: inventory-xlsx/1
 1. Manifest — key/value metadata, одна inventory session.
 2. Inventory — header в строке 1 и data со строки 2.
 
-Опциональные Instructions и Lookups игнорируются как data. Неизвестный лист
-дает WARNING; executable macros запрещены.
+Опциональные `Instructions` / `Инструкция`, `Lookups` / `Справочник` и
+`Номенклатура` игнорируются парсером как data. Неизвестный лист дает WARNING;
+executable macros запрещены.
+
+Скачиваемый операторский шаблон строит эти три листа из read-only snapshot
+активных references и всей исторической номенклатуры Warehouse. В них
+публикуются точные `ItemKind`, категории/типы, `Description`, `Vendor`,
+`Model`, активные `LocationCode`, `WarehouseCode`, `UOM` и `Condition`.
+Встроенные Excel validations для `ItemKind`, `LocationCode`, `WarehouseCode`,
+`UOM` и `Condition` ссылаются на этот snapshot. Если новой полки нет в
+шаблоне, её сначала добавляют в Reference Data ODE и скачивают шаблон
+заново. Сам факт скачивания не меняет operational DB.
 
 ### Manifest
 

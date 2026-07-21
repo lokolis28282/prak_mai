@@ -1,11 +1,13 @@
 __pycache__/
 *.py[cod]
+.claude/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .DS_Store
 .idea/
 .vscode/
+.codex_backups/
 
 # Runtime databases. Keep this scoped to data/: test fixtures elsewhere may be
 # intentionally versioned. SQLite sidecars are never repository content.

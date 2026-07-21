@@ -7,6 +7,7 @@ import csv
 import io
 import ipaddress
 import json
+import logging
 import os
 import re
 import secrets
@@ -46,15 +47,16 @@ CURRENT_DATACENTER = "Ixcellerate"
 STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
 PRODUCT_NAME = "ODE"
 PRODUCT_VERSION = __version__
+LOGGER = logging.getLogger(__name__)
 
 LOGIN_HTML = f'''<!doctype html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Начало смены — {PRODUCT_NAME} {PRODUCT_VERSION}</title>
 <style>body{{margin:0;background:#f4f7fb;color:#172033;font:14px system-ui;display:grid;place-items:center;min-height:100vh}}.card{{width:min(410px,calc(100% - 32px));padding:28px;background:white;border:1px solid #dce3ec;border-radius:14px;box-shadow:0 8px 24px #1720330d}}h1{{margin:0 0 5px}}p,small{{color:#667085}}label{{display:block;margin-top:15px;font-weight:650}}input{{width:100%;box-sizing:border-box;margin-top:6px;padding:12px;border:1px solid #cbd5e1;border-radius:8px}}button{{width:100%;margin-top:20px;padding:12px;border:0;border-radius:8px;background:#2563eb;color:white;font-weight:700;cursor:pointer}}details{{margin-top:18px;padding-top:12px;border-top:1px solid #dce3ec}}summary{{cursor:pointer;color:#475569}}.error{{color:#991b1b}}</style></head><body>
-<form class="card" id="login"><h1>Кто сегодня работает?</h1><p>{PRODUCT_NAME} {PRODUCT_VERSION}. Операции смены будут записаны под выбранным именем.</p>
+<form class="card" id="login"><h1>Кто сегодня работает?</h1>
 <label>ФИО инженера<input name="full_name" autocomplete="name" autofocus placeholder="Иванов Иван Иванович"></label>
-<details><summary>Учётная запись ODE</summary><small>Заполните, если вам назначены дополнительные backend-права.</small><label>Логин<input name="email" autocomplete="username"></label><label>Пароль<input name="password" type="password" autocomplete="current-password"></label></details>
-<button>Начать работу</button><p class="error" id="error"></p></form>
-<script>document.getElementById('login').onsubmit=async e=>{{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));const credentials=Boolean(data.email.trim()||data.password);if(credentials&&(!data.email.trim()||!data.password)){{document.getElementById('error').textContent='Укажите логин и пароль полностью';return}}if(!credentials&&!data.full_name.trim()){{document.getElementById('error').textContent='Укажите ФИО инженера';return}}data.mode=credentials?'admin':'engineer';const r=await fetch('/api/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});const x=await r.json();if(r.ok)location.href='/';else document.getElementById('error').textContent=x.error||'Ошибка входа'}};</script></body></html>'''
+<details><summary>Вход администратора</summary><small>Используйте только для дополнительных backend-прав.</small><label>Логин<input name="email" autocomplete="username"></label><label>Пароль<input name="password" type="password" autocomplete="current-password"></label><button type="submit" data-mode="admin">Войти как администратор</button></details>
+<button type="submit" data-mode="engineer">Начать работу</button><p class="error" id="error"></p></form>
+<script>document.getElementById('login').onsubmit=async e=>{{e.preventDefault();const data=Object.fromEntries(new FormData(e.currentTarget));const mode=e.submitter?.dataset.mode||'engineer';const error=document.getElementById('error');data.mode=mode;if(mode==='engineer'){{data.full_name=data.full_name.trim();if(!data.full_name){{error.textContent='Укажите ФИО инженера';return}}delete data.email;delete data.password}}else{{data.email=data.email.trim();if(!data.email||!data.password){{error.textContent='Укажите логин и пароль полностью';return}}delete data.full_name}}const r=await fetch('/api/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});const x=await r.json();if(r.ok)location.href='/';else error.textContent=x.error||'Ошибка входа'}};</script></body></html>'''
 
 HTML = r'''<!doctype html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -81,7 +83,7 @@ HTML = r'''<!doctype html>
 
 <section class="view panel" id="issue"><div class="import-box"><div><strong>CSV-скан-лист расхода</strong><p>Оборудование — по S/N; кабель — по наименованию и типу. Запись только после preview.</p></div><div class="import-actions"><a class="button" href="/import/issue-template.csv">Шаблон</a><a class="button" href="/export/issue.csv">Выгрузить</a><label class="button primary" for="issueCsv">Выбрать CSV</label><input class="file-input preview-input" id="issueCsv" data-kind="issue" type="file" accept=".csv"></div></div><div class="preview" id="issuePreview"></div><div class="box" style="margin-bottom:18px"><h3>Найти позицию для списания</h3><form class="filters" id="issueSearchForm"><input name="query" placeholder="S/N, инв.№, наименование, модель, вендор, проект, полка" required><button class="button primary">Найти</button><span></span><span></span></form><div class="table-wrap"><table><thead><tr><th>Наименование</th><th>Модель</th><th>S/N</th><th>Инв.№</th><th>Остаток</th><th>Проект</th><th>Полка</th><th></th></tr></thead><tbody id="issueSearchBody"><tr><td class="empty" colspan="8">Введите запрос</td></tr></tbody></table></div></div><h2>Оформить расход</h2><p class="hint">Выберите позицию поиском выше или заполните вручную. Для кабеля оставьте S/N пустым.</p><form class="form" id="stockIssueForm"><label>Дата</label><input name="issue_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Тип задачи</label><select name="task_type" id="issueTaskType"></select><label>Номер задачи</label><input name="task_number"><label>SN целевого объекта</label><input name="target_serial_number"><label>Hostname</label><input name="target_hostname"><label>S/N списываемого</label><input name="source_serial_number"><label>Наименование кабеля</label><input name="source_item_name" class="ref-input" data-kind="item_name" list="ref-item_name"><label>Тип кабеля</label><input name="source_cable_type" class="ref-input" data-kind="cable_type" list="ref-cable_type"><label>Доступный остаток</label><input name="available" readonly><label>Кол-во / метраж</label><input name="quantity" type="number" min="0.001" step="0.001" value="1" required><label>Комментарий</label><textarea name="comment"></textarea><div class="actions"><button class="button primary">Зарегистрировать расход</button></div></form><div class="box" style="margin-top:22px"><h3>Массовое списание по списку S/N</h3><p class="hint">Строгий режим: неизвестный, повторный, уже списанный S/N или кабель блокирует весь список.</p><div class="import-actions"><a class="button" href="/import/bulk-issue-template.csv">Шаблон S/N</a><label class="button primary" for="bulkIssueCsv">Выбрать CSV</label><input class="file-input preview-input" id="bulkIssueCsv" data-kind="bulk_issue" type="file" accept=".csv"></div><div class="preview" id="bulk_issuePreview"></div><form class="form" id="bulkIssueForm"><input name="preview_id" type="hidden"><label>Дата</label><input name="issue_date" type="date" required><label>ФИО</label><input name="responsible" required><label>Тип задачи</label><select name="task_type" id="bulkTaskType" required></select><label>Номер задачи</label><input name="task_number" required><label>Целевой S/N</label><input name="target_serial_number" placeholder="Обязателен, если в списке есть компоненты"><label>Комментарий</label><textarea name="comment"></textarea><div class="actions"><button class="button primary" id="bulkConfirm" disabled>Подтвердить списание</button></div></form></div></section>
 
-<section class="view panel" id="balance"><div class="import-box"><div><strong>Баланс — рабочий экран склада</strong><p>Поиск, карточка, списание и экспорт текущей выборки.</p></div><a class="button" id="balanceExport" href="/export/balance.csv">Выгрузить CSV</a></div><div class="filters"><input id="balanceQuery" placeholder="Общий поиск: S/N, инв.№, наименование, модель, вендор, проект, объект, полка"><button class="button" onclick="clearBalanceFilters()">Сбросить</button><span></span><span></span><select id="balanceProject"></select><select id="balanceObject"></select><select id="balanceEquipmentType"></select><select id="balanceComponentType"></select><select id="balanceCableType"></select><select id="balanceUnit"></select><select id="balanceDatacenter"></select></div><div class="table-wrap"><table><thead><tr><th>Проект</th><th>Наименование</th><th>Вендор</th><th>Модель</th><th>SN</th><th>Инв.№</th><th>Остаток</th><th>Ед.</th><th>Стеллаж/Полка</th><th>Объект</th><th>Тип оборудования</th><th>Тип компонента</th><th>Тип кабеля</th><th>ЦОД</th><th>Действия</th></tr></thead><tbody id="balanceBody"></tbody></table></div></section>
+<section class="view panel" id="balance"><div class="import-box"><div><strong>Баланс — рабочий экран склада</strong><p>Поиск, карточка, списание и экспорт текущей выборки.</p></div><a class="button" id="balanceExport" href="/export/balance.csv">Выгрузить CSV</a></div><div class="filters"><input id="balanceQuery" placeholder="Общий поиск: S/N, инв.№, наименование, модель, вендор, проект, объект, полка"><button class="button" onclick="clearBalanceFilters()">Сбросить</button><span></span><span></span><select id="balanceProject"></select><select id="balanceObject"></select><select id="balanceEquipmentType"></select><select id="balanceComponentType"></select><select id="balanceCableType"></select><select id="balanceUnit"></select><select id="balanceDatacenter"></select></div><div class="table-wrap warehouse-stock-tree" id="warehouseStockTree"><table aria-label="Дерево складских остатков"><thead><tr><th>Группа</th><th>Позиций</th><th>В наличии</th></tr></thead><tbody id="balanceBody" aria-live="polite"></tbody></table></div><p class="hint" id="balanceLimit" style="margin-top:10px"></p></section>
 
 <section class="view panel" id="equipment"><div class="import-box"><div><strong>Карточки оборудования из CSV</strong><p>UTF-8 BOM и Windows-1251 поддерживаются.</p></div><div class="import-actions"><a class="button" href="/import/equipment-template.csv">Шаблон</a><label class="button primary" for="equipmentCsv">Загрузить</label><input class="file-input csv-input" id="equipmentCsv" data-kind="equipment" type="file" accept=".csv"></div></div><div class="split"><div class="box"><h3>Новая карточка</h3><form class="form" id="addForm"><label>Категория</label><select name="category" class="categories" required></select><label>Модель</label><input name="model" required><label>Серийный номер</label><input name="serial_number" required><label>Инвентарный номер</label><input name="inventory_number" required><label>ЦОД</label><input name="datacenter" value="Ixcellerate" required><label>Место</label><select name="location_code" class="locations" required></select><label>Начальный остаток</label><input name="quantity" type="number" min="0" value="0"><div class="actions"><button class="button primary">Создать</button></div></form></div><div class="box"><h3>Перемещение</h3><form class="form" id="moveForm"><label>Оборудование</label><select name="equipment_id" class="items" required></select><label>Новое место</label><select name="destination" class="locations" required></select><label>Основание</label><input name="basis" required><label>Ответственный</label><input name="responsible" value="Кладовщик № 1" required><div class="actions"><button class="button primary">Переместить</button></div></form></div></div></section>
 
@@ -556,6 +558,7 @@ def _externalized_html(html: str) -> str:
             "knowledge/index.js",
             "administration/index.js", "administration/profile.js", "administration/users.js",
             "administration/backup.js", "administration/diagnostics.js", "administration/references.js",
+            "warehouse/stock_tree.js",
             "product.js",
         )
     )
@@ -799,18 +802,24 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 elif path.startswith("/static/"):
                     self._send_static(path)
                 elif path == "/api/data":
-                    warehouse_data = app_context.warehouse.get_overview()
-                    current_user = app_context.administration.current_user()
-                    if self._session_author():
-                        parts = self._session_author().split(maxsplit=1)
-                        current_user = {
-                            **current_user,
-                            "first_name": parts[1] if len(parts) > 1 else "",
-                            "last_name": parts[0],
-                            "position": "Инженер",
-                            "role": "engineer",
-                            "must_change_password": 0,
-                        }
+                    try:
+                        warehouse_data = app_context.warehouse.get_overview(
+                            include_balance=self._query(query, "include_balance") != "0"
+                        )
+                        current_user = self._current_user_payload()
+                    except Exception:
+                        LOGGER.exception(
+                            "Failed to load warehouse overview or current user"
+                        )
+                        self._send_json(500, {
+                            "error": "Не удалось загрузить данные интерфейса"
+                        })
+                        return
+                    LOGGER.info(
+                        "Warehouse overview loaded user_id=%s history_events=%d",
+                        current_user.get("id"),
+                        len(warehouse_data.get("warehouse_history", [])),
+                    )
                     self._send_json(200, {**warehouse_data,
                         "task_sources": list(service.TASK_SOURCES),
                         "task_types": list(service.TASK_TYPES),
@@ -920,6 +929,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                             ),
                         },
                     ))
+                elif path == "/api/delivery-selection":
+                    self._send_json(200, app_context.warehouse.get_delivery_selection(
+                        self._query_int(query, "id", minimum=1)
+                    ))
                 elif path == "/api/deliveries":
                     self._send_json(200, {"deliveries": app_context.warehouse.list_deliveries(self._query(query, "query"))})
                 elif path == "/api/work-logs":
@@ -931,6 +944,22 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_json(200, {"rows": app_context.reports.get_daily_report(
                         self._query(query, "date")
                     )})
+                elif path == "/api/warehouse-stock-tree":
+                    tree_path = {
+                        name: self._query(query, name)
+                        for name in ("category", "item_type", "vendor", "model")
+                    }
+                    self._send_json(200, app_context.warehouse.get_stock_tree(
+                        level=self._query(query, "level") or "category",
+                        path=tree_path,
+                        filters=self._balance_filters(query),
+                        limit=self._query_int(
+                            query, "limit", default=100, minimum=1, maximum=200
+                        ),
+                        offset=self._query_int(
+                            query, "offset", default=0, minimum=0, maximum=1_000_000
+                        ),
+                    ))
                 elif path == "/api/balance":
                     balance_limit = self._query_int(
                         query, "limit", default=500, minimum=1, maximum=5_000
@@ -998,10 +1027,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         self._query(query, "start_date"), self._query(query, "end_date")
                     ))
                 elif path == "/api/admin":
-                    self._require_admin_session()
                     if self._query(query, "section") == "references":
                         self._send_json(200, app_context.warehouse.get_reference_editor())
                     else:
+                        self._require_admin_session()
                         self._send_json(200, app_context.administration.get_administration_overview())
                 elif path == "/api/uploaded-daily-report":
                     self._send_json(200, {"rows": app_context.reports.get_uploaded_report(
@@ -1114,6 +1143,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             except (WarehouseError, WorkspaceError, FullInventoryXlsxError) as error:
                 self._send_json(400, {"error": str(error)})
             except Exception:
+                LOGGER.exception("Unhandled GET error path=%s", path)
                 self._send_json(500, {"error": "Внутренняя ошибка сервера"})
 
         def do_POST(self) -> None:  # noqa: N802
@@ -1279,7 +1309,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 action = data.get("action")
                 if action in {
                     "RECEIPT", "ISSUE", "MOVE", "ADD", "STOCK_RECEIPT",
-                    "ASSIGN_INVENTORY_NUMBER", "STOCK_ISSUE",
+                    "ASSIGN_INVENTORY_NUMBER", "UPDATE_POSITION_CARD", "STOCK_ISSUE",
                     "CONFIRM_SCANNED_RECEIPTS", "CONFIRM_SCANNED_ISSUES",
                     "CONFIRM_SCANNED_ISSUE_PAIRS", "CONFIRM_IMPORT_PREVIEW",
                     "CONFIRM_BULK_ISSUE", "CONFIRM_DELIVERY",
@@ -1287,12 +1317,14 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     "ACCEPT_DELIVERY_BATCH", "CLOSE_DELIVERY",
                     "ADD_REFERENCE", "TOGGLE_REFERENCE", "PROPOSE_REFERENCE",
                     "REFERENCE_RENAME", "REFERENCE_MERGE",
+                    "FILL_RECEIPT_FIELDS", "FILL_RECEIPT_DATE",
+                    "CORRECT_DUPLICATE_SERIAL", "DELETE_DUPLICATE_RECEIPT",
                 }:
                     app_context.warehouse.assert_posting_allowed(str(action))
                 if action in {
                     "CREATE_BACKUP", "CHECK_DATABASE", "RESTORE_BACKUP",
                     "CREATE_USER", "CHANGE_PASSWORD", "UPDATE_PROFILE",
-                    "ADD_REFERENCE", "TOGGLE_REFERENCE", "REFERENCE_RENAME",
+                    "REFERENCE_RENAME",
                     "REFERENCE_MERGE_PREVIEW", "REFERENCE_MERGE",
                 }:
                     self._require_admin_session(allow_password_change=action == "CHANGE_PASSWORD")
@@ -1325,6 +1357,29 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 elif action == "ASSIGN_INVENTORY_NUMBER":
                     response["position"] = app_context.warehouse.assign_inventory_number(
                         data.get("serial_number", ""), data.get("inventory_number", "")
+                    )
+                elif action == "UPDATE_POSITION_CARD":
+                    response["position"] = app_context.warehouse.update_position_card(
+                        data.get("serial_number", ""), data.get("fields", {})
+                    )
+                elif action == "FILL_RECEIPT_FIELDS":
+                    response["fill"] = app_context.warehouse.fill_receipt_fields(
+                        self._query_int_value(data.get("receipt_id"), "receipt_id"),
+                        data.get("values", {}),
+                    )
+                elif action == "FILL_RECEIPT_DATE":
+                    response["fill"] = app_context.warehouse.fill_receipt_date(
+                        self._query_int_value(data.get("receipt_id"), "receipt_id"),
+                        data.get("receipt_date", ""),
+                    )
+                elif action == "CORRECT_DUPLICATE_SERIAL":
+                    response["correction"] = app_context.warehouse.correct_duplicate_serial(
+                        self._query_int_value(data.get("receipt_id"), "receipt_id"),
+                        data.get("new_serial_number", ""),
+                    )
+                elif action == "DELETE_DUPLICATE_RECEIPT":
+                    response["deletion"] = app_context.warehouse.delete_duplicate_receipt(
+                        self._query_int_value(data.get("receipt_id"), "receipt_id"),
                     )
                 elif action == "STOCK_ISSUE":
                     if app_context.warehouse._is_cable_issue(data):
@@ -1700,7 +1755,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 for field in ("mode", "email", "password", "full_name"):
                     if field in data and not isinstance(data[field], str):
                         raise WarehouseError(f"Поле {field} должно быть строкой")
-                if data.get("mode") == "admin":
+                mode = data.get("mode", "")
+                if mode not in {"admin", "engineer"}:
+                    raise WarehouseError("Неизвестный режим входа")
+                if mode == "admin":
                     email = data.get("email", "")
                     rate_key = self._login_rate_key(email)
                     if self._login_rate_limited(rate_key):
@@ -1737,6 +1795,13 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         raise WarehouseError("Укажите ФИО инженера")
                     user = service.user_by_email("lokolis")
                     session = {"email": "lokolis", "author": full_name, "mode": "engineer"}
+                    user = {
+                        **user,
+                        "display_name": full_name,
+                        "position": "Дежурный инженер",
+                        "role": "engineer",
+                        "must_change_password": 0,
+                    }
                 token = secrets.token_urlsafe(32)
                 session["last_seen"] = str(time.monotonic())
                 with sessions_lock:
@@ -1744,6 +1809,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     while len(sessions) >= max_sessions:
                         sessions.pop(next(iter(sessions)), None)
                     sessions[token] = session
+                LOGGER.info(
+                    "Login succeeded mode=%s user_id=%s",
+                    mode,
+                    user.get("id"),
+                )
                 self._pending_cookie = (
                     f"ode_session={token}; Path=/; HttpOnly; SameSite=Strict"
                 )
@@ -1754,7 +1824,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
         def _logout(self) -> None:
             token = self._session_token()
             with sessions_lock:
-                sessions.pop(token, None)
+                session = sessions.pop(token, None)
+            LOGGER.info(
+                "Logout completed mode=%s",
+                (session or {}).get("mode", "unknown"),
+            )
             self._pending_cookie = (
                 "ode_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
             )
@@ -1810,6 +1884,32 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _session_role_override(self) -> str | None:
             return "engineer" if self._session_data().get("mode") == "engineer" else None
+
+        def _current_user_payload(self) -> dict[str, Any]:
+            current_user = app_context.administration.current_user()
+            selected_name = self._session_author().strip()
+            if selected_name:
+                parts = selected_name.split(maxsplit=1)
+                current_user = {
+                    **current_user,
+                    "first_name": parts[1] if len(parts) > 1 else "",
+                    "last_name": parts[0],
+                    "display_name": selected_name,
+                    "position": "Дежурный инженер",
+                    "role": "engineer",
+                    "must_change_password": 0,
+                }
+            else:
+                current_user = {
+                    **current_user,
+                    "display_name": " ".join(
+                        part for part in (
+                            str(current_user.get("last_name") or "").strip(),
+                            str(current_user.get("first_name") or "").strip(),
+                        ) if part
+                    ),
+                }
+            return current_user
 
         def _full_inventory_actor(self):
             return app_context.full_inventory.actor_snapshot(
@@ -2008,11 +2108,13 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 "UPDATE_DELIVERY_LINES": {"line_ids": list, "values": dict},
                 "ACCEPT_DELIVERY_SERIAL": {"values": dict},
                 "ACCEPT_DELIVERY_BATCH": {"line_ids": list, "common_values": dict},
+                "UPDATE_POSITION_CARD": {"fields": dict},
+                "FILL_RECEIPT_FIELDS": {"values": dict},
             }
             allowed = collection_fields.get(action, {})
             numeric_fields = {
                 "equipment_id", "quantity", "delivery_id", "reference_id",
-                "source_id", "target_id", "id",
+                "source_id", "target_id", "id", "receipt_id",
             }
             boolean_fields = {"only_empty", "unplanned", "is_active", "confirmed"}
             for key, value in data.items():
@@ -2119,7 +2221,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             try:
                 self.end_headers()
                 self.wfile.write(body)
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 return
 
         def _send_binary_download(
@@ -2134,7 +2236,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             try:
                 self.end_headers()
                 self.wfile.write(body)
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 return
 
         def _send_static(self, path: str) -> None:
@@ -2171,7 +2273,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             try:
                 self.end_headers()
                 self.wfile.write(body)
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                 return
 
         def log_message(self, format: str, *args: object) -> None:
@@ -2190,7 +2292,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--warehouse-contour",
         choices=("production", "demo"),
         default="production",
-        help="production блокирует складские записи до baseline; demo разрешает их только на отдельной БД",
+        help="production использует рабочий предварительный баланс; demo разрешён только на отдельной БД",
     )
     parser.add_argument(
         "--inventory-state-root",
@@ -2203,6 +2305,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if not logging.getLogger().handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
     try:
         _validate_test_mode_database(args.db)
         contour_policy = PostingPolicy(
@@ -2245,7 +2352,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         else "WORKING DATABASE"
     )
     if contour == "WORKING DATABASE":
-        contour = "DEMO DATABASE" if contour_policy.demo else "HISTORICAL READ-ONLY DATABASE"
+        contour = "DEMO DATABASE" if contour_policy.demo else "WORKING PROVISIONAL DATABASE"
     print(contour)
     print(f"Path: {service.db_path.resolve()}")
     print(f"ODE version: {PRODUCT_VERSION}")

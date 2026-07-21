@@ -178,6 +178,93 @@ class EquipmentCardInventoryWorkflowTest(unittest.TestCase):
             ).fetchone()[0]
         self.assertEqual(legacy_inventory, "INV-ODE-013-LEGACY")
 
+    def test_engineer_edits_descriptive_fields_without_changing_identity(self) -> None:
+        with self.service.user_context("lokolis", author_name="Инженер Карточки"):
+            receipt_id = self.context.warehouse.create_receipt(
+                self.receipt("ODE-014-EDIT")
+            )
+            before_count = self.count("stock_receipts")
+            result = self.context.warehouse.update_position_card(
+                "ode-014-edit",
+                {
+                    "item_name": "Коммутатор ODE 0.14",
+                    "supplier": "Не указан",
+                    "vendor": "Не указан",
+                    "model": "CE6863",
+                    "project": "",
+                    "shelf": "",
+                    "object_name": "Не указано",
+                    "datacenter": "Ixcellerate",
+                    "equipment_type": "Коммутаторы",
+                    "component_type": "",
+                    "cable_type": "",
+                    "unit": "шт",
+                },
+            )
+        self.assertTrue(result["updated"])
+        self.assertEqual(result["serial_number"], "ODE-014-EDIT")
+        self.assertEqual(result["equipment_type"], "Коммутаторы")
+        self.assertEqual(self.count("stock_receipts"), before_count)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            row = db.execute(
+                "SELECT serial_number,inventory_number,item_name,equipment_type FROM stock_receipts WHERE id=?",
+                (receipt_id,),
+            ).fetchone()
+            audit = db.execute(
+                "SELECT details FROM audit_log WHERE action='EQUIPMENT_CARD_UPDATED'"
+            ).fetchone()
+        self.assertEqual(row, ("ODE-014-EDIT", "", "Коммутатор ODE 0.14", "Коммутаторы"))
+        self.assertIn("equipment_type", json.loads(audit[0])["changed"])
+
+    def test_card_edit_allows_empty_descriptive_fields_but_requires_name_and_type(self) -> None:
+        # Историческая карточка: «Объект»/«Поставщик» пусты у большинства
+        # мигрированных строк. Редактирование одного поля не должно требовать
+        # заполнения остальных описательных полей.
+        with self.service.user_context("lokolis", author_name="Инженер Карточки"):
+            self.context.warehouse.create_receipt(self.receipt("ODE-014-SPARSE"))
+            base = {
+                "item_name": "Историческая позиция",
+                "supplier": "", "vendor": "Huawei", "model": "",
+                "project": "", "shelf": "", "object_name": "",
+                "datacenter": "", "unit": "",
+                "equipment_type": "Серверы", "component_type": "", "cable_type": "",
+            }
+            result = self.context.warehouse.update_position_card("ODE-014-SPARSE", base)
+            self.assertTrue(result["updated"])
+            self.assertEqual(result["vendor"], "Huawei")
+            self.assertEqual(result["object_name"], "")
+            self.assertEqual(result["supplier"], "")
+
+            # Наименование остаётся обязательным.
+            with self.assertRaisesRegex(WarehouseError, "наименование"):
+                self.context.warehouse.update_position_card(
+                    "ODE-014-SPARSE", {**base, "item_name": "   "}
+                )
+            # Ровно один тип остаётся обязательным.
+            with self.assertRaisesRegex(WarehouseError, "тип карточки"):
+                self.context.warehouse.update_position_card(
+                    "ODE-014-SPARSE", {**base, "equipment_type": ""}
+                )
+
+    def test_card_edit_rejects_unknown_type_and_viewer(self) -> None:
+        with self.service.user_context("lokolis"):
+            self.context.warehouse.create_receipt(self.receipt("ODE-014-LOCKED"))
+            self.service.create_user(
+                "View", "Edit", "Viewer", "viewer-edit@test", "secret1", "viewer"
+            )
+            fields = {
+                "item_name": "Сервер", "supplier": "Не указан", "vendor": "",
+                "model": "", "project": "", "shelf": "", "object_name": "Не указано",
+                "datacenter": "Ixcellerate", "equipment_type": "Неизвестный тип",
+                "component_type": "", "cable_type": "", "unit": "шт",
+            }
+            with self.assertRaisesRegex(WarehouseError, "активном справочнике"):
+                self.context.warehouse.update_position_card("ODE-014-LOCKED", fields)
+        fields["equipment_type"] = "Сервер"
+        with self.service.user_context("viewer-edit@test"):
+            with self.assertRaisesRegex(WarehouseError, "Недостаточно прав"):
+                self.context.warehouse.update_position_card("ODE-014-LOCKED", fields)
+
 
 class _Headers(dict[str, str]):
     def get(self, name: str, default: str = "") -> str:
@@ -238,6 +325,22 @@ class EquipmentCardInventoryApiTest(unittest.TestCase):
         status, repeated = self.action(payload)
         self.assertEqual(status, 200)
         self.assertFalse(repeated["position"]["updated"])
+
+    def test_update_card_action_accepts_flat_fields_mapping(self) -> None:
+        status, response = self.action({
+            "action": "UPDATE_POSITION_CARD",
+            "serial_number": "ODE-013-API",
+            "fields": {
+                "item_name": "Коммутатор API", "supplier": "Не указан",
+                "vendor": "Не указан", "model": "CE6863", "project": "",
+                "shelf": "", "object_name": "Не указано", "datacenter": "Ixcellerate",
+                "equipment_type": "Коммутаторы", "component_type": "",
+                "cable_type": "", "unit": "шт",
+            },
+        })
+        self.assertEqual(status, 200)
+        self.assertTrue(response["position"]["updated"])
+        self.assertEqual(response["position"]["item_name"], "Коммутатор API")
 
     def test_action_validation_role_denial_and_no_traceback_leak(self) -> None:
         cases = (

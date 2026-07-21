@@ -87,6 +87,22 @@ def _runtime_authorizer(
     return sqlite3.SQLITE_OK
 
 
+def _permissive_authorizer(
+    _action: int,
+    _arg1: str | None,
+    _arg2: str | None,
+    _database: str | None,
+    _source: str | None,
+) -> int:
+    """Allow-everything authorizer used to *replace* the runtime authorizer.
+
+    Functionally equivalent to removing it, but works on Python 3.10 where
+    ``set_authorizer(None)`` is not supported (support for ``None`` was added
+    in Python 3.11)."""
+
+    return sqlite3.SQLITE_OK
+
+
 def _sql_tokens(sql: str) -> list[tuple[str, str, int]]:
     """Tokenize enough SQL structure to identify the outermost operation safely."""
 
@@ -375,7 +391,11 @@ class SqliteUnitOfWork:
 
     def _disable_authorizer(self) -> None:
         if self._authorizer_installed and self._connection is not None:
-            self._connection.set_authorizer(None)
+            # Python 3.10 compatibility: set_authorizer(None) снимает
+            # авторизатор только с Python 3.11+; на 3.10 None превращается в
+            # deny-all колбэк и COMMIT/ROLLBACK падают с «not authorized».
+            # Разрешающий колбэк работает одинаково на всех версиях.
+            self._connection.set_authorizer(_permissive_authorizer)
             self._authorizer_installed = False
 
     def __enter__(self) -> "SqliteUnitOfWork":

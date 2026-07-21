@@ -13,8 +13,8 @@ from inventory import __version__
 
 
 ROOT = Path(__file__).resolve().parent
-PACKAGE_NAME = "ODE_0.14.0_windows_source.zip"
-RC_DIR_NAME = "ODE_0.14.0"
+PACKAGE_NAME = f"ODE_{__version__}_windows_source.zip"
+RC_DIR_NAME = f"ODE_{__version__}"
 RC_PACKAGE_NAME = f"{RC_DIR_NAME}.zip"
 
 
@@ -82,13 +82,13 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
         "WINDOWS_RELEASE.md",
         "CHANGELOG.md",
         "ARCHITECTURE.md",
-        "PRODUCT_REVIEW.md",
-        "UX_REVIEW.md",
-        "ARCHITECT_REVIEW.md",
-        "PERFORMANCE_REVIEW.md",
-        "SECURITY_REVIEW.md",
-        "QA_STAGE_0_12_17.md",
-        "BUGS_STAGE_0_12_17.md",
+        "docs/history/PRODUCT_REVIEW.md",
+        "docs/history/UX_REVIEW.md",
+        "docs/history/ARCHITECT_REVIEW.md",
+        "docs/history/PERFORMANCE_REVIEW.md",
+        "docs/history/SECURITY_REVIEW.md",
+        "docs/history/QA_STAGE_0_12_17.md",
+        "docs/history/BUGS_STAGE_0_12_17.md",
         "requirements.txt",
         "start_windows.bat",
         "start_macos.command",

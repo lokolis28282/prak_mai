@@ -26,6 +26,9 @@
   отдельного бизнес-контракта.
 - Initial-baseline candidate rehearsal реализован, но реальный publish
   отключён до отдельного cutover approval, backup и writer-stop gate.
+- До publish обзор показывает рабочий `PROVISIONAL_HISTORICAL` balance. FULL
+  Inventory activation обязана заменить точку отсчёта, а не прибавить counted
+  rows к legacy movements; отсутствие compatibility activation остаётся P1.
 - `LINK_EXISTING_EQUIPMENT` не применяется до target Equipment Query Port;
   автоматическое Vendor/Model matching запрещено.
 

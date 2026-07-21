@@ -32,7 +32,9 @@ MAX_COMPRESSION_RATIO = 1_000
 MAX_ROWS = 1_000_000
 
 REQUIRED_SHEETS = {"Manifest", "Inventory"}
-OPTIONAL_SHEETS = {"Instructions", "Lookups"}
+OPTIONAL_SHEETS = {
+    "Instructions", "Lookups", "Инструкция", "Справочник", "Номенклатура",
+}
 MANIFEST_KEYS = (
     "TemplateId",
     "TemplateVersion",
@@ -56,6 +58,25 @@ INVENTORY_COLUMNS = (
     "Vendor",
     "Model",
     "Description",
+    "Quantity",
+    "UOM",
+    "Condition",
+    "Lot",
+    "CountedBy",
+    "CountedAt",
+    "Comment",
+)
+TEMPLATE_INVENTORY_COLUMNS = (
+    "SerialNumber",
+    "RowId",
+    "ItemKind",
+    "Description",
+    "LocationCode",
+    "WarehouseCode",
+    "InventoryNumber",
+    "PartNumber",
+    "Vendor",
+    "Model",
     "Quantity",
     "UOM",
     "Condition",
@@ -107,6 +128,19 @@ class WorkbookInfo:
     rows: "InventoryRowStream"
     unknown_sheets: tuple[str, ...]
     merged_inventory_ranges: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class TemplateContext:
+    """Read-only operator hints embedded into a downloaded inventory template."""
+
+    reference_version: str = ""
+    warehouse_codes: tuple[str, ...] = ()
+    location_codes: tuple[str, ...] = ()
+    uom_codes: tuple[str, ...] = ()
+    vendors: tuple[str, ...] = ()
+    type_rows: tuple[tuple[str, ...], ...] = ()
+    nomenclature_rows: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -428,33 +462,202 @@ def _column_name(index: int) -> str:
     return result
 
 
-def _worksheet_xml(rows: list[list[str]]) -> str:
+def _worksheet_xml(
+    rows: list[list[str]],
+    *,
+    widths: tuple[float, ...] = (),
+    freeze_rows: int = 0,
+    freeze_columns: int = 0,
+    header_rows: frozenset[int] = frozenset(),
+    title_rows: frozenset[int] = frozenset(),
+    note_rows: frozenset[int] = frozenset(),
+    wrapped_rows: frozenset[int] = frozenset(),
+    merged_ranges: tuple[str, ...] = (),
+    auto_filter: str = "",
+    validations: tuple[tuple[str, str, str, str], ...] = (),
+) -> str:
     body = []
     for row_index, row in enumerate(rows, start=1):
         cells = []
         for column_index, value in enumerate(row, start=1):
             coordinate = f"{_column_name(column_index)}{row_index}"
+            style = 2 if row_index in header_rows else 3 if row_index in title_rows else 4 if row_index in note_rows else 5 if row_index in wrapped_rows else 1
             cells.append(
-                f'<c r="{coordinate}" s="1" t="inlineStr"><is><t xml:space="preserve">'
-                f"{escape(value)}</t></is></c>"
+                f'<c r="{coordinate}" s="{style}" t="inlineStr"><is><t xml:space="preserve">'
+                f"{escape(str(value))}</t></is></c>"
             )
-        body.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+        height = ' ht="30" customHeight="1"' if row_index in title_rows else ' ht="24" customHeight="1"' if row_index in header_rows else ' ht="38" customHeight="1"' if row_index in note_rows or row_index in wrapped_rows else ""
+        body.append(f'<row r="{row_index}"{height}>{"".join(cells)}</row>')
+    columns = ""
+    if widths:
+        columns = "<cols>" + "".join(
+            f'<col min="{index}" max="{index}" width="{width}" customWidth="1"/>'
+            for index, width in enumerate(widths, start=1)
+        ) + "</cols>"
+    pane = ""
+    if freeze_rows or freeze_columns:
+        top_left = f"{_column_name(freeze_columns + 1)}{freeze_rows + 1}"
+        attributes = [f'topLeftCell="{top_left}"', 'state="frozen"']
+        if freeze_rows:
+            attributes.append(f'ySplit="{freeze_rows}"')
+        if freeze_columns:
+            attributes.append(f'xSplit="{freeze_columns}"')
+        attributes.append('activePane="bottomRight"' if freeze_rows and freeze_columns else 'activePane="bottomLeft"' if freeze_rows else 'activePane="topRight"')
+        pane = f'<pane {" ".join(attributes)}/>'
+    merges = ""
+    if merged_ranges:
+        merges = f'<mergeCells count="{len(merged_ranges)}">' + "".join(
+            f'<mergeCell ref={quoteattr(value)}/>' for value in merged_ranges
+        ) + "</mergeCells>"
+    filter_xml = f'<autoFilter ref={quoteattr(auto_filter)}/>' if auto_filter else ""
+    validation_xml = ""
+    if validations:
+        validation_xml = f'<dataValidations count="{len(validations)}">' + "".join(
+            '<dataValidation type="list" allowBlank="1" showErrorMessage="1" '
+            f'errorStyle="stop" errorTitle={quoteattr(title)} error={quoteattr(message)} '
+            f'sqref={quoteattr(cell_range)}><formula1>{escape(name)}</formula1></dataValidation>'
+            for cell_range, name, title, message in validations
+        ) + "</dataValidations>"
     return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        f'<worksheet xmlns="{MAIN_NS}"><sheetData>{"".join(body)}</sheetData></worksheet>'
+        f'<worksheet xmlns="{MAIN_NS}"><sheetViews><sheetView workbookViewId="0" showGridLines="0">{pane}</sheetView></sheetViews>'
+        f'<sheetFormatPr defaultRowHeight="18"/>{columns}<sheetData>{"".join(body)}</sheetData>{filter_xml}{merges}{validation_xml}</worksheet>'
     )
 
 
-def template_bytes() -> bytes:
+def _styles_xml() -> str:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        f'<styleSheet xmlns="{MAIN_NS}">'
+        '<fonts count="3"><font><sz val="11"/><name val="Aptos"/></font>'
+        '<font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Aptos"/></font>'
+        '<font><b/><color rgb="FF17365D"/><sz val="14"/><name val="Aptos Display"/></font></fonts>'
+        '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FF2F64D6"/><bgColor indexed="64"/></patternFill></fill>'
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFEAF1FF"/><bgColor indexed="64"/></patternFill></fill></fills>'
+        '<borders count="2"><border/><border><bottom style="thin"><color rgb="FFD7DFEE"/></bottom></border></borders>'
+        '<cellStyleXfs count="1"><xf/></cellStyleXfs><cellXfs count="6">'
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>'
+        '<xf numFmtId="49" fontId="0" fillId="0" borderId="1" applyNumberFormat="1"><alignment vertical="center"/></xf>'
+        '<xf numFmtId="49" fontId="1" fillId="2" borderId="0" applyNumberFormat="1"><alignment vertical="center" wrapText="1"/></xf>'
+        '<xf numFmtId="49" fontId="2" fillId="3" borderId="0" applyNumberFormat="1"><alignment vertical="center"/></xf>'
+        '<xf numFmtId="49" fontId="0" fillId="3" borderId="0" applyNumberFormat="1"><alignment vertical="center" wrapText="1"/></xf>'
+        '<xf numFmtId="49" fontId="0" fillId="0" borderId="1" applyNumberFormat="1"><alignment vertical="center" wrapText="1"/></xf>'
+        '</cellXfs></styleSheet>'
+    )
+
+
+def _fallback_type_rows() -> tuple[tuple[str, ...], ...]:
+    return (
+        ("Оборудование", "Тип оборудования", "Сервер", "SERIALIZED", "SERIALIZED", "шт", "Точное наименование из листа «Номенклатура»", "S/N обязателен, Quantity = 1"),
+        ("Трансиверы", "Тип компонента", "Трансивер", "SERIALIZED", "SERIALIZED", "шт", "Трансивер + модель", "SFP/QSFP — это трансиверы"),
+        ("Память", "Тип компонента", "Оперативная память", "SERIALIZED", "SERIALIZED", "шт", "Оперативная память + модель/объём", "Скан S/N, Quantity = 1"),
+        ("Кабели", "Тип кабеля", "UTP / OM4 / MTP", "CABLE", "SERIALIZED", "шт или м", "Точное наименование кабеля", "Без S/N — CABLE; с S/N — SERIALIZED"),
+        ("Кабельные сборки", "Тип кабеля", "AOC / DAC", "CABLE", "SERIALIZED", "шт", "AOC/DAC + скорость/длина", "Без S/N — CABLE; с S/N — SERIALIZED"),
+    )
+
+
+def template_bytes(context: TemplateContext | None = None) -> bytes:
+    context = context or TemplateContext(type_rows=_fallback_type_rows())
     manifest_rows = [["Key", "Value"]] + [[key, ""] for key in MANIFEST_KEYS]
     for row in manifest_rows:
         if row[0] == "TemplateId":
             row[1] = "ODE-FULL-INVENTORY"
         elif row[0] == "TemplateVersion":
             row[1] = "1.0"
-    inventory_rows = [list(INVENTORY_COLUMNS)]
+        elif row[0] == "ReferenceVersion":
+            row[1] = context.reference_version
+        elif row[0] == "WarehouseCode" and context.warehouse_codes:
+            row[1] = context.warehouse_codes[0]
+        elif row[0] == "TimeZone":
+            row[1] = "Europe/Moscow"
+
+    inventory_rows = [list(TEMPLATE_INVENTORY_COLUMNS)]
+    instructions_rows = [
+        ["Как заполнять FULL Inventory", "", ""],
+        ["Главное правило", "Одна физическая позиция с S/N = одна строка, ItemKind = SERIALIZED, Quantity = 1.", ""],
+        ["Шаг", "Что делать", "Что копировать/вводить"],
+        ["1", "Заполните Manifest", "Номер инвентаризации, время начала/окончания и ФИО."],
+        ["2", "Откройте Inventory и сканируйте S/N в колонку A", "Не меняйте S/N: он сохраняется как текст."],
+        ["3", "Для RowId у штучной позиции можно использовать тот же S/N", "Скопируйте A в B. RowId должен быть уникальным."],
+        ["4", "Выберите ItemKind и точное наименование", "Берите их из «Справочника» и «Номенклатуры». Если точной позиции нет — введите новое точное Description, не выбирайте похожую модель."],
+        ["5", "Укажите фактическую новую полку", "Скопируйте точный LocationCode из «Справочника». Если полки нет — добавьте её в ODE и скачайте шаблон заново."],
+        ["6", "Заполните Quantity, UOM, Condition и CountedBy", "Обычно: 1 / шт / AVAILABLE / ФИО инженера."],
+        ["7", "Загрузите XLSX в ODE", "Сначала будет Preview; рабочая БД на этом этапе не меняется."],
+        ["", "", ""],
+        ["Пример: оперативная память", "ItemKind = SERIALIZED; Description = точное наименование памяти; Quantity = 1; UOM = шт", "LocationCode = новая фактическая полка."],
+    ]
+
+    type_rows = context.type_rows or _fallback_type_rows()
+    item_kinds = ("SERIALIZED", "BULK", "CABLE", "CONSUMABLE")
+    conditions = ("AVAILABLE", "QUARANTINED", "DAMAGED")
+    reference_height = max(
+        len(type_rows) + 4,
+        len(item_kinds) + 1,
+        len(conditions) + 1,
+        len(context.warehouse_codes) + 1,
+        len(context.location_codes) + 1,
+        len(context.uom_codes) + 1,
+        len(context.vendors) + 1,
+    )
+    reference_rows = [["" for _ in range(16)] for _ in range(reference_height)]
+    reference_rows[0][0] = "ODE — категории и точные значения для Inventory"
+    reference_rows[1][0] = "Копируйте значения без изменений. Полки взяты из активного справочника, а номенклатура — из всей истории Warehouse."
+    reference_rows[3][:8] = ["Категория", "Поле типа в ODE", "Точное значение типа", "ItemKind обычно", "ItemKind если есть S/N", "UOM", "Что писать в Description", "Правило"]
+    for index, values in enumerate(type_rows, start=4):
+        reference_rows[index][:8] = list(values[:8])
+    lists = (
+        (9, "ItemKind", item_kinds),
+        (10, "Condition", conditions),
+        (11, "WarehouseCode", context.warehouse_codes),
+        (12, "LocationCode (полка)", context.location_codes),
+        (13, "UOM", context.uom_codes),
+        (14, "Vendor", context.vendors),
+    )
+    for column, header, values in lists:
+        reference_rows[0][column] = header
+        for row_index, value in enumerate(values, start=1):
+            reference_rows[row_index][column] = value
+
+    nomenclature_rows = [["Категория", "Тип ODE", "ItemKind", "Точное Description", "Vendor", "Model", "UOM", "Карточек в истории", "Предварительный остаток"]]
+    nomenclature_rows.extend([list(row[:9]) for row in context.nomenclature_rows])
+    if len(nomenclature_rows) == 1:
+        nomenclature_rows.append(["Данных истории склада нет", "", "", "", "", "", "", "", ""])
+
+    defined_names: list[tuple[str, str]] = [
+        ("ItemKinds", f"'Справочник'!$J$2:$J${len(item_kinds) + 1}"),
+        ("Conditions", f"'Справочник'!$K$2:$K${len(conditions) + 1}"),
+    ]
+    if context.warehouse_codes:
+        defined_names.append(("WarehouseCodes", f"'Справочник'!$L$2:$L${len(context.warehouse_codes) + 1}"))
+    if context.location_codes:
+        defined_names.append(("LocationCodes", f"'Справочник'!$M$2:$M${len(context.location_codes) + 1}"))
+    if context.uom_codes:
+        defined_names.append(("UOMCodes", f"'Справочник'!$N$2:$N${len(context.uom_codes) + 1}"))
+    validations: list[tuple[str, str, str, str]] = [
+        ("C2:C1048576", "ItemKinds", "Неверный ItemKind", "Выберите значение из списка."),
+        ("M2:M1048576", "Conditions", "Неверное состояние", "Выберите AVAILABLE, QUARANTINED или DAMAGED."),
+    ]
+    if context.location_codes:
+        validations.append(("E2:E1048576", "LocationCodes", "Полка не найдена", "Добавьте полку в справочник ODE и скачайте шаблон заново."))
+    if context.warehouse_codes:
+        validations.append(("F2:F1048576", "WarehouseCodes", "ЦОД не найден", "Выберите ЦОД из списка."))
+    if context.uom_codes:
+        validations.append(("L2:L1048576", "UOMCodes", "Единица не найдена", "Выберите единицу из списка."))
+
+    sheets = (
+        ("Manifest", _worksheet_xml(manifest_rows, widths=(26, 76), freeze_rows=1, header_rows=frozenset({1}), auto_filter=f"A1:B{len(manifest_rows)}")),
+        ("Inventory", _worksheet_xml(inventory_rows, widths=(24, 24, 16, 42, 20, 20, 22, 22, 20, 28, 12, 12, 18, 18, 24, 26, 38), freeze_rows=1, freeze_columns=1, header_rows=frozenset({1}), auto_filter="A1:Q1", validations=tuple(validations))),
+        ("Инструкция", _worksheet_xml(instructions_rows, widths=(25, 58, 76), freeze_rows=3, header_rows=frozenset({3}), title_rows=frozenset({1}), note_rows=frozenset({2, 12}), wrapped_rows=frozenset({4, 5, 6, 7, 8, 9, 10}), merged_ranges=("A1:C1",))),
+        ("Справочник", _worksheet_xml(reference_rows, widths=(24, 24, 30, 20, 22, 16, 44, 48, 3, 18, 20, 24, 26, 16, 24, 3), freeze_rows=4, header_rows=frozenset({4}), title_rows=frozenset({1}), note_rows=frozenset({2}), merged_ranges=("A1:H1", "A2:H2"), auto_filter=f"A4:H{len(type_rows) + 4}")),
+        ("Номенклатура", _worksheet_xml(nomenclature_rows, widths=(24, 26, 16, 62, 22, 48, 12, 18, 18), freeze_rows=1, header_rows=frozenset({1}), wrapped_rows=frozenset(range(2, len(nomenclature_rows) + 1)), auto_filter=f"A1:I{len(nomenclature_rows)}")),
+    )
     output = io.BytesIO()
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
+        overrides = "".join(
+            f'<Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            for index in range(1, len(sheets) + 1)
+        )
         archive.writestr(
             "[Content_Types].xml",
             '<?xml version="1.0" encoding="UTF-8"?>'
@@ -463,9 +666,7 @@ def template_bytes() -> bytes:
             '<Default Extension="xml" ContentType="application/xml"/>'
             '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
             '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            '</Types>',
+            f'{overrides}</Types>',
         )
         archive.writestr(
             "_rels/.rels",
@@ -477,28 +678,29 @@ def template_bytes() -> bytes:
             "xl/workbook.xml",
             '<?xml version="1.0" encoding="UTF-8"?>'
             f'<workbook xmlns="{MAIN_NS}" xmlns:r="{DOC_REL_NS}"><sheets>'
-            '<sheet name="Manifest" sheetId="1" r:id="rId1"/>'
-            '<sheet name="Inventory" sheetId="2" r:id="rId2"/>'
-            '</sheets></workbook>',
+            + "".join(
+                f'<sheet name={quoteattr(name)} sheetId="{index}" r:id="rId{index}"/>'
+                for index, (name, _) in enumerate(sheets, start=1)
+            )
+            + '</sheets><definedNames>'
+            + "".join(
+                f'<definedName name={quoteattr(name)}>{escape(formula)}</definedName>'
+                for name, formula in defined_names
+            )
+            + '</definedNames></workbook>',
         )
         archive.writestr(
             "xl/_rels/workbook.xml.rels",
             '<?xml version="1.0" encoding="UTF-8"?>'
             f'<Relationships xmlns="{REL_NS}">'
-            f'<Relationship Id="rId1" Type="{DOC_REL_NS}/worksheet" Target="worksheets/sheet1.xml"/>'
-            f'<Relationship Id="rId2" Type="{DOC_REL_NS}/worksheet" Target="worksheets/sheet2.xml"/>'
-            f'<Relationship Id="rId3" Type="{DOC_REL_NS}/styles" Target="styles.xml"/>'
+            + "".join(
+                f'<Relationship Id="rId{index}" Type="{DOC_REL_NS}/worksheet" Target="worksheets/sheet{index}.xml"/>'
+                for index in range(1, len(sheets) + 1)
+            )
+            + f'<Relationship Id="rId{len(sheets) + 1}" Type="{DOC_REL_NS}/styles" Target="styles.xml"/>'
             '</Relationships>',
         )
-        archive.writestr(
-            "xl/styles.xml",
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            f'<styleSheet xmlns="{MAIN_NS}"><fonts count="1"><font/></fonts>'
-            '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
-            '<borders count="1"><border/></borders><cellStyleXfs count="1"><xf/></cellStyleXfs>'
-            '<cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="49" applyNumberFormat="1"/></cellXfs>'
-            '</styleSheet>',
-        )
-        archive.writestr("xl/worksheets/sheet1.xml", _worksheet_xml(manifest_rows))
-        archive.writestr("xl/worksheets/sheet2.xml", _worksheet_xml(inventory_rows))
+        archive.writestr("xl/styles.xml", _styles_xml())
+        for index, (_, payload) in enumerate(sheets, start=1):
+            archive.writestr(f"xl/worksheets/sheet{index}.xml", payload)
     return output.getvalue()

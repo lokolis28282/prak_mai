@@ -54,15 +54,15 @@
   }
 
   async function renameValue(value){
-    const display_name=prompt('Новое canonical название',value.display_name);
+    const display_name=prompt('Новое название',value.display_name);
     if(!display_name||display_name.trim()===value.display_name)return;
     await referenceAction({action:'REFERENCE_RENAME',reference_id:value.id,display_name:display_name.trim()});
-    notify('Canonical название обновлено; operational raw values сохранены')
+    notify('Название обновлено; исторические значения сохранены')
   }
 
   async function toggleValue(value){
     await referenceAction({action:'TOGGLE_REFERENCE',reference_id:value.id,is_active:!Boolean(value.active)});
-    notify(value.active?'Значение деактивировано':'Значение утверждено и активировано')
+    notify(value.active?'Значение отключено':'Значение включено')
   }
 
   async function mergeValue(value){
@@ -89,9 +89,18 @@
   function renderEditorRows(domain){
     const body=byId('referenceEditorBody');if(!body)return;
     const values=valuesForDomain(domain);
+    if(state.current_user?.role==='engineer'){
+      body.replaceChildren(...(values.length?values.map(value=>renderElement('tr',{children:[
+        renderElement('td',{text:value.display_name}),
+        renderElement('td',{text:value.active?'Используется':'Отключено'}),
+        renderElement('td',{text:impactText(value)}),
+        renderElement('td',{children:[renderButton({text:value.active?'Отключить':'Включить',className:'button',onClick:()=>toggleValue(value).catch(error=>notify(error.message,true))})]})
+      ]})):[renderElement('tr',{children:[renderElement('td',{className:'empty',attrs:{colspan:4},text:'Значений нет'})]})]));
+      return;
+    }
     body.replaceChildren(...(values.length?values.map(value=>renderElement('tr',{children:[
       renderElement('td',{text:value.display_name}),
-      renderElement('td',{text:value.active?'active':'inactive'}),
+      renderElement('td',{text:value.active?'Используется':'Отключено'}),
       renderElement('td',{text:value.approval_status}),
       renderElement('td',{text:value.scope_key||'—'}),
       renderElement('td',{text:impactText(value)}),
@@ -102,9 +111,9 @@
       renderElement('td',{text:value.source||'—'}),
       renderElement('td',{text:Number(value.warning_count||0)?`${value.warning_count} pending`:'—'}),
       renderElement('td',{children:[
-        renderButton({text:'Переименовать',className:'button',onClick:()=>renameValue(value).catch(error=>notify(error.message,true))}),
-        renderButton({text:value.active?'Деактивировать':'Утвердить',className:'button',onClick:()=>toggleValue(value).catch(error=>notify(error.message,true))}),
-        renderButton({text:'Merge preview',className:'button',onClick:()=>mergeValue(value).catch(error=>notify(error.message,true))})
+        ...(state.current_user?.role==='admin'?[renderButton({text:'Переименовать',className:'button',onClick:()=>renameValue(value).catch(error=>notify(error.message,true))})]:[]),
+        renderButton({text:value.active?'Отключить':'Включить',className:'button',onClick:()=>toggleValue(value).catch(error=>notify(error.message,true))}),
+        ...(state.current_user?.role==='admin'?[renderButton({text:'Проверить объединение',className:'button',onClick:()=>mergeValue(value).catch(error=>notify(error.message,true))})]:[])
       ]})
     ]})):[renderElement('tr',{children:[renderElement('td',{className:'empty',attrs:{colspan:12},text:'Значений нет'})]})]));
   }
@@ -112,29 +121,37 @@
   function renderEditor(){
     const root=byId('references');if(!root)return;
     root.dataset.mode='editor';
-    const domains=(editorState?.domains||[]).map(domain=>[domain.domain_key,domainLabels[domain.domain_key]||domain.display_name]);
+    const operator=state.current_user?.role==='engineer';
+    const operatorDomains=new Set(['equipment_type','component_type','cable_type','vendor','model','supplier','datacenter','shelf','unit_of_measure','project']);
+    const domains=(editorState?.domains||[]).filter(domain=>!operator||operatorDomains.has(domain.domain_key)).map(domain=>[domain.domain_key,domainLabels[domain.domain_key]||domain.display_name]);
     const domain=domains[0]?.[0]||'';
-    const select=renderSelect({id:'referenceEditorDomain',options:domains,value:domain,onChange:event=>renderEditorRows(event.target.value)});
+    const parentOptions=(editorState?.values||[]).filter(value=>value.domain_key==='vendor'&&value.active).map(value=>value.display_name);
+    const parentList=renderElement('datalist',{attrs:{id:'referenceParentOptions'},children:parentOptions.map(value=>renderElement('option',{attrs:{value}}))});
+    const parentInput=renderInput({name:'parent',placeholder:'Выберите производителя модели'});parentInput.setAttribute('list','referenceParentOptions');
+    const updateParent=selected=>{const model=selected==='model';parentInput.hidden=!model;parentInput.disabled=!model;if(!model)parentInput.value=''};
+    const select=renderSelect({id:'referenceEditorDomain',name:'domain',options:domains,value:domain,onChange:event=>{updateParent(event.target.value);renderEditorRows(event.target.value)}});
     const form=renderElement('form',{className:'filters',attrs:{id:'referenceProposalForm'},children:[
-      renderSelect({name:'domain',options:domains,value:domain}),
+      renderElement('label',{children:[renderElement('span',{text:'Справочник'}),select]}),
       renderInput({name:'value',placeholder:'Новое значение',required:true}),
-      renderInput({name:'parent',placeholder:'Parent (для модели — вендор)'}),
-      renderButton({text:'Создать pending proposal',className:'button primary',type:'submit'})
+      parentInput,parentList,
+      renderButton({text:'Добавить значение',className:'button primary',type:'submit'})
     ]});
+    updateParent(domain);
     form.addEventListener('submit',async event=>{
       event.preventDefault();const data=Object.fromEntries(new FormData(form));
-      try{await referenceAction({action:'PROPOSE_REFERENCE',...data});notify('Pending proposal создан')}catch(error){notify(error.message,true)}
+      try{await referenceAction({action:'PROPOSE_REFERENCE',...data});notify('Значение добавлено и ожидает включения')}catch(error){notify(error.message,true)}
     });
+    const headers=operator?['Значение','Состояние','Использование','Действие']:['Значение','Состояние','Согласование','Связь','Использование','Псевдонимы','Создано','Изменено','Автор','Источник','Предупреждения','Действия'];
     const table=renderElement('table',{children:[
-      renderElement('thead',{children:[renderElement('tr',{children:['Canonical value','Статус','Approval','Parent','Usage','Aliases','Created','Updated','Author','Source','Warning','Действия'].map(text=>renderElement('th',{text}))})]}),
+      renderElement('thead',{children:[renderElement('tr',{children:headers.map(text=>renderElement('th',{text}))})]}),
       renderElement('tbody',{attrs:{id:'referenceEditorBody'}})
     ]});
     root.replaceChildren(
       renderElement('div',{className:'landing-head compact',children:[
-        renderElement('p',{className:'eyebrow',text:'Администрирование ODE'}),
+        renderElement('p',{className:'eyebrow',text:'Склад'}),
         renderElement('h2',{text:'Управление справочниками'}),
-        renderElement('p',{text:'Удаление означает deactivate. Merge всегда начинается с impact preview и не переписывает historical raw fields.'})
-      ]}),select,form,renderElement('div',{className:'table-wrap reference-editor-table',children:[table]})
+        renderElement('p',{text:operator?'Добавляйте и включайте значения, которые используются в формах прихода и расхода. Отключение не удаляет старые операции.':'Переименование и объединение не переписывают исходные значения в исторических операциях.'})
+      ]}),form,renderElement('div',{className:'table-wrap reference-editor-table',children:[table]})
     );
     renderEditorRows(domain);
   }
@@ -145,7 +162,7 @@
   }
 
   window.renderReferenceEditor=function(){
-    if(state.current_user?.role!=='admin'){notify('Недостаточно прав для управления справочниками',true);goHome();return}
+    if(!['admin','engineer'].includes(state.current_user?.role)){notify('Недостаточно прав для управления справочниками',true);goHome();return}
     loadReferenceEditor().catch(error=>notify(error.message,true));
   };
 })();
