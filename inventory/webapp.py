@@ -806,7 +806,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self._send_json(401, {"error": "Требуется вход"})
                 return
             try:
-                with service.user_context(
+                with app_context.administration.user_context(
                     email,
                     author_name=self._session_author(),
                     role_override=self._session_role_override(),
@@ -1202,7 +1202,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 })
                 return
             try:
-                with service.user_context(
+                with app_context.administration.user_context(
                     email,
                     author_name=self._session_author(),
                     role_override=self._session_role_override(),
@@ -1523,26 +1523,26 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         int(data.get("source_id", 0)), int(data.get("target_id", 0))
                     )
                 elif action == "CREATE_BACKUP":
-                    response["backup"] = service.create_backup()
+                    response["backup"] = app_context.administration.create_backup()
                 elif action == "CHECK_DATABASE":
-                    response["integrity"] = service.check_integrity()
+                    response["integrity"] = app_context.administration.check_integrity()
                 elif action == "RESTORE_BACKUP":
-                    response["restore"] = service.restore_backup(
+                    response["restore"] = app_context.administration.restore_backup(
                         data.get("filename", ""),
                         self._json_boolean(data.get("confirmed", False), "confirmed"),
                     )
                 elif action == "CREATE_USER":
-                    response["user_id"] = service.create_user(
+                    response["user_id"] = app_context.administration.create_user(
                         data.get("first_name", ""), data.get("last_name", ""),
                         data.get("position", ""), data.get("email", ""),
                         data.get("password", ""), data.get("role", ""),
                     )
                 elif action == "CHANGE_PASSWORD":
-                    service.change_password(
+                    app_context.administration.change_password(
                         data.get("old_password", ""), data.get("new_password", "")
                     )
                 elif action == "UPDATE_PROFILE":
-                    response["user"] = service.update_profile(
+                    response["user"] = app_context.administration.update_profile(
                         data.get("first_name", ""), data.get("last_name", ""),
                         data.get("position", ""),
                     )
@@ -1617,7 +1617,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 self._send_json(404, {"error": "Страница не найдена"})
                 return
             try:
-                with service.user_context(
+                with app_context.administration.user_context(
                     self._session_email(),
                     author_name=self._session_author(),
                     role_override=self._session_role_override(),
@@ -1797,13 +1797,13 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                             migration_pilot_status.get("enabled")
                             or migration_full_status.get("read_only")
                         ):
-                            user = service.authenticate(
+                            user = app_context.administration.authenticate(
                                 email,
                                 data.get("password", ""),
                                 record_login=False,
                             )
                         else:
-                            user = service.authenticate(
+                            user = app_context.administration.authenticate(
                                 email, data.get("password", "")
                             )
                     except WarehouseError:
@@ -1819,7 +1819,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     full_name = " ".join(str(data.get("full_name", "")).split())
                     if len(full_name) < 3:
                         raise WarehouseError("Укажите ФИО инженера")
-                    user = service.user_by_email("lokolis")
+                    user = app_context.administration.get_user("lokolis")
                     session = {"email": "lokolis", "author": full_name, "mode": "engineer"}
                     user = {
                         **user,
@@ -1881,7 +1881,9 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                             raise WarehouseError("Файл базы загружен не полностью")
                         output.write(chunk)
                         remaining -= len(chunk)
-                result = service.replace_production_database(temporary, confirmed=confirmed)
+                result = app_context.administration.replace_production_database(
+                    temporary, confirmed=confirmed
+                )
                 result["uploaded"] = filename
                 self._send_json(200, result)
             except (WarehouseError, OSError, ValueError) as error:
@@ -1939,7 +1941,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _full_inventory_actor(self):
             return app_context.full_inventory.actor_snapshot(
-                service.current_user(),
+                app_context.administration.current_user(),
                 display_override=self._session_author(),
             )
 
@@ -1952,7 +1954,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
         def _require_admin_session(self, *, allow_password_change: bool = False) -> None:
             if self._session_data().get("mode") != "admin":
                 raise WarehouseError("Откройте отдельный режим администратора")
-            user = service.current_user()
+            user = app_context.administration.current_user()
             if user.get("must_change_password") and not allow_password_change:
                 raise WarehouseError("Сначала смените начальный пароль администратора")
 
@@ -2378,7 +2380,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     stats = service.dashboard_stats()
-    health = service._database_check(service.db_path, service.KEY_TABLES)
+    health = app_context.administration.database_check(
+        service.db_path, service.KEY_TABLES
+    )
     integrity_status = "ok" if health["ok"] else "; ".join(health["messages"])
     contour = (
         "REVIEW DATABASE"

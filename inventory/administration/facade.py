@@ -5,12 +5,22 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .service import AdministrationService
+
 
 class AdministrationFacade:
     SECRET_KEYS = {"password", "password_hash", "token", "session", "session_token"}
 
-    def __init__(self, service: Any):
+    def __init__(self, service: AdministrationService):
         self.service = service
+
+    @property
+    def db_path(self) -> Path:
+        return self.service.db_path
+
+    @property
+    def backup_dir(self) -> Path:
+        return self.service.backup_dir
 
     def _plain(self, value: Any) -> Any:
         if isinstance(value, dict):
@@ -34,6 +44,18 @@ class AdministrationFacade:
     def get_profile(self) -> dict[str, Any]:
         return self.get_current_user()
 
+    def authenticate(
+        self, email: str, password: str, *, record_login: bool = True
+    ) -> dict[str, Any]:
+        return self._plain(
+            self.service.authenticate(
+                email, password, record_login=record_login
+            )
+        )
+
+    def user_context(self, *args: Any, **kwargs: Any) -> Any:
+        return self.service.user_context(*args, **kwargs)
+
     def users(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         return self.list_users(*args, **kwargs)
 
@@ -42,6 +64,32 @@ class AdministrationFacade:
 
     def get_user(self, email: str) -> dict[str, Any]:
         return self._plain(self.service.user_by_email(email))
+
+    def user_by_email(self, email: str) -> dict[str, Any]:
+        return self.get_user(email)
+
+    def create_user(
+        self,
+        first_name: str,
+        last_name: str,
+        position: str,
+        email: str,
+        password: str,
+        role: str,
+    ) -> int:
+        return self.service.create_user(
+            first_name, last_name, position, email, password, role
+        )
+
+    def change_password(self, old_password: str, new_password: str) -> None:
+        self.service.change_password(old_password, new_password)
+
+    def update_profile(
+        self, first_name: str, last_name: str, position: str
+    ) -> dict[str, Any]:
+        return self._plain(
+            self.service.update_profile(first_name, last_name, position)
+        )
 
     def audit(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         return self.list_audit_entries(*args, **kwargs)
@@ -63,6 +111,9 @@ class AdministrationFacade:
     def backup(self, *args: Any, **kwargs: Any) -> Any:
         return self.service.create_backup(*args, **kwargs)
 
+    def create_backup(self, *args: Any, **kwargs: Any) -> Any:
+        return self.backup(*args, **kwargs)
+
     def backups(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
         return self.list_backups(*args, **kwargs)
 
@@ -81,8 +132,26 @@ class AdministrationFacade:
     def restore(self, *args: Any, **kwargs: Any) -> Any:
         return self.service.restore_backup(*args, **kwargs)
 
+    def restore_backup(self, *args: Any, **kwargs: Any) -> Any:
+        return self.restore(*args, **kwargs)
+
+    def replace_production_database(
+        self, *args: Any, **kwargs: Any
+    ) -> Any:
+        return self.service.replace_production_database(*args, **kwargs)
+
     def integrity_check(self, *args: Any, **kwargs: Any) -> Any:
         return self.service.check_integrity(*args, **kwargs)
+
+    def check_integrity(self, *args: Any, **kwargs: Any) -> Any:
+        return self.integrity_check(*args, **kwargs)
+
+    def database_check(
+        self,
+        path: str | Path | None = None,
+        required_tables: set[str] | None = None,
+    ) -> dict[str, Any]:
+        return self.service.database_check(path, required_tables)
 
     def get_database_status(self) -> dict[str, Any]:
         db_path = Path(self.service.db_path)

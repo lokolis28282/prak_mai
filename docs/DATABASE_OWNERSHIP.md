@@ -109,6 +109,14 @@ Backup files under the configured backup directory are owned by Administration.
 Read APIs expose only safe file metadata (`name`, `size`, `modified`) and do not
 return absolute filesystem paths.
 
+ODE 0.16.0 Stage 1 makes this ownership physical in code:
+`AdministrationService` and its user/audit/diagnostics/backup collaborators are
+the only implementations of Administration behavior. `WarehouseCore` and
+`WarehouseService` retain deprecated compatibility delegates only. The shared
+actor context and audit adapter are reused by Warehouse/Reports writers, so no
+second user or audit store is introduced. There is no schema migration and no
+change to SQLite table ownership.
+
 ## Stage 0.13.3A Offline Migration Ownership
 
 **IMPLEMENTED:** `inventory/migration/` owns a separate, offline candidate

@@ -50,9 +50,13 @@
 
    Stage 0.12.9 не запускает `integrity_check` в read API, чтобы не утяжелять `/api/data` и admin overview. Нужен отдельный будущий diagnostics endpoint с явным запуском и отдельными contract tests.
 
-7. Administration write/actions остаются compatibility-layer.
+7. ~~Administration write/actions остаются compatibility-layer.~~
 
-   `login/logout`, `CREATE_USER`, `CHANGE_PASSWORD`, `UPDATE_PROFILE`, `CREATE_BACKUP`, `RESTORE_BACKUP`, `CHECK_DATABASE` и upload prod DB пока не перенесены на `AdministrationFacade`.
+   Закрыто в ODE 0.16.0 Stage 1: login/authentication, actor context,
+   `CREATE_USER`, `CHANGE_PASSWORD`, `UPDATE_PROFILE`, `CREATE_BACKUP`,
+   `RESTORE_BACKUP`, `CHECK_DATABASE` и upload prod DB идут через
+   `AdministrationFacade -> AdministrationService`. Logout остаётся локальной
+   очисткой HTTP session; старые service/core методы — deprecated delegates.
 
 8. Delivery acceptance UI/E2E coverage is still light.
 

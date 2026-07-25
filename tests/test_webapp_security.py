@@ -139,7 +139,7 @@ class WebappSecurityTest(unittest.TestCase):
         first_cookie = last_cookie = ""
         with (
             patch("inventory.webapp.time.monotonic", return_value=200.0),
-            patch.object(self.service, "user_by_email", return_value=user),
+            patch.object(self.context.administration, "get_user", return_value=user),
         ):
             for index in range(501):
                 status, _, cookie = self._login({
@@ -245,7 +245,11 @@ class WebappSecurityTest(unittest.TestCase):
 
         with (
             patch("inventory.webapp.time.monotonic", return_value=400.0),
-            patch.object(self.service, "authenticate", side_effect=reject_password),
+            patch.object(
+                self.context.administration,
+                "authenticate",
+                side_effect=reject_password,
+            ),
         ):
             statuses = [
                 self._login({
@@ -264,7 +268,11 @@ class WebappSecurityTest(unittest.TestCase):
 
         with (
             patch("inventory.webapp.time.monotonic", return_value=400.0 + 15 * 60 + 1),
-            patch.object(self.service, "authenticate", return_value=user),
+            patch.object(
+                self.context.administration,
+                "authenticate",
+                return_value=user,
+            ),
         ):
             status, _, cookie = self._login({
                 "mode": "admin", "email": "lokolis", "password": "correct",

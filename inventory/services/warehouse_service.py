@@ -4,19 +4,18 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import re
 import secrets
-import shutil
 import sqlite3
 import threading
-from contextlib import closing, contextmanager
-from contextvars import ContextVar
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..db import DEFAULT_DB_PATH, connect, hash_password, initialize, verify_password
+from ..administration.service import AdministrationService
+from ..administration.diagnostics import AdministrationDiagnosticsService
+from ..db import DEFAULT_DB_PATH, connect, initialize
 from ..importing import PREVIEW_ERROR_LIMIT, PREVIEW_ROW_LIMIT
 from ..shared.helpers import STRICT_REFERENCES, WarehouseError
 from ..warehouse.references import ReferenceDataService
@@ -93,30 +92,31 @@ class WarehouseCore:
         # и автоматически исчезает после перезапуска сервиса.
         self._import_previews: dict[str, dict[str, Any]] = {}
         self._last_import_rows: dict[tuple[str, str], list[dict[str, Any]]] = {}
-        self._actor_email: ContextVar[str | None] = ContextVar(
-            f"warehouse_actor_{id(self)}", default=None
-        )
-        self._actor_name: ContextVar[str | None] = ContextVar(
-            f"warehouse_actor_name_{id(self)}", default=None
-        )
-        self._actor_role_override: ContextVar[str | None] = ContextVar(
-            f"warehouse_actor_role_{id(self)}", default=None
-        )
         if initialize_database:
             self.default_admin_created = initialize(self.db_path)
         else:
             if not self.db_path.is_file():
                 raise FileNotFoundError(self.db_path)
             self.default_admin_created = False
+        self.administration = AdministrationService(
+            self.db_path,
+            lock=self.lock,
+            key_tables=self.KEY_TABLES,
+            restore_base_tables=self.RESTORE_BASE_TABLES,
+        )
+        # DEPRECATED: actor fields remain aliases until all warehouse/report
+        # collaborators consume the Administration boundary directly.
+        self._actor_email = self.administration._actor_email
+        self._actor_name = self.administration._actor_name
+        self._actor_role_override = self.administration._actor_role_override
         # Bootstrap credentials are documented for the local compatibility
         # runtime, but must never be echoed into application or CI logs.
         self.reference_catalog = ReferenceDataService(self)
 
     @staticmethod
     def _public_user(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
-        data = dict(row)
-        data.pop("password_hash", None)
-        return data
+        # DEPRECATED: use AdministrationService._public_user.
+        return AdministrationService._public_user(row)
 
     @staticmethod
     def _operational_category(
@@ -127,39 +127,18 @@ class WarehouseCore:
     def authenticate(
         self, email: str, password: str, *, record_login: bool = True
     ) -> dict[str, Any]:
-        email = self._required(email, "email")
-        with connect(self.db_path) as db:
-            row = db.execute(
-                "SELECT * FROM users WHERE email = ? COLLATE NOCASE AND is_active = 1",
-                (email,),
-            ).fetchone()
-            if row is None or not verify_password(password, str(row["password_hash"])):
-                raise WarehouseError("Неверный email или пароль")
-            if record_login:
-                token = self._actor_email.set(str(row["email"]))
-                try:
-                    self._audit(db, "LOGIN", "user", row["id"])
-                finally:
-                    self._actor_email.reset(token)
-            return self._public_user(row)
+        # DEPRECATED: use ApplicationContext.administration.authenticate.
+        return self.administration.authenticate(
+            email, password, record_login=record_login
+        )
 
     def user_by_email(self, email: str) -> dict[str, Any]:
-        with connect(self.db_path) as db:
-            row = db.execute(
-                "SELECT * FROM users WHERE email = ? COLLATE NOCASE AND is_active = 1",
-                (email,),
-            ).fetchone()
-        if row is None:
-            raise WarehouseError("Пользователь не найден или отключен")
-        return self._public_user(row)
+        # DEPRECATED: use ApplicationContext.administration.get_user.
+        return self.administration.user_by_email(email)
 
     def current_user(self) -> dict[str, Any]:
-        # Прямые вызовы сервиса и CLI выполняются от встроенного администратора.
-        user = self.user_by_email(self._actor_email.get() or "lokolis")
-        role_override = self._actor_role_override.get()
-        if role_override:
-            user = {**user, "role": role_override, "must_change_password": 0}
-        return user
+        # DEPRECATED: use ApplicationContext.administration.current_user.
+        return self.administration.current_user()
 
     @contextmanager
     def user_context(
@@ -169,89 +148,42 @@ class WarehouseCore:
         author_name: str | None = None,
         role_override: str | None = None,
     ) -> Iterable[dict[str, Any]]:
-        if role_override not in {None, "engineer", "viewer"}:
-            raise WarehouseError("Недопустимое ограничение роли")
-        user = self.user_by_email(email)
-        token = self._actor_email.set(str(user["email"]))
-        name_token = self._actor_name.set(author_name.strip() if author_name else None)
-        role_token = self._actor_role_override.set(role_override)
-        try:
-            yield self.current_user()
-        finally:
-            self._actor_role_override.reset(role_token)
-            self._actor_name.reset(name_token)
-            self._actor_email.reset(token)
+        # DEPRECATED: use ApplicationContext.administration.user_context.
+        with self.administration.user_context(
+            email,
+            author_name=author_name,
+            role_override=role_override,
+        ) as user:
+            yield user
 
     def _require_role(self, *roles: str) -> dict[str, Any]:
-        user = self.current_user()
-        if user["role"] not in roles:
-            raise WarehouseError("Недостаточно прав для выполнения операции")
-        return user
+        # DEPRECATED: warehouse collaborators still use the shared actor policy.
+        return self.administration._require_role(*roles)
 
     def _require_write(self) -> dict[str, Any]:
-        return self._require_role("admin", "engineer")
+        # DEPRECATED: warehouse collaborators still use the shared actor policy.
+        return self.administration._require_write()
 
     def users(self) -> list[dict[str, Any]]:
-        self._require_role("admin")
-        with connect(self.db_path) as db:
-            return [self._public_user(row) for row in db.execute(
-                """SELECT * FROM users
-                   ORDER BY last_name COLLATE NOCASE, first_name COLLATE NOCASE, email"""
-            )]
+        # DEPRECATED: use ApplicationContext.administration.list_users.
+        return self.administration.users()
 
     def create_user(
         self, first_name: str, last_name: str, position: str,
         email: str, password: str, role: str,
     ) -> int:
-        self._require_role("admin")
-        if role not in self.ROLES:
-            raise WarehouseError("Неизвестная роль")
-        values = (
-            self._required(first_name, "имя"), self._required(last_name, "фамилия"),
-            self._required(position, "должность"), self._required(email, "email"),
-            hash_password(self._required(password, "пароль")), role,
+        # DEPRECATED: use ApplicationContext.administration.create_user.
+        return self.administration.create_user(
+            first_name, last_name, position, email, password, role
         )
-        try:
-            with connect(self.db_path) as db:
-                cursor = db.execute(
-                    """INSERT INTO users(
-                           first_name, last_name, position, email, password_hash, role
-                       ) VALUES (?, ?, ?, ?, ?, ?)""",
-                    values,
-                )
-                self._audit(db, "USER_CREATE", "user", cursor.lastrowid, {"email": email, "role": role})
-                return int(cursor.lastrowid)
-        except sqlite3.IntegrityError as error:
-            raise WarehouseError("Пользователь с таким email уже существует") from error
 
     def change_password(self, old_password: str, new_password: str) -> None:
-        user = self.current_user()
-        if len(new_password) < 6:
-            raise WarehouseError("Новый пароль должен содержать не менее 6 символов")
-        with connect(self.db_path) as db:
-            row = db.execute("SELECT password_hash FROM users WHERE id = ?", (user["id"],)).fetchone()
-            if row is None or not verify_password(old_password, str(row["password_hash"])):
-                raise WarehouseError("Текущий пароль указан неверно")
-            db.execute(
-                "UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?",
-                (hash_password(new_password), user["id"]),
-            )
-            self._audit(db, "PASSWORD_CHANGE", "user", user["id"])
+        # DEPRECATED: use ApplicationContext.administration.change_password.
+        self.administration.change_password(old_password, new_password)
 
     def update_profile(self, first_name: str, last_name: str, position: str) -> dict[str, Any]:
-        user = self.current_user()
-        values = (
-            self._required(first_name, "имя"),
-            self._required(last_name, "фамилия"),
-            self._required(position, "должность"),
-        )
-        with connect(self.db_path) as db:
-            db.execute(
-                "UPDATE users SET first_name = ?, last_name = ?, position = ? WHERE id = ?",
-                (*values, user["id"]),
-            )
-            self._audit(db, "PROFILE_UPDATE", "user", user["id"])
-        return self.current_user()
+        # DEPRECATED: use ApplicationContext.administration.update_profile.
+        return self.administration.update_profile(first_name, last_name, position)
 
     def _audit(
         self,
@@ -261,32 +193,12 @@ class WarehouseCore:
         entity_id: int | str | None = None,
         details: dict[str, Any] | str | None = None,
     ) -> None:
-        serialized = (
-            json.dumps(details, ensure_ascii=False, sort_keys=True)
-            if isinstance(details, dict)
-            else str(details or "")
-        )
-        db.execute(
-            """INSERT INTO audit_log(action, entity_type, entity_id, details, author)
-               VALUES (?, ?, ?, ?, ?)""",
-            (
-                action, entity_type, "" if entity_id is None else str(entity_id),
-                serialized, self._actor_name.get() or self._actor_email.get() or "lokolis",
-            ),
-        )
+        # DEPRECATED: shared write adapter delegates to Administration ownership.
+        self.administration._audit(db, action, entity_type, entity_id, details)
 
     def audit_entries(self, limit: int = 200) -> list[dict[str, Any]]:
-        self._require_role("admin")
-        if limit <= 0 or limit > 5000:
-            raise WarehouseError("Лимит аудита должен быть от 1 до 5000")
-        with connect(self.db_path) as db:
-            return [
-                dict(row) for row in db.execute(
-                    """SELECT id, event_date, action, entity_type, entity_id, details, author
-                       FROM audit_log ORDER BY event_date DESC, id DESC LIMIT ?""",
-                    (limit,),
-                )
-            ]
+        # DEPRECATED: use ApplicationContext.administration.list_audit_entries.
+        return self.administration.audit_entries(limit)
 
     def warehouse_history(self, limit: int = 300) -> list[dict[str, Any]]:
         """Человекочитаемая история склада без раскрытия внутренних имён таблиц."""
@@ -362,201 +274,45 @@ class WarehouseCore:
 
     @property
     def backup_dir(self) -> Path:
-        return self.db_path.parent / "backups"
+        # DEPRECATED: use ApplicationContext.administration.backup_dir.
+        return self.administration.backup_dir
 
     def list_backups(self) -> list[dict[str, Any]]:
-        self._require_role("admin")
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
-        result = []
-        for path in sorted(self.backup_dir.glob("*.db"), key=lambda item: item.stat().st_mtime, reverse=True):
-            stat = path.stat()
-            result.append({
-                "name": path.name,
-                "size": stat.st_size,
-                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(timespec="seconds"),
-            })
-        return result
+        # DEPRECATED: use ApplicationContext.administration.list_backups.
+        return self.administration.list_backups()
 
     def _next_backup_path(self, prefix: str) -> Path:
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        candidate = self.backup_dir / f"{prefix}_{timestamp}.db"
-        counter = 2
-        while candidate.exists():
-            candidate = self.backup_dir / f"{prefix}_{timestamp}_{counter}.db"
-            counter += 1
-        return candidate
+        # DEPRECATED: Administration owns backup naming.
+        return self.administration._next_backup_path(prefix)
 
     @staticmethod
     def _database_check(path: Path, required_tables: set[str]) -> dict[str, Any]:
-        try:
-            with closing(sqlite3.connect(path)) as db:
-                db.execute("PRAGMA foreign_keys = ON")
-                messages = [str(row[0]) for row in db.execute("PRAGMA integrity_check")]
-                foreign_key_errors = [tuple(row) for row in db.execute("PRAGMA foreign_key_check")]
-                tables = {
-                    str(row[0]) for row in db.execute(
-                        "SELECT name FROM sqlite_master WHERE type = 'table'"
-                    )
-                }
-        except sqlite3.Error as error:
-            return {
-                "ok": False, "messages": [str(error)],
-                "missing_tables": sorted(required_tables), "foreign_key_errors": [],
-            }
-        missing = sorted(required_tables - tables)
-        return {
-            "ok": messages == ["ok"] and not missing and not foreign_key_errors,
-            "messages": messages,
-            "missing_tables": missing,
-            "foreign_key_errors": foreign_key_errors,
-        }
+        # DEPRECATED: Administration owns database diagnostics.
+        return AdministrationDiagnosticsService.database_check(path, required_tables)
 
     def check_integrity(self) -> dict[str, Any]:
-        self._require_role("admin")
-        with self.lock:
-            result = self._database_check(self.db_path, self.KEY_TABLES)
-            try:
-                with connect(self.db_path) as db:
-                    self._audit(db, "INTEGRITY_CHECK", "database", details=result)
-            except sqlite3.Error:
-                # Результат проверки должен быть доступен даже при повреждении audit_log.
-                pass
-            return result
+        # DEPRECATED: use ApplicationContext.administration.integrity_check.
+        return self.administration.check_integrity()
 
     def create_backup(self, prefix: str = "warehouse") -> dict[str, Any]:
-        self._require_role("admin")
-        with self.lock:
-            destination = self._next_backup_path(prefix)
-            try:
-                source_db = sqlite3.connect(self.db_path)
-                backup_db = sqlite3.connect(destination)
-                source_db.backup(backup_db)
-                backup_db.close()
-                source_db.close()
-                check = self._database_check(destination, self.KEY_TABLES)
-                if not check["ok"]:
-                    destination.unlink(missing_ok=True)
-                    raise WarehouseError("Созданный backup не прошел проверку целостности")
-                with connect(self.db_path) as db:
-                    self._audit(
-                        db, "BACKUP_CREATE", "database_backup", destination.name,
-                        {"path": str(destination), "size": destination.stat().st_size},
-                    )
-                return next(item for item in self.list_backups() if item["name"] == destination.name)
-            except (OSError, sqlite3.Error) as error:
-                destination.unlink(missing_ok=True)
-                raise WarehouseError(f"Не удалось создать backup: {error}") from error
+        # DEPRECATED: use ApplicationContext.administration.create_backup.
+        return self.administration.create_backup(prefix)
 
     def _backup_by_name(self, filename: str) -> Path:
-        if not filename or Path(filename).name != filename:
-            raise WarehouseError("Некорректное имя backup-файла")
-        path = self.backup_dir / filename
-        if not path.is_file() or path.suffix.lower() != ".db":
-            raise WarehouseError("Backup-файл не найден")
-        return path
+        # DEPRECATED: Administration owns backup resolution.
+        return self.administration._backup_by_name(filename)
 
     def restore_backup(self, filename: str, confirmed: bool = False) -> dict[str, Any]:
-        self._require_role("admin")
-        if not confirmed:
-            raise WarehouseError("Восстановление требует явного подтверждения")
-        with self.lock:
-            selected = self._backup_by_name(filename)
-            check = self._database_check(selected, self.RESTORE_BASE_TABLES)
-            if not check["ok"]:
-                raise WarehouseError("Выбранный backup поврежден или не содержит ключевые таблицы")
-            with connect(self.db_path) as db:
-                self._audit(db, "RESTORE_START", "database_backup", selected.name)
-            safety = self.create_backup(prefix="warehouse_before_restore")
-            temporary = self.db_path.with_name(f".{self.db_path.name}.restore_tmp")
-            try:
-                shutil.copy2(selected, temporary)
-                os.replace(temporary, self.db_path)
-                for suffix in ("-wal", "-shm"):
-                    Path(str(self.db_path) + suffix).unlink(missing_ok=True)
-                initialize(self.db_path)
-                final_check = self._database_check(self.db_path, self.KEY_TABLES)
-                if not final_check["ok"]:
-                    raise WarehouseError("Восстановленная база не прошла проверку целостности")
-                with connect(self.db_path) as db:
-                    self._audit(
-                        db, "RESTORE_SUCCESS", "database_backup", selected.name,
-                        {"safety_backup": safety["name"]},
-                    )
-                return {
-                    "ok": True,
-                    "restored_from": selected.name,
-                    "safety_backup": safety["name"],
-                    "integrity": final_check,
-                }
-            except Exception as error:
-                temporary.unlink(missing_ok=True)
-                safety_path = self._backup_by_name(safety["name"])
-                shutil.copy2(safety_path, temporary)
-                os.replace(temporary, self.db_path)
-                initialize(self.db_path)
-                with connect(self.db_path) as db:
-                    self._audit(
-                        db, "RESTORE_ROLLBACK", "database_backup", selected.name,
-                        {"error": str(error), "safety_backup": safety["name"]},
-                    )
-                if isinstance(error, WarehouseError):
-                    raise
-                raise WarehouseError(f"Не удалось восстановить backup: {error}") from error
+        # DEPRECATED: use ApplicationContext.administration.restore_backup.
+        return self.administration.restore_backup(filename, confirmed)
 
     def replace_production_database(
         self, uploaded_path: str | Path, confirmed: bool = False,
     ) -> dict[str, Any]:
-        """Безопасно заменить рабочую БД загруженным SQLite-файлом."""
-        actor = self._require_role("admin")
-        if not confirmed:
-            raise WarehouseError("Загрузка базы в прод требует явного подтверждения")
-        source = Path(uploaded_path)
-        if not source.is_file() or source.suffix.lower() != ".db":
-            raise WarehouseError("Выберите SQLite-файл с расширением .db")
-        source_check = self._database_check(source, self.RESTORE_BASE_TABLES)
-        if not source_check["ok"]:
-            raise WarehouseError("Загруженная база повреждена или не содержит ключевые таблицы")
-        with self.lock:
-            safety = self.create_backup(prefix="warehouse_before_prod_upload")
-            temporary = self.db_path.with_name(f".{self.db_path.name}.prod_upload_tmp")
-            try:
-                shutil.copy2(source, temporary)
-                os.replace(temporary, self.db_path)
-                for suffix in ("-wal", "-shm"):
-                    Path(str(self.db_path) + suffix).unlink(missing_ok=True)
-                initialize(self.db_path)
-                final_check = self._database_check(self.db_path, self.KEY_TABLES)
-                if not final_check["ok"]:
-                    raise WarehouseError("Загруженная база не прошла итоговую проверку")
-                with connect(self.db_path) as db:
-                    active_admins = int(db.execute(
-                        "SELECT count(*) FROM users WHERE role = 'admin' AND is_active = 1"
-                    ).fetchone()[0])
-                    if active_admins == 0:
-                        raise WarehouseError("В загруженной базе нет активного администратора")
-                    self._audit(
-                        db, "PRODUCTION_DATABASE_UPLOAD", "database", source.name,
-                        {"safety_backup": safety["name"], "uploaded_by": actor["email"]},
-                    )
-                return {
-                    "ok": True, "uploaded": source.name,
-                    "safety_backup": safety["name"], "integrity": final_check,
-                }
-            except Exception as error:
-                temporary.unlink(missing_ok=True)
-                safety_path = self._backup_by_name(safety["name"])
-                shutil.copy2(safety_path, temporary)
-                os.replace(temporary, self.db_path)
-                initialize(self.db_path)
-                with connect(self.db_path) as db:
-                    self._audit(
-                        db, "PRODUCTION_DATABASE_ROLLBACK", "database", source.name,
-                        {"error": str(error), "safety_backup": safety["name"]},
-                    )
-                if isinstance(error, WarehouseError):
-                    raise
-                raise WarehouseError(f"Не удалось загрузить базу в прод: {error}") from error
+        # DEPRECATED: use ApplicationContext.administration.replace_production_database.
+        return self.administration.replace_production_database(
+            uploaded_path, confirmed
+        )
 
     @staticmethod
     def _required(value: str, field: str) -> str:

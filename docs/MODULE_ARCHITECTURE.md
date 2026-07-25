@@ -10,8 +10,9 @@ legacy `service`, `webapp`, Reports, Monitoring или offline migration package
 всегда disposable и имеет `publish_available=false`.
 
 Stage 0.12.6 introduced product module boundaries without removing
-`WarehouseCore` or legacy UI. This document includes subsequent migrations
-through source/runtime `0.14.0`. Last built ZIP remains `0.12.17 RC1`.
+`WarehouseCore` or legacy UI. ODE 0.16.0 starts the physical monolith
+decomposition with the Administration extraction. Last built ZIP remains
+`0.12.17 RC1`.
 
 ## Modules
 
@@ -57,6 +58,9 @@ Knowledge:
 Administration:
 
 - owns users, backup, restore, audit view and diagnostics;
+- owns authentication, actor context, role policy and administration writes;
+- is composed as a dedicated `AdministrationService` behind
+  `AdministrationFacade`;
 - must not contain warehouse or report business rules.
 
 Migration staging (offline tooling, not an application runtime module):
@@ -91,9 +95,16 @@ Warehouse pilot adapter:
 
 ## Transitional State
 
-`WarehouseCore` remains the compatibility core. New facades delegate to the existing `WarehouseService` facade, which still delegates to specialized services and `WarehouseCore`. This is intentional for ODE 0.12.6: it creates boundaries without a data migration or behavior change.
+`WarehouseCore` remains the compatibility core for Warehouse and Reports
+legacy flows. Administration no longer delegates business logic to it:
+`ApplicationContext` wires `AdministrationFacade -> AdministrationService`.
+The legacy core/service administration methods are deprecated thin delegates
+to that same service, preserving callers without keeping duplicate logic.
 
-Web/API receives `ApplicationContext` via `make_handler()`. The handler still uses a compatibility service adapter internally for write endpoints while module calls are extracted gradually.
+Web/API receives `ApplicationContext` via `make_handler()`. Administration
+HTTP paths use `context.administration`; the handler still uses a compatibility
+service adapter for remaining Warehouse/Reports legacy endpoints while those
+module calls are extracted gradually.
 
 Stage 0.12.7 routes read-only Warehouse GET/CSV paths through:
 
@@ -110,6 +121,15 @@ Stage 0.12.9 routes read-only Administration GET/CSV paths through:
 This includes current user/profile read, `/api/admin` aggregation and audit CSV
 export. Authentication, session writes and admin actions remain compatibility
 flows.
+
+ODE 0.16.0 Stage 1 completes the Administration route:
+
+`web/API -> ApplicationContext -> AdministrationFacade -> AdministrationService`
+
+This includes authentication, actor context, user/profile writes,
+backup/restore, integrity checks and confirmed database upload. Logout remains
+an in-memory HTTP session operation and does not bypass the Administration
+business boundary.
 
 Stage 0.12.10 wires warehouse events through:
 

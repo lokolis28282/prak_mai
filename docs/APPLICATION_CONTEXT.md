@@ -38,6 +38,25 @@ Administration read APIs use `context.administration` as the source for:
 The compatibility service is still used for authentication, sessions and
 write/admin actions until those flows receive separate contract tests.
 
+## ODE 0.16.0 Stage 1 Administration extraction
+
+`ApplicationContext.administration` is now wired to a dedicated
+`AdministrationService`, not to `WarehouseService` or `WarehouseCore`.
+
+Administration owns:
+
+- authentication, current actor context and role checks;
+- user/profile reads and writes;
+- audit writes and audit queries;
+- database integrity diagnostics;
+- backup, restore and confirmed production database replacement.
+
+The HTTP layer routes login, request actor context, administration actions and
+startup database checks through `context.administration`. `compat_service`
+remains available for Warehouse/Reports legacy flows. Its administration
+methods are deprecated delegates to the same `AdministrationService`; they do
+not contain a second implementation.
+
 ## Stage 0.12.10 Warehouse Events
 
 `ApplicationContext.from_service()` creates one `WarehouseEventReader` and

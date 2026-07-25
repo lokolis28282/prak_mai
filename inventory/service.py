@@ -50,6 +50,7 @@ class WarehouseService:
             strict_reference_validation=strict_reference_validation,
             initialize_database=initialize_database,
         )
+        self.administration_service = self._core.administration
         self.profile_service = ProfileService(self._core)
         self.reference_service = ReferenceService(self._core)
         self.receipt_service = ReceiptService(self._core)
@@ -79,38 +80,47 @@ class WarehouseService:
 
     @property
     def backup_dir(self) -> Path:
-        return self._core.backup_dir
+        return self.administration_service.backup_dir
 
     def __getattr__(self, name: str) -> Any:
         # Compatibility for private helpers used by legacy CLI/tests during migration.
         return getattr(self._core, name)
 
     def authenticate(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.authenticate(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.authenticate.
+        return self.administration_service.authenticate(*args, **kwargs)
 
     def user_by_email(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.user_by_email(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.get_user.
+        return self.administration_service.user_by_email(*args, **kwargs)
 
     def current_user(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.current_user(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.current_user.
+        return self.administration_service.current_user(*args, **kwargs)
 
     def user_context(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.user_context(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.user_context.
+        return self.administration_service.user_context(*args, **kwargs)
 
     def users(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.users(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.list_users.
+        return self.administration_service.users(*args, **kwargs)
 
     def create_user(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.create_user(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.create_user.
+        return self.administration_service.create_user(*args, **kwargs)
 
     def change_password(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.change_password(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.change_password.
+        return self.administration_service.change_password(*args, **kwargs)
 
     def update_profile(self, *args: Any, **kwargs: Any) -> Any:
-        return self.profile_service.update_profile(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.update_profile.
+        return self.administration_service.update_profile(*args, **kwargs)
 
     def audit_entries(self, *args: Any, **kwargs: Any) -> Any:
-        return self.history_service.audit_entries(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.list_audit_entries.
+        return self.administration_service.audit_entries(*args, **kwargs)
 
     def warehouse_history(self, *args: Any, **kwargs: Any) -> Any:
         return self.history_service.warehouse_history(*args, **kwargs)
@@ -119,16 +129,22 @@ class WarehouseService:
         return self.history_service.operation_log(*args, **kwargs)
 
     def list_backups(self, *args: Any, **kwargs: Any) -> Any:
-        return self.inventory_service.list_backups(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.list_backups.
+        return self.administration_service.list_backups(*args, **kwargs)
 
     def create_backup(self, *args: Any, **kwargs: Any) -> Any:
-        return self.inventory_service.create_backup(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.create_backup.
+        return self.administration_service.create_backup(*args, **kwargs)
 
     def restore_backup(self, *args: Any, **kwargs: Any) -> Any:
-        return self.inventory_service.restore_backup(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.restore_backup.
+        return self.administration_service.restore_backup(*args, **kwargs)
 
     def replace_production_database(self, *args: Any, **kwargs: Any) -> Any:
-        return self.inventory_service.replace_production_database(*args, **kwargs)
+        # DEPRECATED: use Administration.replace_production_database.
+        return self.administration_service.replace_production_database(
+            *args, **kwargs
+        )
 
     def add_equipment(self, *args: Any, **kwargs: Any) -> Any:
         return self.inventory_service.add_equipment(*args, **kwargs)
@@ -155,7 +171,8 @@ class WarehouseService:
         return self.inventory_service.import_preview_rows(*args, **kwargs)
 
     def check_integrity(self, *args: Any, **kwargs: Any) -> Any:
-        return self.monitoring_service.check_integrity(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.administration.integrity_check.
+        return self.administration_service.check_integrity(*args, **kwargs)
 
     def data_quality_problems(self, *args: Any, **kwargs: Any) -> Any:
         return self.monitoring_service.data_quality_problems(*args, **kwargs)

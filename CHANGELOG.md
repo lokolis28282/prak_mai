@@ -1,5 +1,23 @@
 # Changelog ODE
 
+## ODE 0.16.0 — Stage 1, Administration extraction (2026-07-25)
+
+- пользователи, authentication/actor context, роли, аудит, диагностика,
+  backup/restore и безопасная замена рабочей SQLite вынесены из
+  `WarehouseCore` в `inventory/administration/`;
+- `ApplicationContext.administration` теперь получает отдельный
+  `AdministrationService`, а не общий `WarehouseService`;
+- login, admin actions, session actor context и startup database check в
+  `webapp.py` идут через `context.administration`;
+- старые методы `WarehouseCore` и `WarehouseService` сохранены как явно
+  помеченные `DEPRECATED` thin delegates; они используют тот же actor context и
+  audit adapter, поэтому совместимость CLI и ещё не перенесённых модулей
+  сохранена без второй реализации;
+- схема БД и ownership таблиц не менялись; backup/restore/upload по-прежнему
+  требуют admin role и явного подтверждения;
+- добавлены архитектурные контракты физического отделения Administration;
+  полный discover-набор: **579 tests, OK (`skipped=15`)**.
+
 ## ODE 0.15.0 warehouse history/export stabilization (2026-07-25)
 
 - добавлен обязательный `scripts/audit_repository_data.py`: Git index не

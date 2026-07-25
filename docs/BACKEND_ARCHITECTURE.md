@@ -89,15 +89,17 @@ import the offline package. Marker-guarded review is implemented by
 `ApplicationContext -> WarehouseFacade`
 
 Прямой доступ `inventory/webapp.py` к `WarehouseCore` запрещен. Прямые
-`service.*` вызовы допустимы только для неперенесенных legacy flows. Reports
+`service.*` вызовы допустимы только для неперенесенных Warehouse/Reports
+legacy flows. Reports
 write/import идут через `ReportsFacade`; equipment/component receipt
 write/import, cable receipt/issue and serialized equipment/component issue
 идут через `WarehouseFacade`. Delivery document/acceptance flows также
 Warehouse-owned с отдельно отмеченными legacy-операциями. Inventory Number
 assignment в карточке и bulk Preview/Confirm с Stage 0.13.1/0.13.2 идут через
 receipt boundary `WarehouseFacade`; старое физическое inventory compare,
-прочие legacy inventory operations, Administration write и backup/restore
-остаются переходными compatibility flows.
+прочие legacy inventory operations остаются переходными compatibility flows.
+Administration write, authentication, actor context и backup/restore с ODE
+0.16.0 идут через отдельный `AdministrationService`.
 
 **IMPLEMENTED (Stage 0.13.3A):** offline `inventory/migration` не является
 новым Warehouse endpoint и не обходит facade для production writes: модуль
@@ -262,11 +264,15 @@ receipt repository transaction contract, существующий S/N тольк
 
 ## Что осталось в `WarehouseCore`
 
-`WarehouseCore` содержит старую реализацию на переходном этапе. Это временный compatibility core, а не целевая архитектура.
+`WarehouseCore` содержит старую Warehouse/Reports реализацию на переходном
+этапе. Это временный compatibility core, а не целевая архитектура.
 
 Текущее состояние Stage 0.13.3A:
 
-- `WarehouseCore` остается допустимым legacy-core;
+- `WarehouseCore` остается допустимым legacy-core для ещё не перенесённых
+  Warehouse/Reports flows;
+- Administration-реализация вынесена физически; core содержит только
+  deprecated delegates к единственному `AdministrationService`;
 - часть сервисов остаётся фасадами/делегатами над `WarehouseCore`, а receipt,
   issue, cable, delivery и Inventory Number flows имеют Warehouse-owned
   реализации;

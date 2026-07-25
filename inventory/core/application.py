@@ -74,7 +74,7 @@ class ApplicationContext:
             reports=ReportsFacade(service, warehouse_events=event_reader),
             monitoring=MonitoringFacade(),
             knowledge=KnowledgeFacade(service),
-            administration=AdministrationFacade(service),
+            administration=AdministrationFacade(service.administration_service),
             current_actor=current_actor,
             feature_flags=flags,
             configuration=runtime,
