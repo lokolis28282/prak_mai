@@ -113,6 +113,14 @@ Stage 0.12.14 moves serialized equipment/component issue writes and imports to
 remains `stock_issues` plus `stock_issue_allocations`; unmatched problem rows
 still have no allocation and therefore do not change balance.
 
+ODE 0.16.0 Stage 3 completes physical Warehouse code ownership without changing
+table ownership or schema. Receipt/issue/cable/delivery writes are shared
+between `WarehouseFacade` and compatibility names through one service
+composition. Balance/history/data-quality/reference and legacy
+equipment/operations SQL lives only in focused modules under
+`inventory/warehouse`; `WarehouseCore` and the composition root contain no
+business SQL.
+
 Backup files under the configured backup directory are owned by Administration.
 Read APIs expose only safe file metadata (`name`, `size`, `modified`) and do not
 return absolute filesystem paths.

@@ -1,12 +1,7 @@
-"""Data-quality and monitoring service."""
+"""Deprecated import alias for Warehouse data-quality monitoring."""
 
-from __future__ import annotations
+from inventory.warehouse.monitoring import (
+    WarehouseMonitoringService as MonitoringService,
+)
 
-from typing import Any
-
-from ._base import ServiceAdapter
-
-
-class MonitoringService(ServiceAdapter):
-    def data_quality_problems(self, *args: Any, **kwargs: Any) -> Any: return self.call("data_quality_problems", *args, **kwargs)
-    def check_integrity(self, *args: Any, **kwargs: Any) -> Any: return self.call("check_integrity", *args, **kwargs)
+__all__ = ["MonitoringService"]

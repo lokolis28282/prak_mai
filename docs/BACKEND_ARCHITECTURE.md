@@ -20,19 +20,24 @@ rehearsal создаёт отдельную target DB; реального publis
 
 ```text
 inventory/
-  service.py                    # Facade, совместимый публичный API
+  service.py                    # Thin compatibility API
   services/
-    warehouse_service.py         # Core implementation на переходном этапе
-    receipt_service.py           # Приход
-    issue_service.py             # Расход
-    delivery_service.py          # Поставки
-    balance_service.py           # Баланс и карточки
-    history_service.py           # История и audit-read
-    report_service.py            # Логи работ и отчеты
-    profile_service.py           # Пользователи, профиль, auth
-    reference_service.py         # Справочники
-    monitoring_service.py        # Integrity и data-quality
-    inventory_service.py         # Legacy inventory, backup, import/export
+    warehouse_service.py         # Deprecated thin WarehouseCore adapter
+    receipt_service.py           # Compatibility -> receipt/cable services
+    issue_service.py             # Compatibility -> issue/cable services
+    delivery_service.py          # Compatibility -> delivery services
+    *_service.py                 # Deprecated import aliases
+  warehouse/
+    service.py                    # Composition root, no business SQL
+    receipt_imports.py            # ReceiptWriteService
+    issue_imports.py              # IssueWriteService
+    cables.py                     # CableService
+    delivery_*.py                 # Import/read/acceptance/repositories
+    balance.py                    # WarehouseBalanceService
+    history.py                    # WarehouseHistoryService
+    inventory.py                  # LegacyInventoryService
+    monitoring.py                 # WarehouseMonitoringService
+    reference_service.py          # WarehouseReferenceService
   shared/
     helpers.py                   # WarehouseError, общие флаги
     db.py                        # DB re-exports для сервисов
@@ -75,8 +80,9 @@ import the offline package. Marker-guarded review is implemented by
 
 `inventory.service.WarehouseService` теперь:
 
-- создает внутренний `WarehouseCore`;
-- создает профильные сервисы;
+- создает deprecated thin `WarehouseCore` и Warehouse composition root;
+- создает write/import services один раз и передает те же экземпляры
+  `WarehouseFacade`;
 - делегирует публичные методы в нужный сервис;
 - сохраняет старые class constants;
 - сохраняет свойства `db_path`, `lock`, `backup_dir`, `default_admin_created`;
@@ -269,27 +275,30 @@ receipt repository transaction contract, существующий S/N тольк
 
 ## Что осталось в `WarehouseCore`
 
-`WarehouseCore` содержит старую Warehouse реализацию на переходном
-этапе. Это временный compatibility core, а не целевая архитектура.
+После ODE 0.16.0 Stage 3 в `WarehouseCore` нет Warehouse business logic и SQL.
+Это deprecated compatibility adapter, который:
 
-Текущее состояние Stage 0.13.3A:
+- создает `WarehouseDomainService`;
+- проксирует старые атрибуты к Warehouse composition;
+- сохраняет deprecated delegates к единственным Administration и Reports
+  boundaries;
+- сохраняет constants и private compatibility access для старого CLI/tests.
 
-- `WarehouseCore` остается допустимым legacy-core для ещё не перенесённых
-  Warehouse flows;
-- Administration-реализация вынесена физически; core содержит только
-  deprecated delegates к единственному `AdministrationService`;
-- Reports-реализация и Reports-owned SQL вынесены физически; core содержит
-  только deprecated delegates к единственному `ReportsFacade`;
-- часть сервисов остаётся фасадами/делегатами над `WarehouseCore`, а receipt,
-  issue, cable, delivery и Inventory Number flows имеют Warehouse-owned
-  реализации;
-- дальнейший перенос идёт постепенно, по одному доменному блоку;
+Складская реализация разделена физически:
+
+- receipt/issue/cable/delivery writes используют существующие профильные
+  сервисы и repositories;
+- balance/search/card, history, data quality, references и legacy
+  equipment/operations находятся в отдельных классах под
+  `inventory/warehouse/`;
+- `WarehouseFacade` и старые имена `WarehouseService` используют общие
+  экземпляры write services, поэтому второй реализации нет;
 - публичный Python API `WarehouseService` не менялся;
 - существующие generic HTTP API расширяются только через документированные
   kind/action contracts;
 - production-схема SQLite, плоский runtime `reference_values` и рабочая БД не
   менялись;
-- бизнес-логика не переписывалась.
+- бизнес-семантика и ownership таблиц не менялись.
 
 **IMPLEMENTED:** отдельный offline-контур формализует 16 reference domains,
 безопасные aliases, canonical naming и точное извлечение S/N. Девять таблиц
@@ -303,10 +312,9 @@ receipt repository transaction contract, существующий S/N тольк
 backup/reset gate и явного подтверждения. Candidate DB Stage 0.13.3A не
 является production replacement.
 
-Причина такого состояния: безопасные доменные разрезы должны фиксировать
-границы ответственности без массового rewrite. Следующие переносы должны быть
-маленькими и покрываться полным обнаруженным набором regression/contract/API
-тестов, smoke UI, module/frontend audits и SQLite integrity-check.
+Удаление самого compatibility API откладывается до отдельного deprecation
+решения. Stage 3 architecture contracts запрещают возвращать SQL или
+warehouse-workflows в `WarehouseCore`/`WarehouseDomainService`.
 
 ## Зависимости
 
@@ -321,7 +329,7 @@ webapp.py / tests
         +--> AdministrationFacade ---------------------------------+
         +--> MonitoringFacade
         |
-        +--> compat WarehouseService --> specialized services/WarehouseCore
+        +--> compat WarehouseService --> shared Warehouse services
 
 cli.py --> compatibility WarehouseService --> SQLite
 
@@ -343,7 +351,8 @@ pilot Web GET --> ApplicationContext --> WarehouseFacade
 
 ## Правила следующего этапа
 
-1. Переносить методы из `WarehouseCore` в профильные сервисы группами.
+1. Не добавлять бизнес-логику в `WarehouseCore` или
+   `WarehouseDomainService`; расширять профильный Warehouse service и facade.
 
 2. После каждого переноса запускать:
 

@@ -208,7 +208,9 @@ class IssueWriteService:
                             candidate,
                             references,
                             line_number=line,
-                            strict_references=not soft,
+                            strict_references=(
+                                self.strict_reference_validation and not soft
+                            ),
                         )
                         serial = prepared["source_serial_number"].casefold()
                         if serial and serial in seen_serials:

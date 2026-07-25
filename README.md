@@ -9,7 +9,7 @@
 интерфейс открывается в браузере на локальном компьютере.
 
 > **Версия 0.16.0** · Python 3.10+ · Windows / macOS / Linux · внешние
-> зависимости не требуются · 584 автоматических теста
+> зависимости не требуются · 589 автоматических тестов
 
 ## Возможности
 
@@ -212,7 +212,7 @@ app.py
 ```text
 app.py                     точка запуска
 inventory/db.py            схема SQLite и идемпотентные миграции
-inventory/service.py       compatibility facade для оставшихся legacy flows
+inventory/service.py       thin compatibility API для старых Python-вызовов
 inventory/importing.py     кодировки, разделители и синонимы CSV-заголовков
 inventory/webapp.py        локальный интерфейс и HTTP API
 inventory/cli.py           совместимый CLI
@@ -439,7 +439,7 @@ ODE при импорте принимает оба разделителя: `,` 
 python3 -m unittest discover -s tests -v
 ```
 
-Полный discover-набор версии 0.16.0 содержит 584 автоматических теста
+Полный discover-набор версии 0.16.0 содержит 589 автоматических тестов
 Warehouse, Monitoring, Knowledge, УВР и CLI-контура. Исторические
 составы gate по отдельным Stage сохранены в датированных CHANGELOG/manual QA и
 не используются как текущий счётчик. Набор включает CSV и шаблоны,

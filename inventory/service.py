@@ -8,15 +8,10 @@ from typing import Any
 from .db import DEFAULT_DB_PATH
 from .reports.facade import ReportsFacade
 from .shared.helpers import STRICT_REFERENCES, WarehouseError
-from .services.balance_service import BalanceService
 from .services.delivery_service import DeliveryService
-from .services.history_service import HistoryService
-from .services.inventory_service import InventoryService
 from .services.issue_service import IssueService
-from .services.monitoring_service import MonitoringService
 from .services.profile_service import ProfileService
 from .services.receipt_service import ReceiptService
-from .services.reference_service import ReferenceService
 from .services.warehouse_service import WarehouseCore
 from .warehouse.events import WarehouseEventReader
 
@@ -53,14 +48,22 @@ class WarehouseService:
         )
         self.administration_service = self._core.administration
         self.profile_service = ProfileService(self._core)
-        self.reference_service = ReferenceService(self._core)
+        domain = self._core._warehouse
+        self.reference_service = domain._references
         self.receipt_service = ReceiptService(self._core)
-        self.issue_service = IssueService(self._core)
-        self.delivery_service = DeliveryService(self._core)
-        self.balance_service = BalanceService(self._core)
-        self.history_service = HistoryService(self._core)
-        self.monitoring_service = MonitoringService(self._core)
-        self.inventory_service = InventoryService(self._core)
+        self.issue_service = IssueService(
+            self._core,
+            previews=self.receipt_service.previews,
+            cables=self.receipt_service.cables,
+        )
+        self.delivery_service = DeliveryService(
+            self._core,
+            receipt_writer=self.receipt_service.writer,
+        )
+        self.balance_service = domain._balance
+        self.history_service = domain._history
+        self.monitoring_service = domain._monitoring
+        self.inventory_service = domain._inventory
         self.warehouse_event_reader = WarehouseEventReader(self)
         self.reports_service = ReportsFacade(
             self.db_path,
@@ -179,7 +182,7 @@ class WarehouseService:
         return self.inventory_service.export_csv(*args, **kwargs)
 
     def import_preview_rows(self, *args: Any, **kwargs: Any) -> Any:
-        return self.inventory_service.import_preview_rows(*args, **kwargs)
+        return self.receipt_service.import_preview_rows(*args, **kwargs)
 
     def check_integrity(self, *args: Any, **kwargs: Any) -> Any:
         # DEPRECATED: use ApplicationContext.administration.integrity_check.

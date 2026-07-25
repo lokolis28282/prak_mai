@@ -105,7 +105,9 @@ def soft_receipt_source(source: dict[str, Any]) -> dict[str, Any]:
 
 def is_cable_receipt(source: dict[str, Any]) -> bool:
     category = str(source.get("category", "")).strip().casefold()
-    return category == "кабели" or bool(str(source.get("cable_type", "")).strip())
+    if category:
+        return category == "кабели"
+    return bool(str(source.get("cable_type", "")).strip())
 
 
 def prepare_receipt(

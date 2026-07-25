@@ -561,7 +561,9 @@ class ReceiptWriteService:
                         candidate,
                         references,
                         line_number=line,
-                        strict_references=not soft,
+                        strict_references=(
+                            self.strict_reference_validation and not soft
+                        ),
                     )
                     serial = prepared["serial_number"].casefold()
                     inventory = prepared["inventory_number"].casefold()

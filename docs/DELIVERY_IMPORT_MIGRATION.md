@@ -1,5 +1,9 @@
 # Delivery Import Migration Map
 
+> ODE 0.16.0 Stage 3: `WarehouseFacade` and compatibility delivery names reuse
+> one `DeliveryImportService`/`DeliveryReadService` composition. Legacy paths
+> in this map are historical.
+
 Stage 0.12.15 moves only delivery document import, validation and matching to
 `WarehouseFacade`. Physical acceptance remains legacy for Stage 0.12.16.
 

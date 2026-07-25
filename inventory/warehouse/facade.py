@@ -51,33 +51,53 @@ class WarehouseFacade:
         self.event_publisher = event_publisher
         self.posting_policy = posting_policy
         self.full_inventory = full_inventory
-        self._previews = WarehousePreviewStore()
-        self.receipt_writer = ReceiptWriteService(
+        receipt_compat = getattr(service, "receipt_service", None)
+        issue_compat = getattr(service, "issue_service", None)
+        delivery_compat = getattr(service, "delivery_service", None)
+        self._previews = (
+            getattr(receipt_compat, "previews", None)
+            or WarehousePreviewStore()
+        )
+        self.receipt_writer = getattr(receipt_compat, "writer", None) or (
+            ReceiptWriteService(
+                service.db_path,
+                actor_provider=service,
+                strict_reference_validation=(
+                    service.strict_reference_validation
+                ),
+                previews=self._previews,
+            )
+        )
+        self.cables = getattr(receipt_compat, "cables", None) or CableService(
             service.db_path,
             actor_provider=service,
             strict_reference_validation=service.strict_reference_validation,
             previews=self._previews,
         )
-        self.cables = CableService(
-            service.db_path,
-            actor_provider=service,
-            strict_reference_validation=service.strict_reference_validation,
-            previews=self._previews,
-        )
-        self.issue_writer = IssueWriteService(
-            service.db_path,
-            actor_provider=service,
-            strict_reference_validation=service.strict_reference_validation,
-            previews=self._previews,
+        self.issue_writer = getattr(issue_compat, "writer", None) or (
+            IssueWriteService(
+                service.db_path,
+                actor_provider=service,
+                strict_reference_validation=(
+                    service.strict_reference_validation
+                ),
+                previews=self._previews,
+            )
         )
         self.delivery_previews = None
-        self.delivery_importer = DeliveryImportService(
+        self.delivery_importer = getattr(
+            delivery_compat, "importer", None
+        ) or DeliveryImportService(
             service.db_path,
             actor_provider=service,
             event_publisher=event_publisher,
         )
-        self.delivery_reader = DeliveryReadService(service.db_path)
-        self.delivery_acceptance = DeliveryAcceptanceService(
+        self.delivery_reader = getattr(
+            delivery_compat, "reader", None
+        ) or DeliveryReadService(service.db_path)
+        self.delivery_acceptance = getattr(
+            delivery_compat, "acceptance", None
+        ) or DeliveryAcceptanceService(
             service.db_path,
             actor_provider=service,
             receipt_writer=self.receipt_writer,

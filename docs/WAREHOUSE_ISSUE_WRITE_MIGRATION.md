@@ -1,5 +1,10 @@
 # Stage 0.12.14 Warehouse Issue Write Migration Map
 
+> ODE 0.16.0 Stage 3: legacy `WarehouseService` issue names and
+> `WarehouseFacade` now reuse the same `IssueWriteService`/`CableService`
+> instances. The old-path column below is historical; `WarehouseCore` contains
+> no issue implementation.
+
 ## Scope
 
 Stage 0.12.14 migrates only serialized equipment/component issue flows to

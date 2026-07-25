@@ -9,10 +9,10 @@ legacy `service`, `webapp`, Reports, Monitoring или offline migration package
 точка вызова — `FullInventoryService.build_candidate_rehearsal`; результат
 всегда disposable и имеет `publish_available=false`.
 
-Stage 0.12.6 introduced product module boundaries without removing
-`WarehouseCore` or legacy UI. ODE 0.16.0 starts the physical monolith
-decomposition with the Administration extraction. Last built ZIP remains
-`0.12.17 RC1`.
+Stage 0.12.6 introduced product module boundaries without removing the legacy
+UI. ODE 0.16.0 physically extracts Administration, Reports and Warehouse.
+`WarehouseCore` now exists only as a deprecated compatibility adapter without
+business SQL. Last built ZIP remains `0.12.17 RC1`.
 
 ## Modules
 
@@ -98,18 +98,23 @@ Warehouse pilot adapter:
 
 ## Transitional State
 
-`WarehouseCore` remains the compatibility core for Warehouse legacy flows.
-Administration and Reports no longer delegate business logic to it:
-`ApplicationContext` wires `AdministrationFacade -> AdministrationService`.
-The composition layer wires one `ReportsFacade` with a Warehouse-owned
-`WarehouseEventReader` and the Administration actor provider.
-Legacy core/service Administration and Reports methods are deprecated thin
-delegates to those same boundaries, preserving callers without duplicate logic.
+`WarehouseCore` is a thin compatibility adapter. It owns no business SQL and
+contains only construction/attribute routing plus deprecated Administration
+and Reports delegates. `WarehouseDomainService` is a small composition root for
+focused history, legacy inventory, balance, monitoring and reference services.
+Receipt, issue, cable and delivery compatibility names reuse the same service
+instances as `WarehouseFacade`.
+
+`ApplicationContext` wires
+`AdministrationFacade -> AdministrationService`, one `ReportsFacade` with a
+Warehouse-owned `WarehouseEventReader`, and one `WarehouseFacade` over the
+shared Warehouse composition. No module keeps a second implementation for old
+Python method names.
 
 Web/API receives `ApplicationContext` via `make_handler()`. Administration
 HTTP paths use `context.administration`; Reports paths use `context.reports`.
-The handler still uses a compatibility service adapter for remaining Warehouse
-legacy endpoints while those calls are extracted gradually.
+The handler still exposes a compatibility service slot for old endpoint names,
+but the implementation is Warehouse-owned and already extracted.
 
 Stage 0.12.7 routes read-only Warehouse GET/CSV paths through:
 
@@ -160,6 +165,16 @@ ODE 0.16.0 Stage 2 removes the remaining Reports implementation from
 Warehouse facts enter Reports only through the injected
 `WarehouseEventReader`. The compatibility `ReportService` adapter was removed;
 old Python calls delegate to the shared facade.
+
+ODE 0.16.0 Stage 3 removes the remaining Warehouse implementation from
+`WarehouseCore`:
+
+`web/API -> ApplicationContext.warehouse -> WarehouseFacade -> focused Warehouse services/repositories`
+
+Legacy Python calls enter through `WarehouseService`, but resolve to the same
+receipt/issue/cable/delivery instances or to the composed history, inventory,
+balance, monitoring and reference services. `WarehouseCore` contains no stock,
+delivery, balance or data-quality SQL.
 
 Stage 0.12.12 routes equipment/component receipt writes through:
 
@@ -266,7 +281,9 @@ DB initialization only for pilot startup; the compatibility constructor keeps
 references or database replacement. The current NOCASE S/N uniqueness model
 requires a separate ADR before case-distinct identities can be migrated.
 
-`WarehouseCore` must not be referenced directly by `inventory/webapp.py`. New read-only Warehouse endpoints must be added to `WarehouseFacade` first.
+`WarehouseCore` must not be referenced directly by `inventory/webapp.py`. New
+Warehouse endpoints must be added to `WarehouseFacade` first; no new business
+method may be added to the compatibility adapter.
 
 ## Public Facades
 
@@ -275,4 +292,6 @@ requires a separate ADR before case-distinct identities can be migrated.
 - `MonitoringFacade`
 - `AdministrationFacade`
 
-The web layer must not call `WarehouseCore` directly. Future extraction should move endpoint groups to facade methods first, then move implementation behind each facade.
+The web layer must not call `WarehouseCore` directly. Stage 3 has completed the
+backend extraction; later compatibility removal requires a separately approved
+API deprecation stage.

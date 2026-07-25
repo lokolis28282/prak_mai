@@ -10,12 +10,12 @@ rollback-window expiration и verified archive. Current Git tag/old DB оста�
 
 | Path | Причина / текущая evidence | Dependency proof перед удалением | Момент / rollback impact |
 |---|---|---|---|
-| inventory/services/ | String ServiceAdapter dispatch; большинство файлов 10–23 lines proxy в 3828-line warehouse_service.py | rg imports + architecture graph + new API/E2E no old service | После new UI/API only; rollback использует old tag, не mixed tree |
+| inventory/services/ | ODE 0.16 Stage 3 removed ServiceAdapter/string dispatch; directory now contains thin compatibility aliases plus receipt/issue/delivery vocabulary | rg imports + architecture graph + new API/E2E no old service | После deprecation старого Python API; rollback использует old tag, не mixed tree |
 | inventory/service.py | 317-line compatibility facade с __getattr__ | No imports from new ode stack; old tests replaced | То же |
 | inventory/models/ | Placeholder dataclasses без runtime ownership | Static import/type scan | После domain model replacement |
-| inventory/warehouse/balance.py, history.py, inventory.py, models.py | По 1 строке, пустая модульность | Exact import graph and coverage | После new context modules |
-| inventory/administration/audit.py, backup.py, diagnostics.py, users.py | По 1 строке | Exact import graph | После operations/security vertical |
-| inventory/reports/weekly.py, exports.py | По 1 строке | Report contract/E2E | После reports vertical |
+| inventory/warehouse/models.py | Placeholder module; balance/history/inventory became real services in ODE 0.16 Stage 3 | Exact import graph and coverage | После domain model replacement |
+| inventory/administration compatibility shims | Administration implementation moved in ODE 0.16 Stage 1 | Exact import graph | После deprecation старых import paths |
+| inventory/reports compatibility shims | Reports implementation moved in ODE 0.16 Stage 2 | Report contract/E2E | После deprecation старых import paths |
 | inventory/monitoring/models.py | 1 строка | Monitoring disabled or replaced | После decision in integrated stage |
 | inventory/warehouse/issues.py, receipts.py, issue_previews.py | Re-export shims | No external import consumers | После ledger vertical |
 | inventory/shared/csv_tools.py | Re-export shim | No imports/new XLSX contract | После Preview vertical |

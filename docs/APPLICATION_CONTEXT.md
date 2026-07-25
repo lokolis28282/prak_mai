@@ -81,6 +81,19 @@ Reports owns work-log CRUD/imports, uploaded daily reports, daily/weekly
 presentation and work-log CSV export. Warehouse owns event extraction only;
 Reports receives plain `WarehouseEvent` values.
 
+## ODE 0.16.0 Stage 3 Warehouse extraction
+
+`WarehouseService` creates one set of receipt, issue, cable and delivery
+services. `ApplicationContext.warehouse` reuses those exact instances through
+`WarehouseFacade`; preview stores, repositories and actor context are not
+duplicated.
+
+The remaining read/legacy areas are composed under `WarehouseDomainService`:
+history, legacy equipment/operations, balance/search/card, data quality and
+references. `WarehouseCore` is only a deprecated adapter without business SQL.
+`compat_service` remains available because old CLI/Python method names are
+still supported, not because it owns a second implementation.
+
 ## Stage 0.13.1/0.13.2 Inventory Number
 
 Equipment Card assignment and bulk Inventory Number CSV are resolved through

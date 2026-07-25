@@ -1,5 +1,9 @@
 # Stage 0.12.13 Cable Warehouse Migration Map
 
+> ODE 0.16.0 Stage 3: both facade and compatibility receipt/issue names use one
+> `CableService`. The `WarehouseCore` paths below describe the pre-extraction
+> baseline only.
+
 ## Scope
 
 Stage 0.12.13 separates cable receipt/issue business logic from serialized

@@ -108,7 +108,9 @@ class CableService:
                         candidate,
                         references,
                         line_number=line,
-                        strict_references=not soft,
+                        strict_references=(
+                            self.strict_reference_validation and not soft
+                        ),
                     )
                     valid += 1
                 except WarehouseError as error:
@@ -162,9 +164,11 @@ class CableService:
             for line, source in enumerate(source_rows, start=2):
                 if not any(str(value or "").strip() for value in source.values()):
                     continue
-                if not is_cable_receipt(source):
+                candidate = (
+                    soft_cable_receipt_source(source) if soft else source
+                )
+                if not is_cable_receipt(candidate):
                     raise WarehouseError(f"Строка {line}: файл содержит некабельную строку")
-                candidate = soft_cable_receipt_source(source) if soft else source
                 row = prepare_cable_receipt(
                     candidate,
                     references,

@@ -594,6 +594,104 @@ def main() -> int:
     if (ROOT / "inventory/services/report_service.py").exists():
         errors.append("obsolete compatibility ReportService still exists")
 
+    warehouse_core = ROOT / "inventory/services/warehouse_service.py"
+    warehouse_domain = ROOT / "inventory/warehouse/service.py"
+    core_text = warehouse_core.read_text(encoding="utf-8")
+    domain_text = warehouse_domain.read_text(encoding="utf-8")
+    forbidden_warehouse_core_tokens = (
+        "SELECT ",
+        "INSERT ",
+        "UPDATE ",
+        "DELETE ",
+        "connect(",
+    )
+    for path, text in (
+        (warehouse_core, core_text),
+        (warehouse_domain, domain_text),
+    ):
+        bad = [token for token in forbidden_warehouse_core_tokens if token in text]
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} contains Warehouse business persistence: "
+                + ", ".join(bad)
+            )
+    if len(core_text.splitlines()) > 250:
+        errors.append("WarehouseCore is no longer a thin compatibility adapter")
+    for method in (
+        "add_stock_receipt",
+        "import_stock_receipt_rows",
+        "add_stock_issue",
+        "import_stock_issue_rows",
+        "preview_delivery_rows",
+        "accept_delivery_serial",
+        "stock_balance",
+        "global_search",
+        "data_quality_problems",
+    ):
+        if f"def {method}(" in core_text or f"def {method}(" in domain_text:
+            errors.append(
+                f"removed Warehouse workflow still has a second implementation: {method}"
+            )
+    for composition_token in (
+        "WarehouseHistoryService(self)",
+        "LegacyInventoryService(self)",
+        "WarehouseBalanceService(self)",
+        "WarehouseMonitoringService(self)",
+        "WarehouseReferenceService(self)",
+    ):
+        if composition_token not in domain_text:
+            errors.append(
+                "WarehouseDomainService missing component "
+                + composition_token
+            )
+    for shared_token in (
+        "previews=self.receipt_service.previews",
+        "cables=self.receipt_service.cables",
+        "receipt_writer=self.receipt_service.writer",
+    ):
+        if shared_token not in service_composition:
+            errors.append(
+                "WarehouseService does not share extracted write dependency "
+                + shared_token
+            )
+    facade_text = (ROOT / "inventory/warehouse/facade.py").read_text(
+        encoding="utf-8"
+    )
+    for shared_token in (
+        'getattr(receipt_compat, "writer", None)',
+        'getattr(issue_compat, "writer", None)',
+        'delivery_compat, "acceptance", None',
+    ):
+        if shared_token not in facade_text:
+            errors.append(
+                "WarehouseFacade does not reuse composed compatibility service "
+                + shared_token
+            )
+    for compatibility_alias in (
+        "balance_service.py",
+        "history_service.py",
+        "inventory_service.py",
+        "monitoring_service.py",
+        "reference_service.py",
+    ):
+        adapter_text = (
+            ROOT / "inventory/services" / compatibility_alias
+        ).read_text(encoding="utf-8")
+        if "ServiceAdapter" in adapter_text or "self.call(" in adapter_text:
+            errors.append(
+                f"inventory/services/{compatibility_alias} still delegates "
+                "business logic back to WarehouseCore"
+            )
+    if (ROOT / "inventory/services/_base.py").exists():
+        errors.append("obsolete string-dispatch ServiceAdapter still exists")
+    profile_adapter = (
+        ROOT / "inventory/services/profile_service.py"
+    ).read_text(encoding="utf-8")
+    if "ServiceAdapter" in profile_adapter or "self.call(" in profile_adapter:
+        errors.append(
+            "ProfileService still dispatches Administration through WarehouseCore"
+        )
+
     ownership = ROOT / "docs/DATABASE_OWNERSHIP.md"
     if not ownership.exists():
         errors.append("docs/DATABASE_OWNERSHIP.md is missing")

@@ -1,5 +1,10 @@
 # Stage 0.12.12 Warehouse Receipt Write Migration Map
 
+> ODE 0.16.0 Stage 3: legacy `WarehouseService` receipt names and
+> `WarehouseFacade` now reuse the same `ReceiptWriteService`/`CableService`
+> instances. References to `WarehouseCore` in the old-path inventory below are
+> historical; no receipt implementation remains there.
+
 ## Scope
 
 This stage migrates only equipment/component receipt write and import flows to

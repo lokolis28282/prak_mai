@@ -30,7 +30,9 @@ CABLE_ISSUE_REFERENCE_FIELDS = {
 
 def is_cable_receipt(source: dict[str, Any]) -> bool:
     category = str(source.get("category", "")).strip().casefold()
-    return category == "кабели" or bool(str(source.get("cable_type", "")).strip())
+    if category:
+        return category == "кабели"
+    return bool(str(source.get("cable_type", "")).strip())
 
 
 def is_cable_issue(source: dict[str, Any]) -> bool:
@@ -74,7 +76,9 @@ def prepare_cable_receipt(
         source["datacenter"] = str(source.get("datacenter") or "Ixcellerate")
         source["unit"] = str(source.get("unit") or "шт")
         quantity = positive_number(source.get("quantity", ""), "количество")
-        if not float(quantity).is_integer():
+        piece_units = {"шт", "штука", "штук", "pcs", "pc"}
+        unit = str(source.get("unit") or "шт").strip().casefold()
+        if unit in piece_units and not float(quantity).is_integer():
             raise WarehouseError("кабели учитываются целыми штуками")
         return {
             "receipt_date": parse_date(str(source.get("receipt_date", "")), "дата"),
@@ -120,7 +124,9 @@ def prepare_cable_issue(
         if task_type and strict_references and task_type.casefold() not in references.get("task_type", set()):
             raise WarehouseError(f"тип задачи «{task_type}» отсутствует в справочнике")
         quantity = positive_number(source.get("quantity", ""), "количество")
-        if not float(quantity).is_integer():
+        piece_units = {"шт", "штука", "штук", "pcs", "pc"}
+        unit = str(source.get("unit") or "").strip().casefold()
+        if unit in piece_units and not float(quantity).is_integer():
             raise WarehouseError("кабели учитываются целыми штуками")
         return {
             "issue_date": parse_date(str(source.get("issue_date", "")), "дата"),

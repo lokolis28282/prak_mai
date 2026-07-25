@@ -1,10 +1,24 @@
 # SERVICE_MIGRATION_PLAN
 
-Дата: 2026-07-10
+Дата актуализации: 2026-07-25
 
 ## Статус
 
-Stage 0.12.2 фиксирует переходное состояние: `WarehouseService` уже является facade, профильные сервисы созданы, но большинство методов пока делегируют в `WarehouseCore`. Это допустимое состояние для стабилизации. В этом этапе методы не переносятся.
+ODE 0.16.0 Stage 3 завершил backend-перенос Warehouse. Перечни ниже
+сохраняются как инвентарь исходных методов и рисков, но больше не описывают
+текущий dispatch:
+
+- `WarehouseCore` — thin deprecated adapter без business SQL;
+- receipt/issue/cable/delivery compatibility names используют те же экземпляры
+  профильных сервисов, что и `WarehouseFacade`;
+- balance/history/legacy inventory/data quality/references физически находятся
+  в `inventory/warehouse/`;
+- старые `inventory/services/*` пути для этих областей являются только import
+  aliases, а не string-dispatch adapters;
+- публичный `WarehouseService` сохранен как compatibility API.
+
+Administration завершён Stage 1, Reports — Stage 2. Схема БД и ownership
+таблиц во всех трех стадиях не менялись.
 
 Общие правила переноса:
 

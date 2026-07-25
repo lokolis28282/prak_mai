@@ -1,13 +1,5 @@
-"""Warehouse history and audit service."""
+"""Deprecated import alias for the extracted Warehouse history service."""
 
-from __future__ import annotations
+from inventory.warehouse.history import WarehouseHistoryService as HistoryService
 
-from typing import Any
-
-from ._base import ServiceAdapter
-
-
-class HistoryService(ServiceAdapter):
-    def audit_entries(self, *args: Any, **kwargs: Any) -> Any: return self.call("audit_entries", *args, **kwargs)
-    def warehouse_history(self, *args: Any, **kwargs: Any) -> Any: return self.call("warehouse_history", *args, **kwargs)
-    def operation_log(self, *args: Any, **kwargs: Any) -> Any: return self.call("operation_log", *args, **kwargs)
+__all__ = ["HistoryService"]

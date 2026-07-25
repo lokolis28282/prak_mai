@@ -91,11 +91,15 @@
 
 ## F. Removal of WarehouseCore
 
-- Remove only after all facade methods have direct module implementations.
-- Remaining legacy includes Warehouse writes/imports, Administration writes/auth,
-  backup/restore, Monitoring placeholder and compatibility helpers still used
-  outside Reports write/import.
-- Require unit tests, smoke UI, SQLite checks and architecture audit before each removal batch.
+**Backend implementation completed in ODE 0.16.0 Stage 3.**
+
+- `WarehouseCore` remains only as a deprecated compatibility adapter; it has no
+  Warehouse business SQL or workflow implementation.
+- All facade methods resolve to direct module implementations.
+- Removing the adapter import/API itself requires a separate deprecation
+  decision because CLI and older tests still use private compatibility access.
+- Unit tests, smoke UI, SQLite checks and architecture audit remain mandatory
+  before that final API removal.
 
 ## G. Removal of legacy ui.js
 

@@ -15,7 +15,9 @@ Administration владеет административным контуром 
 
 `inventory/webapp.py -> ApplicationContext -> AdministrationFacade -> compatibility service`
 
-`WarehouseCore` остается compatibility core. Реализация чтения пока делегируется старым методам, но публичная граница для web/API зафиксирована.
+С ODE 0.16.0 Stage 3 `WarehouseCore` остается только deprecated compatibility
+adapter без business SQL. Administration по-прежнему является отдельной
+реализацией и не зависит от Warehouse composition.
 
 ## Профиль и Administration
 

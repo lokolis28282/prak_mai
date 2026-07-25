@@ -1,5 +1,9 @@
 # Delivery Acceptance Migration Map
 
+> ODE 0.16.0 Stage 3: facade and compatibility calls reuse one
+> `DeliveryAcceptanceService`; close is implemented in the focused delivery
+> compatibility service, not in `WarehouseCore`.
+
 Stage 0.12.16 migrates physical delivery acceptance to `WarehouseFacade`.
 Delivery close/admin correction remain compatibility flows.
 

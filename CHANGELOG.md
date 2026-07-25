@@ -2,6 +2,31 @@
 
 ## ODE 0.16.0 — modular extraction (2026-07-25)
 
+### Stage 3 — Warehouse
+
+- `WarehouseCore` сокращён с 3310 строк бизнес-логики до thin compatibility
+  adapter без SQL; оставшиеся складские реализации физически перенесены в
+  `inventory/warehouse/`;
+- история, legacy equipment/operations, баланс/поиск/карточка, контроль
+  качества и runtime-справочники разделены на
+  `WarehouseHistoryService`, `LegacyInventoryService`,
+  `WarehouseBalanceService`, `WarehouseMonitoringService` и
+  `WarehouseReferenceService`;
+- старые receipt/issue/delivery методы больше не имеют второй реализации:
+  `WarehouseService` и `WarehouseFacade` используют общие экземпляры
+  `ReceiptWriteService`, `IssueWriteService`, `CableService`,
+  `DeliveryImportService`, `DeliveryReadService` и
+  `DeliveryAcceptanceService`;
+- прежние string-dispatch adapters для balance/history/inventory/monitoring/
+  references заменены import aliases к реальным Warehouse-сервисам;
+- сохранена совместимость публичных методов `WarehouseService`, включая
+  legacy equipment/operations, preview/confirm и CSV export; схема SQLite и
+  ownership таблиц не менялись;
+- кабельная совместимость сохраняет учет целых штук и допускает дробный
+  метраж для непоштучных единиц;
+- добавлены Stage 3 architecture contracts и расширен module-boundary audit;
+  полный discover-набор: **589 tests, OK (`skipped=15`)**.
+
 ### Stage 2 — Reports
 
 - work logs, daily/weekly report assembly, uploaded daily reports, preview/
