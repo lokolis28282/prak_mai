@@ -21,7 +21,9 @@
 ## Runtime Warehouse
 
 - `app.py` — entry point.
-- `inventory/webapp.py` — HTTP/API/HTML composition.
+- `inventory/webapp.py` — общий HTTP shell, auth/session/security и dispatch.
+- `inventory/routes/` — доменные HTTP/API handlers.
+- `inventory/templates/` — детерминированная сборка HTML-каркаса.
 - `static/` — реально загружаемые CSS/JS.
 - `inventory/core/` — ApplicationContext и общие contracts.
 - `inventory/warehouse/` — Warehouse domain/services/repositories.

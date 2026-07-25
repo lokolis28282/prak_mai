@@ -107,6 +107,13 @@ receipt boundary `WarehouseFacade`; старое физическое inventory 
 Administration write, authentication, actor context и backup/restore с ODE
 0.16.0 идут через отдельный `AdministrationService`.
 
+С ODE 0.16.0 Stage 4 доменные HTTP-ветви находятся в
+`inventory/routes/`, а не в `inventory/webapp.py`. `webapp.py` остаётся общей
+оболочкой и передаёт неизменённые URL в `administration`, `reports`,
+`warehouse`, `monitoring` и `knowledge` route-модули через единый
+`RouteRuntime`. Route-модули вызывают только `ApplicationContext`/facades и не
+владеют SQL.
+
 **IMPLEMENTED (Stage 0.13.3A):** offline `inventory/migration` не является
 новым Warehouse endpoint и не обходит facade для production writes: модуль
 вообще не пишет в production. Он читает immutable migration sources, проверяет
@@ -319,7 +326,7 @@ warehouse-workflows в `WarehouseCore`/`WarehouseDomainService`.
 ## Зависимости
 
 ```text
-webapp.py / tests
+webapp.py / routes / tests
         |
         v
   ApplicationContext

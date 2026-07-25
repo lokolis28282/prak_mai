@@ -17,6 +17,12 @@ class MigrationPilotFrontendContractTest(unittest.TestCase):
         )
         cls.product_js = (ROOT / "static/js/product.js").read_text(encoding="utf-8")
         cls.webapp = (ROOT / "inventory/webapp.py").read_text(encoding="utf-8")
+        cls.warehouse_routes = (
+            ROOT / "inventory/routes/warehouse.py"
+        ).read_text(encoding="utf-8")
+        cls.template = (
+            ROOT / "inventory/templates/webapp.py"
+        ).read_text(encoding="utf-8")
         cls.css = (ROOT / "static/css/main.css").read_text(encoding="utf-8")
 
     def test_pilot_ui_uses_safe_dom_rendering_and_required_filters(self) -> None:
@@ -61,9 +67,15 @@ class MigrationPilotFrontendContractTest(unittest.TestCase):
         self.assertNotIn("innerHTML", migration_block)
 
     def test_web_routes_use_facade_and_deny_pilot_mutations(self) -> None:
-        self.assertIn('path == "/api/migration-pilot"', self.webapp)
-        self.assertIn("app_context.warehouse.list_migration_pilot_rows", self.webapp)
-        self.assertIn("app_context.warehouse.get_migration_pilot_card", self.webapp)
+        self.assertIn("/api/migration-pilot", self.warehouse_routes)
+        self.assertIn(
+            "app_context.warehouse.list_migration_pilot_rows",
+            self.warehouse_routes,
+        )
+        self.assertIn(
+            "app_context.warehouse.get_migration_pilot_card",
+            self.warehouse_routes,
+        )
         self.assertIn("migration_pilot_status.get(\"enabled\") and path != \"/api/logout\"", self.webapp)
         self.assertIn("validate_migration_pilot_database(args.db)", self.webapp)
         self.assertLess(
@@ -77,14 +89,14 @@ class MigrationPilotFrontendContractTest(unittest.TestCase):
         self.assertIn(
             'and not migration_full_status.get("read_only")', self.webapp
         )
-        self.assertIn("МИГРАЦИОННЫЙ ПИЛОТ", self.webapp)
+        self.assertIn("МИГРАЦИОННЫЙ ПИЛОТ", self.template)
         self.assertIn("migration-pilot-banner", self.css)
         self.assertIn(".migration-pilot-active .app{padding-top:34px}", self.css)
 
     def test_pilot_script_loads_before_product_shell(self) -> None:
         self.assertLess(
-            self.webapp.index('"warehouse/migration_pilot.js"'),
-            self.webapp.index('"product.js"'),
+            self.template.index('"warehouse/migration_pilot.js"'),
+            self.template.index('"product.js"'),
         )
 
     def test_launchers_never_build_or_select_production_database(self) -> None:

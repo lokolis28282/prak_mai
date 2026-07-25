@@ -37,12 +37,17 @@
 
 ## Зачем нужен контракт
 
-ODE сейчас находится в переходном состоянии: HTML-каркас приходит из `inventory/webapp.py`, часть UI вынесена в `static/js`, а часть legacy-разметки еще создается динамически. Ошибки `Cannot read properties of null` обычно появляются, когда JavaScript обращается к id, которого больше нет в HTML.
+ODE сейчас находится в переходном состоянии: HTML-каркас собирается в
+`inventory/templates/webapp.py`, UI-логика живёт в `static/js`, а часть
+legacy-разметки ещё создаётся динамически. `inventory/webapp.py` только
+импортирует готовые `LOGIN_HTML`/`HTML`. Ошибки `Cannot read properties of
+null` обычно появляются, когда JavaScript обращается к id, которого больше нет
+в HTML.
 
 `scripts/audit_frontend_contracts.py` проверяет контракт HTML <-> JS:
 
 - собирает id из `LOGIN_HTML` и итогового `HTML`;
-- читает `inventory/webapp.py` и `static/js/*.js`;
+- импортирует итоговые `LOGIN_HTML`/`HTML` и читает `static/js/*.js`;
 - ищет статические обращения `getElementById("...")`, `byId("...")`, `querySelector("#...")`, `querySelectorAll("#...")`;
 - выводит missing static ids;
 - не падает на динамических id из whitelist.

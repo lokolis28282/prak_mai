@@ -9,13 +9,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class KnowledgeFrontendContractTest(unittest.TestCase):
     def test_routes_cards_form_and_responsive_styles_exist(self) -> None:
-        webapp = (ROOT / "inventory" / "webapp.py").read_text(encoding="utf-8")
+        template = (
+            ROOT / "inventory" / "templates" / "webapp.py"
+        ).read_text(encoding="utf-8")
+        routes = (
+            ROOT / "inventory" / "routes" / "knowledge.py"
+        ).read_text(encoding="utf-8")
         core = (ROOT / "static" / "js" / "core.js").read_text(encoding="utf-8")
         ui = (ROOT / "static" / "js" / "ui.js").read_text(encoding="utf-8")
         script = (ROOT / "static" / "js" / "knowledge" / "index.js").read_text(encoding="utf-8")
         css = (ROOT / "static" / "css" / "main.css").read_text(encoding="utf-8")
-        self.assertIn('id="knowledge"', webapp)
-        self.assertIn('"knowledge/index.js"', webapp)
+        self.assertIn('id="knowledge"', template)
+        self.assertIn('"knowledge/index.js"', template)
+        self.assertIn("/api/knowledge/articles", routes)
         self.assertIn("window.openKnowledgeBase=openKnowledgeBase", ui)
         self.assertIn("knowledge:[['knowledge','База знаний']]", core)
         self.assertIn("title:'База знаний'", ui)

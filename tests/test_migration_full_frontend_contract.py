@@ -17,6 +17,12 @@ class FullMigrationFrontendContractTest(unittest.TestCase):
         )
         cls.product_js = (ROOT / "static/js/product.js").read_text(encoding="utf-8")
         cls.webapp = (ROOT / "inventory/webapp.py").read_text(encoding="utf-8")
+        cls.warehouse_routes = (
+            ROOT / "inventory/routes/warehouse.py"
+        ).read_text(encoding="utf-8")
+        cls.template = (
+            ROOT / "inventory/templates/webapp.py"
+        ).read_text(encoding="utf-8")
         cls.full_review = (
             ROOT / "inventory/warehouse/migration_full_review.py"
         ).read_text(encoding="utf-8")
@@ -48,17 +54,17 @@ class FullMigrationFrontendContractTest(unittest.TestCase):
         self.assertIn("Opening State Explanation", self.product_js)
         self.assertIn("Target S/N relationships", self.product_js)
         self.assertIn("state.migration_full?.read_only", self.product_js)
-        self.assertIn('path == "/api/migration-full"', self.webapp)
-        self.assertIn("get_migration_full_card", self.webapp)
+        self.assertIn("/api/migration-full", self.warehouse_routes)
+        self.assertIn("get_migration_full_card", self.warehouse_routes)
         self.assertIn("validate_full_migration_database(args.db)", self.webapp)
         self.assertIn("full_migration_requested()", self.webapp)
-        self.assertIn("ПОЛНАЯ КАНДИДАТНАЯ БАЗА СКЛАДА", self.webapp)
+        self.assertIn("ПОЛНАЯ КАНДИДАТНАЯ БАЗА СКЛАДА", self.template)
         self.assertIn("migration-full-banner", self.css)
 
     def test_promoted_working_database_keeps_review_diagnostic_only(self) -> None:
         self.assertIn('"working_database": not requested', self.full_review)
-        self.assertIn('migration_full_status.get("read_only")', self.webapp)
-        self.assertIn('"full_reconciliation_id" in query', self.webapp)
+        self.assertIn("migration_full_status.get('read_only')", self.warehouse_routes)
+        self.assertIn("'full_reconciliation_id' in query", self.warehouse_routes)
         self.assertIn("if(!reviewStatus()?.read_only", self.review_js)
 
     def test_full_launchers_are_marker_guarded_and_never_build(self) -> None:

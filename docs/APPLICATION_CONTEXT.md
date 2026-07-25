@@ -25,6 +25,15 @@ It contains:
 
 The web handler normalizes both forms to `ApplicationContext`.
 
+## ODE 0.16.0 Stage 4 HTTP routing
+
+`make_handler()` creates one immutable `RouteRuntime` from the normalized
+context and launch-contour status. Domain handlers under `inventory/routes/`
+receive that runtime; they do not construct services or contexts. The common
+HTTP shell retains authentication, request actor scoping, locks, validation and
+response security headers. HTML assembly is provided by
+`inventory/templates/webapp.py`.
+
 ## Stage 0.12.9 Administration
 
 Administration read APIs use `context.administration` as the source for:

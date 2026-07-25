@@ -3,7 +3,9 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WEBAPP = (ROOT / "inventory" / "webapp.py").read_text(encoding="utf-8")
+TEMPLATE = (
+    ROOT / "inventory" / "templates" / "webapp.py"
+).read_text(encoding="utf-8")
 UI_JS = (ROOT / "static" / "js" / "ui.js").read_text(encoding="utf-8")
 PRODUCT_JS = (ROOT / "static" / "js" / "product.js").read_text(encoding="utf-8")
 CSS = (ROOT / "static" / "css" / "main.css").read_text(encoding="utf-8")
@@ -31,7 +33,7 @@ class WarehouseOverviewFrontendTest(unittest.TestCase):
         self.assertNotIn("Исторические складские данные", PRODUCT_JS)
         self.assertIn("['balance','Баланс']", PRODUCT_JS)
         self.assertNotIn("['balance','Остатки']", PRODUCT_JS)
-        self.assertNotIn(">Остатки<", WEBAPP)
+        self.assertNotIn(">Остатки<", TEMPLATE)
         self.assertIn("Складские позиции", PRODUCT_JS)
         self.assertNotIn("Всё оборудование — одним взглядом", PRODUCT_JS)
         for category in (
@@ -120,15 +122,15 @@ class WarehouseOverviewFrontendTest(unittest.TestCase):
             "recentIssuesPanel", "recentIssueBody", "issueHistoryExport",
             "receiptHistoryExport",
         ):
-            self.assertIn(identifier, WEBAPP)
+            self.assertIn(identifier, TEMPLATE)
         self.assertIn("function renderRecentIssues()", UI_JS)
         self.assertIn("recentIssueTargetText", UI_JS)
         self.assertIn("row.target_serial_number", UI_JS)
         self.assertIn("row.target_hostname", UI_JS)
         self.assertIn("renderRecentIssues();", UI_JS)
-        self.assertIn("Выгрузить все приходы", WEBAPP)
-        self.assertIn("Выгрузить все расходы", WEBAPP)
-        self.assertNotIn("Скачать проверенный файл", WEBAPP)
+        self.assertIn("Выгрузить все приходы", TEMPLATE)
+        self.assertIn("Выгрузить все расходы", TEMPLATE)
+        self.assertNotIn("Скачать проверенный файл", TEMPLATE)
         self.assertIn("#recentIssuesPanel table{min-width:1180px}", CSS)
         self.assertIn('#recentIssuesPanel tbody td:nth-child(6)::before{content:"Целевая железка"}', CSS)
 

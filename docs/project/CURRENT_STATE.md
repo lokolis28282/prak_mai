@@ -230,6 +230,16 @@ Known bootstrap credentials новой пустой compatibility-БД боль�
 production bootstrap design, поэтому текущий verdict — local demo/pilot, а не
 публичный или многопользовательский server deployment.
 
+ODE 0.16.0 Stage 4 завершил декомпозицию web delivery: доменные HTTP-ветви
+Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
+`inventory/routes/`, HTML-сборка — в `inventory/templates/`.
+`inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
+Полный gate: 593 теста (`skipped=15`), Python/JS syntax, module/frontend/data
+audits, clean-DB dry-run и headless Chrome smoke — PASS; code graph содержит
+219 узлов / 448 связей. Рабочая БД осталась byte-identical, SHA-256
+`7284c73a11771f4869bf6b198794fdc8787f789d7463a43f8f50e1a657db6450`,
+`integrity_check=ok`, FK violations и SQLite sidecars отсутствуют.
+
 Следующий приоритет — пользовательская операторская приёмка и презентация
 руководителю, затем target Equipment Query Port и отдельный controlled cutover
 design. До него реальный initial-baseline publish запрещён. После cutover —

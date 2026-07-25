@@ -13,11 +13,15 @@ Administration владеет административным контуром 
 
 В 0.12.9 web/API слой получает read-only административные данные через:
 
-`inventory/webapp.py -> ApplicationContext -> AdministrationFacade -> compatibility service`
+`inventory/routes/administration.py -> ApplicationContext -> AdministrationFacade -> compatibility service`
 
 С ODE 0.16.0 Stage 3 `WarehouseCore` остается только deprecated compatibility
 adapter без business SQL. Administration по-прежнему является отдельной
 реализацией и не зависит от Warehouse composition.
+
+С ODE 0.16.0 Stage 4 `inventory/webapp.py` отвечает только за общий HTTP shell,
+auth/session/security и dispatch; административные HTTP-ветви принадлежат
+`inventory/routes/administration.py`.
 
 ## Профиль и Administration
 

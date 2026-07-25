@@ -106,3 +106,14 @@
 - Continue screen-by-screen migration.
 - Do not mass-rewrite template strings.
 - Remove `legacy ui.js` only after all routes have module entrypoints and component renderers.
+
+## H. Webapp extraction
+
+**Completed in ODE 0.16.0 Stage 4.**
+
+- Domain HTTP branches are under `inventory/routes/`.
+- HTML assembly is under `inventory/templates/`.
+- Existing `static/js/` and `static/css/main.css` remain unchanged.
+- `inventory/webapp.py` is the shared server/session/security shell.
+- URL, response and DOM contracts are protected by API, frontend and headless
+  browser tests.

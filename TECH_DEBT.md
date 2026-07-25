@@ -25,9 +25,12 @@
 
 ## Долг
 
-1. Монолитный `inventory/webapp.py`.
+1. ~~Монолитный `inventory/webapp.py`.~~
 
-   В одном файле находятся HTTP handler, HTML, CSS, JS и CSV templates. Это затрудняет точечные изменения и review.
+   Закрыто в ODE 0.16.0 Stage 4: доменные HTTP-handler ветви вынесены в
+   `inventory/routes/`, HTML-сборка — в `inventory/templates/`, CSV
+   presentation contracts — в `inventory/routes/csv.py`. В `webapp.py`
+   остаются общая HTTP-оболочка, auth/session, security и сериализация.
 
 2. Сборка UI через `.replace(...)`.
 
@@ -61,7 +64,7 @@
 8. Delivery acceptance UI/E2E coverage is still light.
 
    Stage 0.12.16 migrated backend acceptance paths. The current delivery UI is
-   still embedded in `webapp.py`; deeper browser coverage for inspect cards,
+   assembled in `inventory/templates/webapp.py`; deeper browser coverage for inspect cards,
    batch acceptance and conflict presentation should be added before a major UI
    rewrite.
 
@@ -83,7 +86,10 @@
 
 1. Зафиксировать `scripts/smoke_ui.py` как обязательный release-gate.
 
-2. Разделить `webapp.py` минимум на `routes`, `templates`, `static_js`, `static_css`.
+2. ~~Разделить `webapp.py` минимум на `routes`, `templates`, `static_js`, `static_css`.~~
+
+   Выполнено в ODE 0.16.0 Stage 4; существующие `static/js/` и
+   `static/css/main.css` сохранены без переписывания.
 
 3. Добавить browser-test для admin, CSV upload и delivery flow в репозиторий.
 

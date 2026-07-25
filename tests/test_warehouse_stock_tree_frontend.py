@@ -3,7 +3,12 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WEBAPP = (ROOT / "inventory" / "webapp.py").read_text(encoding="utf-8")
+TEMPLATE = (
+    ROOT / "inventory" / "templates" / "webapp.py"
+).read_text(encoding="utf-8")
+WAREHOUSE_ROUTES = (
+    ROOT / "inventory" / "routes" / "warehouse.py"
+).read_text(encoding="utf-8")
 UI_JS = (ROOT / "static" / "js" / "ui.js").read_text(encoding="utf-8")
 PRODUCT_JS = (ROOT / "static" / "js" / "product.js").read_text(encoding="utf-8")
 TREE_JS = (ROOT / "static" / "js" / "warehouse" / "stock_tree.js").read_text(encoding="utf-8")
@@ -12,10 +17,10 @@ CSS = (ROOT / "static" / "css" / "main.css").read_text(encoding="utf-8")
 
 class WarehouseStockTreeFrontendTest(unittest.TestCase):
     def test_tree_markup_and_lazy_endpoint_are_wired(self) -> None:
-        self.assertIn('id="warehouseStockTree"', WEBAPP)
-        self.assertIn('aria-label="Дерево складских остатков"', WEBAPP)
-        self.assertIn('"warehouse/stock_tree.js"', WEBAPP)
-        self.assertIn('/api/warehouse-stock-tree', WEBAPP)
+        self.assertIn('id="warehouseStockTree"', TEMPLATE)
+        self.assertIn('aria-label="Дерево складских остатков"', TEMPLATE)
+        self.assertIn('"warehouse/stock_tree.js"', TEMPLATE)
+        self.assertIn('/api/warehouse-stock-tree', WAREHOUSE_ROUTES)
         self.assertIn('/api/data?include_balance=0', UI_JS)
         self.assertIn("window.warehouseStockTree?.attach()", PRODUCT_JS)
 
@@ -51,7 +56,10 @@ class WarehouseStockTreeFrontendTest(unittest.TestCase):
         self.assertNotIn("Списать", TREE_JS)
         self.assertNotIn("S/N:", TREE_JS)
         self.assertNotIn("Действия", TREE_JS)
-        self.assertIn('<th>Группа</th><th>Позиций</th><th>В наличии</th>', WEBAPP)
+        self.assertIn(
+            '<th>Группа</th><th>Позиций</th><th>В наличии</th>',
+            TEMPLATE,
+        )
 
     def test_new_styles_are_scoped_and_mobile_layout_is_bounded(self) -> None:
         marker = "/* Lazy warehouse balance tree."

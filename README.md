@@ -9,7 +9,7 @@
 интерфейс открывается в браузере на локальном компьютере.
 
 > **Версия 0.16.0** · Python 3.10+ · Windows / macOS / Linux · внешние
-> зависимости не требуются · 589 автоматических тестов
+> зависимости не требуются · 593 автоматических теста
 
 ## Возможности
 
@@ -172,7 +172,7 @@ flowchart LR
 
 Подробная схема и границы интерактивного локального графа:
 [docs/CODEBASE_GRAPH.md](docs/CODEBASE_GRAPH.md). Интерактивный офлайн-граф
-всех связей кодовой базы (206 узлов, 369 связей, фильтры по модулям, поиск, зум) —
+всех связей кодовой базы (219 узлов, 448 связей, фильтры по модулям, поиск, зум) —
 [docs/assets/code_graph.html](docs/assets/code_graph.html); перегенерация:
 `python3 scripts/generate_code_graph.py`. Release-проверка актуальности без
 перезаписи: `python3 scripts/generate_code_graph.py --check`.
@@ -183,7 +183,9 @@ flowchart LR
 
 ```text
 app.py
-  ├─ inventory/webapp.py       HTTP UI и API
+  ├─ inventory/webapp.py       HTTP-сервер, сессии и общая защита
+  │    ├─ inventory/routes/    HTTP-логика по доменам
+  │    └─ inventory/templates/ HTML-сборка
   └─ inventory/cli.py          совместимый CLI
              │
              ▼
@@ -214,7 +216,9 @@ app.py                     точка запуска
 inventory/db.py            схема SQLite и идемпотентные миграции
 inventory/service.py       thin compatibility API для старых Python-вызовов
 inventory/importing.py     кодировки, разделители и синонимы CSV-заголовков
-inventory/webapp.py        локальный интерфейс и HTTP API
+inventory/webapp.py        HTTP-shell, сессии, валидация и ответы
+inventory/routes/          Administration/Reports/Warehouse/Monitoring/Knowledge routes
+inventory/templates/       HTML-шаблоны и детерминированная сборка страницы
 inventory/cli.py           совместимый CLI
 inventory/seed.py          демонстрационное наполнение
 inventory/migration/       candidate-only reference, S/N и staging modules
@@ -439,7 +443,7 @@ ODE при импорте принимает оба разделителя: `,` 
 python3 -m unittest discover -s tests -v
 ```
 
-Полный discover-набор версии 0.16.0 содержит 589 автоматических тестов
+Полный discover-набор версии 0.16.0 содержит 593 автоматических теста
 Warehouse, Monitoring, Knowledge, УВР и CLI-контура. Исторические
 составы gate по отдельным Stage сохранены в датированных CHANGELOG/manual QA и
 не используются как текущий счётчик. Набор включает CSV и шаблоны,

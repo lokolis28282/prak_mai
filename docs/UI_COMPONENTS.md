@@ -2,7 +2,7 @@
 
 ## Цель
 
-Компонентный слой нужен, чтобы постепенно убрать копирование HTML из `inventory/webapp.py` и снизить риск ошибок вида `Cannot read properties of null`, битых `onclick`, устаревших `id` и несогласованных DOM-структур.
+Компонентный слой нужен, чтобы постепенно убрать копирование HTML из Python-шаблонов и снизить риск ошибок вида `Cannot read properties of null`, битых `onclick`, устаревших `id` и несогласованных DOM-структур.
 
 Этот этап не меняет бизнес-логику, API и базу данных. Внешний вид должен оставаться совместимым с ODE 0.12.
 
@@ -13,10 +13,17 @@
 - `static/js/router.js` - переключение разделов и вкладок.
 - `static/js/api.js` - HTTP-запросы.
 - `static/js/ui.js` - legacy UI: текущие экраны и сценарии склада, перенесенные из монолитного `webapp.py`.
+- `inventory/templates/webapp.py` - детерминированная сборка HTML-каркаса.
 
-`inventory/webapp.py` должен отдавать HTML-каркас и подключать внешние CSS/JS. Новую UI-логику нельзя добавлять обратно в Python-строки.
+`inventory/webapp.py` получает готовый HTML-каркас из
+`inventory/templates/webapp.py`. Новую UI-логику нельзя добавлять обратно в
+Python-строки.
 
-Stage 0.12.2 фиксирует переходное состояние: компонентный слой создан, но legacy `innerHTML` остается в старых зонах `static/js/ui.js` и старых строках `inventory/webapp.py`. Это допустимо только для существующего legacy-кода. Новые экраны и новые render-функции должны использовать `components.js`.
+Stage 0.12.2 фиксировал переходное состояние: компонентный слой создан, но
+legacy `innerHTML` оставался в старых зонах `static/js/ui.js` и Python-шаблоне.
+С ODE 0.16.0 Stage 4 серверный HTML принадлежит
+`inventory/templates/webapp.py`. Legacy-код допустим только для существующих
+зон; новые экраны и render-функции должны использовать `components.js`.
 
 ## Компоненты
 
@@ -34,7 +41,7 @@ Stage 0.12.2 фиксирует переходное состояние: ком�
 Stage 0.13.3A.5 stabilization removed `renderWizard()`, `renderHeader()` и
 `renderSidebar()` из `components.js`: они не имели ни одного вызова (реальный
 wizard-шаг, header и sidebar собираются другими путями — `static/js/ui.js` и
-`inventory/webapp.py`), это было мертвое дублирование.
+серверным шаблоном), это было мертвое дублирование.
 
 Все фабрики возвращают DOM-узел. Компоненты собираются через `document.createElement`, `appendChild`, `replaceChildren`, `DocumentFragment` или `<template>`.
 

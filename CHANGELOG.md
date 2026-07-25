@@ -2,6 +2,25 @@
 
 ## ODE 0.16.0 — modular extraction (2026-07-25)
 
+### Stage 4 — Web routes and templates
+
+- `inventory/webapp.py` сокращён с 2415 до 921 строки и оставлен HTTP-shell:
+  запуск сервера, auth/session middleware, общая валидация запросов, security
+  headers и сериализация ответов;
+- HTTP-логика физически разделена на
+  `inventory/routes/{administration,reports,warehouse,monitoring,knowledge}.py`;
+  общий неизменный `/api/action` делегирует действия профильным route-модулям;
+- сборка `LOGIN_HTML` и `HTML` перенесена в
+  `inventory/templates/webapp.py`; контрольные SHA-256 итоговых страниц
+  совпадают с baseline до переноса;
+- CSV presentation-контракты и защита от spreadsheet formula injection
+  перенесены в `inventory/routes/csv.py` с сохранением старых импортов из
+  `inventory.webapp`;
+- module/frontend audits и source-contract тесты учитывают новую топологию;
+  добавлен отдельный Stage 4 extraction contract;
+- после каждого доменного переноса пройден headless Chrome smoke на временной
+  копии БД; URL, JSON/CSV-контракты, подписи и порядок JavaScript не менялись.
+
 ### Stage 3 — Warehouse
 
 - `WarehouseCore` сокращён с 3310 строк бизнес-логики до thin compatibility

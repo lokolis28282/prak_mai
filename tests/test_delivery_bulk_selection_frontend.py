@@ -3,7 +3,9 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-WEBAPP = (ROOT / "inventory" / "webapp.py").read_text(encoding="utf-8")
+WAREHOUSE_ROUTES = (
+    ROOT / "inventory" / "routes" / "warehouse.py"
+).read_text(encoding="utf-8")
 UI_JS = (ROOT / "static" / "js" / "ui.js").read_text(encoding="utf-8")
 PRODUCT_JS = (ROOT / "static" / "js" / "product.js").read_text(encoding="utf-8")
 CSS = (ROOT / "static" / "css" / "main.css").read_text(encoding="utf-8")
@@ -34,8 +36,8 @@ class DeliveryBulkSelectionFrontendTest(unittest.TestCase):
         self.assertIn("await productLoadAll();\n    window.clearDeliverySelection?.();", PRODUCT_JS)
 
     def test_compact_backend_route_and_scoped_styles_are_present(self) -> None:
-        self.assertIn('path == "/api/delivery-selection"', WEBAPP)
-        self.assertIn("get_delivery_selection", WEBAPP)
+        self.assertIn("/api/delivery-selection", WAREHOUSE_ROUTES)
+        self.assertIn("get_delivery_selection", WAREHOUSE_ROUTES)
         self.assertIn("#deliveryCard .delivery-select-menu", CSS)
         self.assertIn("#deliveryCard .delivery-select-trigger:focus-visible", CSS)
 

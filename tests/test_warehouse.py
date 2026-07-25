@@ -309,14 +309,16 @@ class WarehouseServiceTest(unittest.TestCase):
             self.service.daily_report(report_date, report_date)  # type: ignore[call-arg]
 
     def test_report_forms_and_routes_use_separate_query_contracts(self) -> None:
-        source = Path("inventory/webapp.py").read_text(encoding="utf-8")
+        source = Path("inventory/routes/reports.py").read_text(encoding="utf-8")
         self.assertIn('name="date" type="date"', HTML)
         self.assertIn('name="start_date" type="date"', HTML)
         self.assertIn('name="end_date" type="date"', HTML)
-        self.assertIn('self._query(query, "date")', source)
+        self.assertIn('handler._query(query, "date")', source)
         self.assertIn(
-            'self._query(query, "start_date"), self._query(query, "end_date")', source
+            'handler._query(query, "start_date"),',
+            source,
         )
+        self.assertIn('handler._query(query, "end_date")', source)
         self.assertEqual(self.service.weekly_report(report_date := "2026-07-01", report_date)["date_from"], report_date)
 
     def test_stage2_migrates_current_stock_without_changing_legacy_data(self) -> None:

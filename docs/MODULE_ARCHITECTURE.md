@@ -285,6 +285,18 @@ requires a separate ADR before case-distinct identities can be migrated.
 Warehouse endpoints must be added to `WarehouseFacade` first; no new business
 method may be added to the compatibility adapter.
 
+## ODE 0.16.0 Stage 4 Web delivery
+
+- `inventory/webapp.py` owns only the local HTTP server, session/security
+  middleware, request validation and response helpers.
+- `inventory/routes/` owns domain HTTP branches; every route receives one
+  immutable `RouteRuntime` and calls the matching facade from
+  `ApplicationContext`.
+- `inventory/templates/webapp.py` owns deterministic HTML assembly.
+- `inventory/routes/csv.py` owns CSV presentation headers and serialization.
+- Route/template modules contain no business SQL, and route extraction must not
+  change URL, JSON/CSV or DOM contracts.
+
 ## Public Facades
 
 - `WarehouseFacade`

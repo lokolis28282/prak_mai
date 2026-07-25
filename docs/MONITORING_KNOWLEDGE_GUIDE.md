@@ -4,8 +4,10 @@ Status: implemented on integration branch, 2026-07-17.
 
 ## Architecture
 
-Both modules are connected through `ApplicationContext` and expose only their
-facades to `inventory/webapp.py`:
+Both modules are connected through `ApplicationContext`. Their HTTP branches
+are isolated in `inventory/routes/monitoring.py` and
+`inventory/routes/knowledge.py`; the routes use only the corresponding
+facades:
 
 - `inventory/monitoring`: hostname routing and an optional external DCIM
   collector. It imports neither Warehouse nor Reports and owns no tables.

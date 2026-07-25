@@ -416,32 +416,64 @@ def main() -> int:
 
     webapp = ROOT / "inventory/webapp.py"
     webapp_text = webapp.read_text(encoding="utf-8")
+    warehouse_routes = ROOT / "inventory/routes/warehouse.py"
+    reports_routes = ROOT / "inventory/routes/reports.py"
+    administration_routes = ROOT / "inventory/routes/administration.py"
+    warehouse_routes_text = warehouse_routes.read_text(encoding="utf-8")
     if "ApplicationContext" not in webapp_text or "ensure_application_context" not in webapp_text:
         errors.append("inventory/webapp.py does not use ApplicationContext boundary")
     if "WarehouseCore" in webapp_text:
         errors.append("inventory/webapp.py references WarehouseCore directly")
     if "WarehouseEventReader" in webapp_text:
         errors.append("inventory/webapp.py creates or references WarehouseEventReader directly")
+    if len(webapp_text.splitlines()) > 1_000:
+        errors.append("inventory/webapp.py exceeds the Stage 4 thin-shell limit of 1000 lines")
+    if "<!doctype html>" in webapp_text:
+        errors.append("inventory/webapp.py still embeds an HTML document")
+    for route_name in (
+        "administration", "reports", "warehouse", "monitoring", "knowledge",
+    ):
+        route_path = ROOT / "inventory/routes" / f"{route_name}.py"
+        if not route_path.is_file():
+            errors.append(f"missing Stage 4 route module inventory/routes/{route_name}.py")
+    template_path = ROOT / "inventory/templates/webapp.py"
+    if not template_path.is_file() or "<!doctype html>" not in template_path.read_text(
+        encoding="utf-8"
+    ):
+        errors.append("inventory/templates/webapp.py does not own the HTML template")
+    for forbidden_facade in (
+        "app_context.reports.",
+        "app_context.monitoring.",
+        "app_context.knowledge.",
+    ):
+        if forbidden_facade in webapp_text:
+            errors.append(
+                f"inventory/webapp.py still contains domain route logic: {forbidden_facade}"
+            )
     forbidden_read_calls = {
         "dashboard_stats", "equipment", "operation_log", "reference_data",
         "references", "stock_balance", "stock_receipts", "stock_issue_rows",
         "data_quality_problems", "deliveries", "delivery", "warehouse_categories",
         "warehouse_history", "search_stock_positions", "position_card",
     }
-    bad_read_calls = direct_service_calls_in_function(webapp, "_do_GET", forbidden_read_calls)
+    bad_read_calls = direct_service_calls_in_function(
+        warehouse_routes, "handle_get", forbidden_read_calls
+    )
     if bad_read_calls:
         errors.append(
-            "inventory/webapp.py _do_GET calls read-only warehouse service methods directly: "
+            "inventory/routes/warehouse.py handle_get calls warehouse compatibility methods directly: "
             + ", ".join(bad_read_calls)
         )
     forbidden_report_calls = {
         "work_logs", "daily_report", "weekly_report", "weekly_report_rows",
         "daily_report_uploads", "uploaded_daily_report", "export_work_logs_csv",
     }
-    bad_report_calls = direct_service_calls_in_function(webapp, "_do_GET", forbidden_report_calls)
+    bad_report_calls = direct_service_calls_in_function(
+        reports_routes, "handle_get", forbidden_report_calls
+    )
     if bad_report_calls:
         errors.append(
-            "inventory/webapp.py _do_GET calls read-only reports service methods directly: "
+            "inventory/routes/reports.py handle_get calls reports compatibility methods directly: "
             + ", ".join(bad_report_calls)
         )
     forbidden_report_write_calls = {
@@ -450,11 +482,11 @@ def main() -> int:
         "import_daily_report_rows",
     }
     bad_report_write_calls = direct_service_calls_in_function(
-        webapp, "_do_POST", forbidden_report_write_calls
+        reports_routes, "handle_action", forbidden_report_write_calls
     )
     if bad_report_write_calls:
         errors.append(
-            "inventory/webapp.py _do_POST calls reports write compatibility methods directly: "
+            "inventory/routes/reports.py calls reports write compatibility methods directly: "
             + ", ".join(bad_report_write_calls)
         )
     forbidden_receipt_write_calls = {
@@ -463,20 +495,27 @@ def main() -> int:
         "confirm_scanned_receipts", "import_stock_receipt_rows",
     }
     bad_receipt_write_calls = direct_service_calls_in_function(
-        webapp, "_do_POST", forbidden_receipt_write_calls
+        warehouse_routes, "handle_action", forbidden_receipt_write_calls
     )
     bad_receipt_get_calls = direct_service_calls_in_function(
-        webapp, "_do_GET", {"scan_receipt_serial"}
+        warehouse_routes, "handle_get", {"scan_receipt_serial"}
     )
     if bad_receipt_write_calls or bad_receipt_get_calls:
         errors.append(
-            "inventory/webapp.py calls receipt write compatibility methods directly: "
+            "inventory/routes/warehouse.py calls receipt write compatibility methods directly: "
             + ", ".join(sorted(set(bad_receipt_write_calls + bad_receipt_get_calls)))
         )
-    if "create_cable_receipt" not in webapp_text or "create_cable_issue" not in webapp_text:
-        errors.append("inventory/webapp.py does not route cable write flows through WarehouseFacade")
-    if "app_context.warehouse._is_cable_issue(data)" not in webapp_text:
-        errors.append("inventory/webapp.py does not branch cable issue before legacy issue flow")
+    if (
+        "create_cable_receipt" not in warehouse_routes_text
+        or "create_cable_issue" not in warehouse_routes_text
+    ):
+        errors.append(
+            "inventory/routes/warehouse.py does not route cable writes through WarehouseFacade"
+        )
+    if "app_context.warehouse._is_cable_issue(data)" not in warehouse_routes_text:
+        errors.append(
+            "inventory/routes/warehouse.py does not branch cable issue before legacy issue flow"
+        )
     forbidden_issue_write_calls = {
         "add_stock_issue", "scan_issue_serial", "confirm_scanned_issues",
         "import_stock_issue_rows", "preview_stock_issue_rows",
@@ -484,36 +523,48 @@ def main() -> int:
         "confirm_bulk_issue_preview",
     }
     bad_issue_write_calls = sorted(set(
-        direct_service_calls_in_function(webapp, "_do_GET", forbidden_issue_write_calls)
-        + direct_service_calls_in_function(webapp, "_do_POST", forbidden_issue_write_calls)
-        + direct_service_calls_in_function(webapp, "_import_csv", forbidden_issue_write_calls)
+        direct_service_calls_in_function(
+            warehouse_routes, "handle_get", forbidden_issue_write_calls
+        )
+        + direct_service_calls_in_function(
+            warehouse_routes, "handle_action", forbidden_issue_write_calls
+        )
+        + direct_service_calls_in_function(
+            warehouse_routes, "import_csv", forbidden_issue_write_calls
+        )
     ))
     if bad_issue_write_calls:
         errors.append(
-            "inventory/webapp.py calls issue write compatibility methods directly: "
+            "inventory/routes/warehouse.py calls issue write compatibility methods directly: "
             + ", ".join(bad_issue_write_calls)
         )
     forbidden_delivery_import_calls = {
         "preview_delivery_rows", "confirm_delivery_preview",
     }
     bad_delivery_import_calls = sorted(set(
-        direct_service_calls_in_function(webapp, "_do_POST", forbidden_delivery_import_calls)
-        + direct_service_calls_in_function(webapp, "_import_csv", forbidden_delivery_import_calls)
+        direct_service_calls_in_function(
+            warehouse_routes, "handle_action", forbidden_delivery_import_calls
+        )
+        + direct_service_calls_in_function(
+            warehouse_routes, "import_csv", forbidden_delivery_import_calls
+        )
     ))
     if bad_delivery_import_calls:
         errors.append(
-            "inventory/webapp.py calls legacy delivery import methods directly: "
+            "inventory/routes/warehouse.py calls legacy delivery import methods directly: "
             + ", ".join(bad_delivery_import_calls)
         )
     forbidden_delivery_acceptance_calls = {
         "accept_delivery_serial", "update_delivery_lines",
     }
     bad_delivery_acceptance_calls = sorted(set(
-        direct_service_calls_in_function(webapp, "_do_POST", forbidden_delivery_acceptance_calls)
+        direct_service_calls_in_function(
+            warehouse_routes, "handle_action", forbidden_delivery_acceptance_calls
+        )
     ))
     if bad_delivery_acceptance_calls:
         errors.append(
-            "inventory/webapp.py calls legacy delivery acceptance methods directly: "
+            "inventory/routes/warehouse.py calls legacy delivery acceptance methods directly: "
             + ", ".join(bad_delivery_acceptance_calls)
         )
     for required_call in (
@@ -524,24 +575,28 @@ def main() -> int:
         "accept_unplanned_delivery_serial", "accept_delivery_batch",
         "update_delivery_line_metadata",
     ):
-        if required_call not in webapp_text:
-            errors.append(f"inventory/webapp.py missing facade delivery route {required_call}")
+        if required_call not in warehouse_routes_text:
+            errors.append(
+                f"inventory/routes/warehouse.py missing facade delivery route {required_call}"
+            )
     for required_call in (
         "validate_issue_serial", "create_issue(", "create_issue_by_serials",
         "preview_issue_import", "confirm_issue_import", "import_issues",
         "preview_bulk_issue_serials", "confirm_bulk_issue_preview",
     ):
-        if required_call not in webapp_text:
-            errors.append(f"inventory/webapp.py missing facade issue route {required_call}")
+        if required_call not in warehouse_routes_text:
+            errors.append(
+                f"inventory/routes/warehouse.py missing facade issue route {required_call}"
+            )
     forbidden_administration_calls = {
         "current_user", "user_by_email", "users", "audit_entries", "list_backups",
     }
     bad_administration_calls = direct_service_calls_in_function(
-        webapp, "_do_GET", forbidden_administration_calls
+        administration_routes, "handle_get", forbidden_administration_calls
     )
     if bad_administration_calls:
         errors.append(
-            "inventory/webapp.py _do_GET calls read-only administration service methods directly: "
+            "inventory/routes/administration.py calls administration compatibility methods directly: "
             + ", ".join(bad_administration_calls)
         )
 
