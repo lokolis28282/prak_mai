@@ -1,0 +1,1 @@
+"""Database diagnostics boundary placeholder."""

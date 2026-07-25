@@ -1,0 +1,3 @@
+# Approved migration checksums are byte-exact on every operating system.
+docs/architecture/ddl/*.sql text eol=lf
+ode/schema_manifest.json text eol=lf
