@@ -1,5 +1,10 @@
 # Stage 0.12.11 Reports Write Migration Map
 
+> **Completed in ODE 0.16.0 Stage 2.** This file preserves the original
+> migration map. All listed Reports flows now resolve through the single
+> `ReportsFacade`; the legacy `ReportService -> WarehouseCore` implementation
+> shown in the baseline column has been removed.
+
 ## Scope
 
 Reports write/import flows currently owned by the legacy compatibility service are moved to `ApplicationContext -> ReportsFacade`. Warehouse receipts, issues, deliveries, users/passwords, backup/restore, and Monitoring are out of scope.
@@ -41,7 +46,9 @@ Reports write/import flows currently owned by the legacy compatibility service a
 
 ## Preview Storage
 
-Current preview storage is `WarehouseCore._import_previews`, shared with warehouse previews and in memory only. Reports migration must move work-log and daily-report previews to Reports-owned storage, with `kind`, `author`, `filename`, `created_at`, `rows`, and validation result. Preview does not write DB or audit.
+Reports preview storage is `ReportsPreviewStore`, isolated from Warehouse
+previews and in memory only. It retains `kind`, `author`, `filename`,
+`created_at`, rows and validation result. Preview does not write DB or audit.
 
 ## Audit
 

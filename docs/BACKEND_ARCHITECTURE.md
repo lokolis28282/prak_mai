@@ -230,7 +230,7 @@ receipt repository transaction contract, существующий S/N тольк
 - чтение audit;
 - legacy operation log.
 
-### `ReportService`
+### `ReportsFacade`
 
 Отвечает за:
 
@@ -239,6 +239,11 @@ receipt repository transaction contract, существующий S/N тольк
 - weekly report;
 - uploaded daily reports;
 - CSV export логов работ.
+
+С ODE 0.16.0 это самостоятельная реализация в `inventory/reports`, а не
+`ServiceAdapter` над `WarehouseCore`. Один экземпляр получает actor provider
+из Administration и Warehouse-owned `WarehouseEventReader`. Исторический
+`inventory/services/report_service.py` удалён.
 
 ### `MonitoringService`
 
@@ -264,15 +269,17 @@ receipt repository transaction contract, существующий S/N тольк
 
 ## Что осталось в `WarehouseCore`
 
-`WarehouseCore` содержит старую Warehouse/Reports реализацию на переходном
+`WarehouseCore` содержит старую Warehouse реализацию на переходном
 этапе. Это временный compatibility core, а не целевая архитектура.
 
 Текущее состояние Stage 0.13.3A:
 
 - `WarehouseCore` остается допустимым legacy-core для ещё не перенесённых
-  Warehouse/Reports flows;
+  Warehouse flows;
 - Administration-реализация вынесена физически; core содержит только
   deprecated delegates к единственному `AdministrationService`;
+- Reports-реализация и Reports-owned SQL вынесены физически; core содержит
+  только deprecated delegates к единственному `ReportsFacade`;
 - часть сервисов остаётся фасадами/делегатами над `WarehouseCore`, а receipt,
   issue, cable, delivery и Inventory Number flows имеют Warehouse-owned
   реализации;

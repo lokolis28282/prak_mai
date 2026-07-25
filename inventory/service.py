@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .db import DEFAULT_DB_PATH
+from .reports.facade import ReportsFacade
 from .shared.helpers import STRICT_REFERENCES, WarehouseError
 from .services.balance_service import BalanceService
 from .services.delivery_service import DeliveryService
@@ -16,8 +17,8 @@ from .services.monitoring_service import MonitoringService
 from .services.profile_service import ProfileService
 from .services.receipt_service import ReceiptService
 from .services.reference_service import ReferenceService
-from .services.report_service import ReportService
 from .services.warehouse_service import WarehouseCore
+from .warehouse.events import WarehouseEventReader
 
 
 class WarehouseService:
@@ -58,9 +59,19 @@ class WarehouseService:
         self.delivery_service = DeliveryService(self._core)
         self.balance_service = BalanceService(self._core)
         self.history_service = HistoryService(self._core)
-        self.report_service = ReportService(self._core)
         self.monitoring_service = MonitoringService(self._core)
         self.inventory_service = InventoryService(self._core)
+        self.warehouse_event_reader = WarehouseEventReader(self)
+        self.reports_service = ReportsFacade(
+            self.db_path,
+            actor_provider=self.administration_service,
+            strict_reference_validation=self.strict_reference_validation,
+            warehouse_events=self.warehouse_event_reader,
+            legacy_exporter=self.inventory_service.export_csv,
+        )
+        # DEPRECATED: historical attribute now points at the Reports boundary.
+        self.report_service = self.reports_service
+        self._core.reports = self.reports_service
 
     @property
     def db_path(self) -> Path:
@@ -295,40 +306,53 @@ class WarehouseService:
         return self.issue_service.stock_issue_rows(*args, **kwargs)
 
     def add_work_log(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.add_work_log(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.add_work_log.
+        return self.reports_service.add_work_log(*args, **kwargs)
 
     def add_work_logs(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.add_work_logs(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.add_work_logs.
+        return self.reports_service.add_work_logs(*args, **kwargs)
 
     def work_logs(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.work_logs(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.list_work_logs.
+        return self.reports_service.work_logs(*args, **kwargs)
 
     def import_work_log_rows(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.import_work_log_rows(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.import_work_log_rows.
+        return self.reports_service.import_work_log_rows(*args, **kwargs)
 
     def preview_work_log_rows(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.preview_work_log_rows(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.preview_work_log_rows.
+        return self.reports_service.preview_work_log_rows(*args, **kwargs)
 
     def confirm_work_log_preview(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.confirm_work_log_preview(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.confirm_work_log_preview.
+        return self.reports_service.confirm_work_log_preview(*args, **kwargs)
 
     def daily_report(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.daily_report(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.daily_report.
+        return self.reports_service.daily_report(*args, **kwargs)
 
     def weekly_report(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.weekly_report(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.weekly_report.
+        return self.reports_service.weekly_report(*args, **kwargs)
 
     def weekly_report_rows(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.weekly_report_rows(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.weekly_report_rows.
+        return self.reports_service.weekly_report_rows(*args, **kwargs)
 
     def import_daily_report_rows(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.import_daily_report_rows(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.import_daily_report_rows.
+        return self.reports_service.import_daily_report_rows(*args, **kwargs)
 
     def daily_report_uploads(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.daily_report_uploads(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.daily_report_uploads.
+        return self.reports_service.daily_report_uploads(*args, **kwargs)
 
     def uploaded_daily_report(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.uploaded_daily_report(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.uploaded_daily_report.
+        return self.reports_service.uploaded_daily_report(*args, **kwargs)
 
     def export_work_logs_csv(self, *args: Any, **kwargs: Any) -> Any:
-        return self.report_service.export_work_logs_csv(*args, **kwargs)
+        # DEPRECATED: use ApplicationContext.reports.export_work_logs_csv.
+        return self.reports_service.export_work_logs_csv(*args, **kwargs)

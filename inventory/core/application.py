@@ -15,7 +15,6 @@ from inventory.administration.facade import AdministrationFacade
 from inventory.knowledge.facade import KnowledgeFacade
 from inventory.monitoring.facade import MonitoringFacade
 from inventory.reports.facade import ReportsFacade
-from inventory.warehouse.events import WarehouseEventReader
 from inventory.warehouse.facade import WarehouseFacade
 from inventory.warehouse.baseline.posting_policy import PostingPolicy
 from inventory.warehouse.baseline.service import FullInventoryService
@@ -61,7 +60,6 @@ class ApplicationContext:
             service.db_path,
             state_root=runtime.full_inventory_state_root,
         )
-        event_reader = WarehouseEventReader(service)
         event_publisher = NoopEventPublisher()
         return cls(
             db_path=service.db_path,
@@ -71,7 +69,7 @@ class ApplicationContext:
                 posting_policy=posting_policy,
                 full_inventory=full_inventory,
             ),
-            reports=ReportsFacade(service, warehouse_events=event_reader),
+            reports=service.reports_service,
             monitoring=MonitoringFacade(),
             knowledge=KnowledgeFacade(service),
             administration=AdministrationFacade(service.administration_service),

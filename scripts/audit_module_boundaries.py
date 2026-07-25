@@ -565,8 +565,34 @@ def main() -> int:
         errors.append("ReportsFacade does not receive warehouse_events through constructor")
     application = ROOT / "inventory/core/application.py"
     app_text = application.read_text(encoding="utf-8")
-    if "WarehouseEventReader" not in app_text or "warehouse_events=event_reader" not in app_text:
-        errors.append("ApplicationContext does not wire WarehouseEventReader into ReportsFacade")
+    service_composition = (ROOT / "inventory/service.py").read_text(encoding="utf-8")
+    reports_wired_once = (
+        "WarehouseEventReader(self)" in service_composition
+        and "warehouse_events=self.warehouse_event_reader" in service_composition
+        and "reports=service.reports_service" in app_text
+    )
+    if not reports_wired_once:
+        errors.append(
+            "composition does not wire one WarehouseEventReader into the shared ReportsFacade"
+        )
+    forbidden_report_sql = contains(
+        ROOT / "inventory/services/warehouse_service.py",
+        (
+            "INSERT INTO work_logs",
+            "FROM work_logs",
+            "INSERT INTO daily_report_uploads",
+            "FROM daily_report_rows",
+        ),
+    )
+    if forbidden_report_sql:
+        errors.append(
+            "WarehouseCore still contains Reports-owned SQL: "
+            + ", ".join(forbidden_report_sql)
+        )
+    if "self.reports_service = ReportsFacade(" not in service_composition:
+        errors.append("WarehouseService does not expose the independent Reports boundary")
+    if (ROOT / "inventory/services/report_service.py").exists():
+        errors.append("obsolete compatibility ReportService still exists")
 
     ownership = ROOT / "docs/DATABASE_OWNERSHIP.md"
     if not ownership.exists():

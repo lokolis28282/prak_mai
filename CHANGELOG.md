@@ -1,6 +1,26 @@
 # Changelog ODE
 
-## ODE 0.16.0 — Stage 1, Administration extraction (2026-07-25)
+## ODE 0.16.0 — modular extraction (2026-07-25)
+
+### Stage 2 — Reports
+
+- work logs, daily/weekly report assembly, uploaded daily reports, preview/
+  confirm imports and work-log CSV export now have one implementation under
+  `inventory/reports/`;
+- `WarehouseService` composes one `ReportsFacade` with the Administration actor
+  provider and one Warehouse-owned `WarehouseEventReader`;
+  `ApplicationContext.reports` reuses that same instance;
+- the obsolete `inventory/services/report_service.py` adapter was removed;
+  compatibility methods in `WarehouseCore` and `WarehouseService` remain only
+  as explicitly deprecated delegates;
+- Reports-owned SQL for `work_logs`, `daily_report_uploads` and
+  `daily_report_rows` is absent from `WarehouseCore`; the module audit enforces
+  this boundary;
+- full-day report filtering preserves timestamped rows through `23:59:59`;
+  Warehouse event reads use the same inclusive day semantics;
+- full discover suite: **584 tests, OK (`skipped=15`)**.
+
+### Stage 1 — Administration
 
 - пользователи, authentication/actor context, роли, аудит, диагностика,
   backup/restore и безопасная замена рабочей SQLite вынесены из

@@ -109,6 +109,9 @@ class WarehouseCore:
         self._actor_email = self.administration._actor_email
         self._actor_name = self.administration._actor_name
         self._actor_role_override = self.administration._actor_role_override
+        # Attached by WarehouseService after the independent Reports boundary
+        # and WarehouseEventReader have been composed.
+        self.reports: Any | None = None
         # Bootstrap credentials are documented for the local compatibility
         # runtime, but must never be echoed into application or CI logs.
         self.reference_catalog = ReferenceDataService(self)
@@ -878,16 +881,6 @@ class WarehouseCore:
         row = dict(source)
         row["issue_date"] = str(row.get("issue_date") or date.today().isoformat())
         row["responsible"] = str(row.get("responsible") or "Не указан")
-        return row
-
-    @staticmethod
-    def _soft_work_log_source(source: dict[str, Any]) -> dict[str, Any]:
-        row = dict(source)
-        row["work_date"] = str(row.get("work_date") or date.today().isoformat())
-        row["task_source"] = str(row.get("task_source") or "Не указан")
-        row["task_type"] = str(row.get("task_type") or "")
-        row["task_number"] = str(row.get("task_number") or "")
-        row["status"] = str(row.get("status") or "Выполнено")
         return row
 
     def _prepare_receipt(
@@ -2978,6 +2971,11 @@ class WarehouseCore:
                       "missing": len(missing), "duplicates": len(duplicates)},
         }
 
+    def _reports_boundary(self) -> Any:
+        if self.reports is None:
+            raise RuntimeError("Reports boundary is not attached")
+        return self.reports
+
     def add_work_log(
         self,
         work_date: str,
@@ -2988,209 +2986,50 @@ class WarehouseCore:
         status: str,
         comment: str = "",
     ) -> int:
-        self._require_write()
-        """Добавить запись о выполненной работе."""
-        with connect(self.db_path) as db:
-            row = self._prepare_work_log({
-                "work_date": work_date,
-                "task_source": task_source,
-                "task_type": task_type,
-                "task_number": task_number,
-                "description": description,
-                "status": status,
-                "comment": comment,
-            }, references=self._reference_sets(db))
-            cursor = db.execute(
-                """INSERT INTO work_logs(
-                       work_date, task_source, task_type, task_number,
-                       description, status, comment
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                self._work_log_values(row),
-            )
-            log_id = int(cursor.lastrowid)
-            self._audit(
-                db, "WORK_LOG_CREATE", "work_log", log_id,
-                {"task": f"{row['task_type']}-{row['task_number']}"},
-            )
-            return log_id
+        # DEPRECATED: use ApplicationContext.reports.add_work_log.
+        return int(self._reports_boundary().add_work_log(
+            work_date,
+            task_source,
+            task_type,
+            task_number,
+            description,
+            status,
+            comment,
+        ))
 
     def add_work_logs(self, rows: Iterable[dict[str, Any]]) -> int:
-        """Сохранить строки ежедневного отчета одной транзакцией."""
-        self._require_write()
-        source_rows = [dict(row) for row in rows]
-        if not source_rows:
-            raise WarehouseError("Добавьте хотя бы одну задачу")
-        with connect(self.db_path) as db:
-            references = self._reference_sets(db)
-            prepared = [
-                self._prepare_work_log(row, line_number=index, references=references)
-                for index, row in enumerate(source_rows, start=1)
-            ]
-            db.executemany(
-                """INSERT INTO work_logs(work_date, task_source, task_type, task_number,
-                                          description, status, comment)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                [self._work_log_values(row) for row in prepared],
-            )
-            self._audit(
-                db, "WORK_LOG_BATCH_CREATE", "work_log", details={"count": len(prepared)}
-            )
-        return len(prepared)
+        # DEPRECATED: use ApplicationContext.reports.add_work_logs.
+        return int(self._reports_boundary().add_work_logs(list(rows)))
 
-    def _prepare_work_log(
-        self, source: dict[str, Any], line_number: int | None = None,
-        references: dict[str, set[str]] | None = None,
-        strict_references: bool | None = None,
-    ) -> dict[str, str]:
-        prefix = f"Строка {line_number}: " if line_number is not None else ""
-        strict = self.strict_reference_validation if strict_references is None else strict_references
-        try:
-            return {
-                "work_date": self._date(str(source.get("work_date", "")), "дата"),
-                "task_source": self._reference(
-                    str(source.get("task_source", "")), "источник задачи", "task_source",
-                    references or {"task_source": {x.casefold() for x in self.TASK_SOURCES}},
-                    strict=strict,
-                ),
-                "task_type": self._reference(
-                    str(source.get("task_type", "")), "тип задачи", "task_type",
-                    references or {"task_type": {x.casefold() for x in self.TASK_TYPES}},
-                    optional=True, strict=strict,
-                ),
-                "task_number": self._required(
-                    str(source.get("task_number", "")), "номер задачи"
-                ),
-                "description": self._required(
-                    str(source.get("description", "")), "описание работы"
-                ),
-                "status": self._reference(
-                    str(source.get("status", "")), "статус", "work_log_status",
-                    references or {
-                        "work_log_status": {x.casefold() for x in self.WORK_LOG_STATUSES}
-                    },
-                ),
-                "comment": str(source.get("comment", "")).strip(),
-            }
-        except WarehouseError as error:
-            raise WarehouseError(prefix + str(error)) from error
-
-    @staticmethod
-    def _work_log_values(row: dict[str, str]) -> tuple[str, ...]:
-        return (
-            row["work_date"], row["task_source"], row["task_type"],
-            row["task_number"], row["description"], row["status"], row["comment"],
-        )
-
-    def work_logs(self, date_from: str = "", date_to: str = "") -> list[dict[str, Any]]:
-        """Получить логи работ за необязательный период."""
-        date_from, date_to = self._validated_period(date_from, date_to, optional=True)
-        sql = """SELECT id, work_date, task_source, task_type, task_number,
-                        task_type || '-' || task_number AS full_task_name,
-                        description, status, section, needs_review, comment, created_at
-                 FROM work_logs WHERE 1 = 1"""
-        params: list[Any] = []
-        if date_from:
-            sql += " AND work_date >= ?"
-            params.append(date_from)
-        if date_to:
-            sql += " AND work_date <= ?"
-            params.append(date_to)
-        sql += " ORDER BY work_date DESC, id DESC"
-        with connect(self.db_path) as db:
-            return [dict(row) for row in db.execute(sql, params).fetchall()]
+    def work_logs(
+        self, date_from: str = "", date_to: str = ""
+    ) -> list[dict[str, Any]]:
+        # DEPRECATED: use ApplicationContext.reports.list_work_logs.
+        return self._reports_boundary().work_logs(date_from, date_to)
 
     def import_work_log_rows(
         self, rows: Iterable[dict[str, Any]], *, soft: bool = False
     ) -> int:
-        self._require_write()
-        """Проверить весь набор и атомарно импортировать логи работ."""
-        with connect(self.db_path) as db:
-            references = self._reference_sets(db)
-            prepared: list[dict[str, str]] = []
-            for line_number, source in enumerate(rows, start=2):
-                if not any(str(value or "").strip() for value in source.values()):
-                    continue
-                candidate = self._soft_work_log_source(source) if soft else source
-                prepared.append(self._prepare_work_log(
-                    candidate, line_number, references, strict_references=not soft
-                ))
-            if not prepared:
-                raise WarehouseError("В CSV-файле нет логов работ")
-            for field, kind in {
-                "task_source": "task_source", "task_type": "task_type",
-                "status": "work_log_status",
-            }.items():
-                for value in {str(row[field]).strip() for row in prepared if str(row[field]).strip()}:
-                    self._collect_references(db, {field: value}, {field: kind})
-            db.executemany(
-                """INSERT INTO work_logs(
-                       work_date, task_source, task_type, task_number,
-                       description, status, comment
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                [self._work_log_values(row) for row in prepared],
+        # DEPRECATED: use ApplicationContext.reports.import_work_log_rows.
+        return int(
+            self._reports_boundary().import_work_log_rows(
+                list(rows), soft=soft
             )
-            self._audit(
-                db, "WORK_LOG_IMPORT", "work_log", details={"count": len(prepared)}
-            )
-        return len(prepared)
+        )
 
     def preview_work_log_rows(
         self, rows: Iterable[dict[str, Any]], *, soft: bool = True
     ) -> dict[str, Any]:
-        """Validate work logs without database writes and keep them for confirm."""
-        self._require_write()
-        source_rows = [dict(row) for row in rows]
-        shown: list[dict[str, Any]] = []
-        errors: list[dict[str, Any]] = []
-        error_count = valid = total = duplicates = 0
-        seen: set[tuple[str, ...]] = set()
-        with connect(self.db_path) as db:
-            references = self._reference_sets(db)
-            for line, source in enumerate(source_rows, start=2):
-                if not any(str(value or "").strip() for value in source.values()):
-                    continue
-                total += 1
-                reason = ""
-                prepared: dict[str, Any] | None = None
-                try:
-                    candidate = self._soft_work_log_source(source) if soft else source
-                    prepared = self._prepare_work_log(
-                        candidate, line, references, strict_references=not soft
-                    )
-                    signature = self._work_log_values(prepared)
-                    if signature in seen:
-                        duplicates += 1
-                    seen.add(signature)
-                    valid += 1
-                except WarehouseError as error:
-                    reason = str(error)
-                    error_count += 1
-                    if len(errors) < PREVIEW_ERROR_LIMIT:
-                        errors.append({"line": line, "reason": reason})
-                if len(shown) < PREVIEW_ROW_LIMIT:
-                    item = dict(prepared or source)
-                    item.update({"line": line, "valid": not reason, "error": reason})
-                    shown.append(item)
-        if not total:
-            error_count = 1
-            errors.append({"line": 1, "reason": "В CSV-файле нет логов работ"})
-        return self._store_import_preview("work_logs", source_rows, {
-            "total": total, "valid": valid, "new": valid, "duplicates": duplicates,
-            "error_count": error_count, "errors": errors, "rows": shown,
-            "mode": "soft" if soft else "strict",
-        })
+        # DEPRECATED: use ApplicationContext.reports.preview_work_log_rows.
+        return self._reports_boundary().preview_work_log_rows(
+            list(rows), soft=soft
+        )
 
     def confirm_work_log_preview(self, preview_id: str) -> int:
-        self._require_write()
-        preview = self._import_preview(preview_id, "work_logs")
-        soft = preview.get("mode") == "soft"
-        check = self.preview_work_log_rows(preview["rows"], soft=soft)
-        self._import_previews.pop(check["preview_id"], None)
-        if check["errors"]:
-            raise WarehouseError(check["errors"][0]["reason"])
-        imported = self.import_work_log_rows(preview["rows"], soft=soft)
-        self._import_previews.pop(preview_id, None)
-        return imported
+        # DEPRECATED: use ApplicationContext.reports.confirm_work_log_preview.
+        return int(
+            self._reports_boundary().confirm_work_log_preview(preview_id)
+        )
 
     def _validated_period(
         self, date_from: str, date_to: str, optional: bool = False
@@ -3206,305 +3045,38 @@ class WarehouseCore:
         return start, end
 
     def daily_report(self, report_date: str) -> list[dict[str, Any]]:
-        """Собрать сменный отчет: логи работ, затем приход и расход."""
-        report_date = self._date(report_date, "дата отчета")
-        start = f"{report_date} 00:00:00"
-        end = f"{report_date} 23:59:59"
-        result: list[dict[str, Any]] = []
-        with connect(self.db_path) as db:
-            work_rows = db.execute(
-                """SELECT work_date, task_type || '-' || task_number AS full_task_name,
-                          description, comment
-                     FROM work_logs
-                    WHERE datetime(work_date) BETWEEN ? AND ?
-                    ORDER BY work_date, id""",
-                (start, end),
-            ).fetchall()
-        for row in work_rows:
-            result.append({
-                "date": row["work_date"],
-                "report_block": "Логи работ",
-                "task_number": row["full_task_name"],
-                "description": row["description"],
-                "quantity": "",
-                "serial_number": "",
-                "responsible": "",
-                "comment": row["comment"],
-            })
-        with connect(self.db_path) as db:
-            new_receipts = db.execute(
-                """SELECT receipt_date AS report_date, item_name, model,
-                          inventory_number, serial_number, quantity, unit,
-                          responsible, order_number, request_number
-                   FROM stock_receipts
-                   WHERE is_opening_balance = 0
-                     AND datetime(receipt_date) BETWEEN ? AND ?
-                   ORDER BY receipt_date, id""",
-                (start, end),
-            ).fetchall()
-            new_issues = db.execute(
-                """SELECT i.issue_date AS report_date, i.task_type, i.task_number,
-                          COALESCE(NULLIF(i.source_item_name, ''), MIN(r.item_name)) AS item_name,
-                          COALESCE(NULLIF(i.source_serial_number, ''), MIN(r.serial_number)) AS serial_number,
-                          i.quantity, MIN(r.unit) AS unit, i.responsible, i.comment
-                   FROM stock_issues i
-                   JOIN stock_issue_allocations a ON a.issue_id = i.id
-                   JOIN stock_receipts r ON r.id = a.receipt_id
-                   WHERE datetime(i.issue_date) BETWEEN ? AND ?
-                   GROUP BY i.id ORDER BY i.issue_date, i.id""",
-                (start, end),
-            ).fetchall()
-        receipts: list[dict[str, Any]] = []
-        issues: list[dict[str, Any]] = []
-        for row in new_receipts:
-            receipts.append({
-                "date": row["report_date"], "report_block": "Приход", "task_number": "",
-                "description": row["item_name"] + (f" / {row['model']}" if row["model"] else ""),
-                "quantity": f"{float(row['quantity']):g} {row['unit']}",
-                "serial_number": row["serial_number"], "responsible": row["responsible"],
-                "comment": row["order_number"] or row["request_number"],
-            })
-        for row in new_issues:
-            issues.append({
-                "date": row["report_date"], "report_block": "Расход",
-                "task_number": (
-                    f"{row['task_type']}-{row['task_number']}" if row["task_type"] else ""
-                ),
-                "description": row["item_name"],
-                "quantity": f"{float(row['quantity']):g} {row['unit']}",
-                "serial_number": row["serial_number"], "responsible": row["responsible"],
-                "comment": row["comment"],
-            })
-        receipts.sort(key=lambda row: row["date"])
-        issues.sort(key=lambda row: row["date"])
-        result.extend(receipts)
-        result.extend(issues)
-        for row in self.data_quality_problems(report_date, report_date)["unmatched_issues"]:
-            result.append({
-                "date": row["date"], "report_block": "Проблемные строки",
-                "task_number": "", "description": row["item_name"] or "Не сопоставленный расход",
-                "quantity": f"{float(row['unmatched_quantity']):g}",
-                "serial_number": row["serial_number"], "responsible": row["responsible"],
-                "comment": row["comment"],
-            })
-        with connect(self.db_path) as db:
-            delivery_rows = db.execute(
-                """SELECT substr(d.uploaded_at,1,10) report_date,d.delivery_number,d.supplier,
-                          d.source_filename,'Загруженная поставка' kind,'' serial_number
-                     FROM deliveries d WHERE datetime(d.uploaded_at) BETWEEN ? AND ?
-                   UNION ALL
-                   SELECT r.receipt_date,d.delivery_number,d.supplier,l.item_name,
-                          'Принятая позиция',l.serial_number
-                     FROM delivery_lines l JOIN deliveries d ON d.id=l.delivery_id
-                     JOIN stock_receipts r ON r.id=l.receipt_id
-                    WHERE datetime(r.receipt_date) BETWEEN ? AND ?
-                   UNION ALL
-                   SELECT substr(l.updated_at,1,10),d.delivery_number,d.supplier,l.error_text,
-                          'Проблемная строка',l.serial_number
-                     FROM delivery_lines l JOIN deliveries d ON d.id=l.delivery_id
-                    WHERE l.state IN ('Ошибка','Дубль в файле','Уже на складе')
-                      AND datetime(l.updated_at) BETWEEN ? AND ?""",
-                (start, end, start, end, start, end),
-            ).fetchall()
-        for row in delivery_rows:
-            result.append({
-                "date": row["report_date"], "report_block": "Поставки",
-                "task_number": row["delivery_number"], "description": row["kind"] + ": " + (row["source_filename"] or ""),
-                "quantity": "", "serial_number": row["serial_number"], "responsible": "",
-                "comment": row["supplier"],
-            })
-        return result
+        # DEPRECATED: use ApplicationContext.reports.daily_report.
+        return self._reports_boundary().daily_report(report_date)
 
-    def weekly_report(self, start_date: str, end_date: str) -> dict[str, Any]:
-        """Агрегировать существующие журналы и складские движения за период."""
-        start, end = self._validated_period(start_date, end_date)
-        with connect(self.db_path) as db:
-            summary = dict(db.execute(
-                """SELECT
-                       (SELECT COUNT(*) FROM work_logs WHERE work_date BETWEEN ? AND ?) AS work_logs,
-                       (SELECT COUNT(*) FROM stock_receipts
-                         WHERE is_opening_balance = 0 AND receipt_date BETWEEN ? AND ?) AS receipts,
-                       (SELECT COALESCE(SUM(quantity), 0) FROM stock_receipts
-                         WHERE is_opening_balance = 0 AND receipt_date BETWEEN ? AND ?) AS received_quantity,
-                       (SELECT COUNT(*) FROM stock_issues WHERE issue_date BETWEEN ? AND ?) AS issues,
-                       (SELECT COALESCE(SUM(quantity), 0) FROM stock_issues
-                         WHERE issue_date BETWEEN ? AND ?) AS issued_quantity,
-                       (SELECT COALESCE(SUM(quantity), 0) FROM stock_receipts
-                         WHERE is_opening_balance = 0 AND cable_type <> ''
-                           AND receipt_date BETWEEN ? AND ?) AS cable_received,
-                       (SELECT COALESCE(SUM(a.quantity), 0)
-                          FROM stock_issues i
-                          JOIN stock_issue_allocations a ON a.issue_id = i.id
-                          JOIN stock_receipts r ON r.id = a.receipt_id
-                         WHERE r.cable_type <> '' AND i.issue_date BETWEEN ? AND ?) AS cable_issued""",
-                (start, end) * 7,
-            ).fetchone())
-            project_rows = db.execute(
-                """WITH movements AS (
-                       SELECT project, SUM(quantity) AS received, 0 AS issued
-                         FROM stock_receipts
-                        WHERE is_opening_balance = 0 AND receipt_date BETWEEN ? AND ?
-                        GROUP BY project
-                       UNION ALL
-                       SELECT r.project, 0, SUM(a.quantity)
-                         FROM stock_issues i
-                         JOIN stock_issue_allocations a ON a.issue_id = i.id
-                         JOIN stock_receipts r ON r.id = a.receipt_id
-                        WHERE i.issue_date BETWEEN ? AND ? GROUP BY r.project
-                   )
-                   SELECT COALESCE(NULLIF(project, ''), 'Без проекта') AS name,
-                          SUM(received) AS received, SUM(issued) AS issued
-                     FROM movements GROUP BY project ORDER BY name COLLATE NOCASE""",
-                (start, end, start, end),
-            ).fetchall()
-            type_rows = db.execute(
-                """WITH receipt_types AS (
-                       SELECT CASE WHEN equipment_type <> '' THEN 'Оборудование: ' || equipment_type
-                                   WHEN component_type <> '' THEN 'Компонент: ' || component_type
-                                   ELSE 'Кабель: ' || cable_type END AS name,
-                              SUM(quantity) AS received, 0 AS issued
-                         FROM stock_receipts
-                        WHERE is_opening_balance = 0 AND receipt_date BETWEEN ? AND ?
-                        GROUP BY name
-                       UNION ALL
-                       SELECT CASE WHEN r.equipment_type <> '' THEN 'Оборудование: ' || r.equipment_type
-                                   WHEN r.component_type <> '' THEN 'Компонент: ' || r.component_type
-                                   ELSE 'Кабель: ' || r.cable_type END,
-                              0, SUM(a.quantity)
-                         FROM stock_issues i
-                         JOIN stock_issue_allocations a ON a.issue_id = i.id
-                         JOIN stock_receipts r ON r.id = a.receipt_id
-                        WHERE i.issue_date BETWEEN ? AND ? GROUP BY 1
-                   )
-                   SELECT name, SUM(received) AS received, SUM(issued) AS issued
-                     FROM receipt_types GROUP BY name ORDER BY name COLLATE NOCASE""",
-                (start, end, start, end),
-            ).fetchall()
-        problems = self.data_quality_problems(start, end)
-        summary["problem_rows"] = sum(len(rows) for rows in problems.values())
-        with connect(self.db_path) as db:
-            delivery_summary = db.execute(
-                """SELECT
-                    (SELECT COUNT(*) FROM deliveries WHERE substr(uploaded_at,1,10) BETWEEN ? AND ?) loaded_deliveries,
-                    (SELECT COUNT(*) FROM delivery_lines l JOIN stock_receipts r ON r.id=l.receipt_id WHERE r.receipt_date BETWEEN ? AND ?) accepted_delivery_items,
-                    (SELECT COUNT(*) FROM delivery_lines WHERE state IN ('Ошибка','Дубль в файле','Уже на складе') AND substr(updated_at,1,10) BETWEEN ? AND ?) delivery_problem_rows""",
-                (start, end, start, end, start, end),
-            ).fetchone()
-        summary.update(dict(delivery_summary))
-        return {
-            "date_from": start, "date_to": end, "summary": summary,
-            "projects": [dict(row) for row in project_rows],
-            "types": [dict(row) for row in type_rows],
-            "problems": problems,
-        }
+    def weekly_report(
+        self, start_date: str, end_date: str
+    ) -> dict[str, Any]:
+        # DEPRECATED: use ApplicationContext.reports.weekly_report.
+        return self._reports_boundary().weekly_report(start_date, end_date)
 
-    def weekly_report_rows(self, start_date: str, end_date: str) -> list[dict[str, Any]]:
-        report = self.weekly_report(start_date, end_date)
-        labels = {
-            "work_logs": "Логи работ", "receipts": "Операции прихода",
-            "received_quantity": "Принято позиций", "issues": "Операции расхода",
-            "issued_quantity": "Списано позиций", "cable_received": "Кабеля принято",
-            "cable_issued": "Кабеля списано", "problem_rows": "Проблемные строки",
-            "loaded_deliveries": "Загруженные поставки",
-            "accepted_delivery_items": "Принятые позиции поставок",
-            "delivery_problem_rows": "Проблемные строки поставок",
-        }
-        rows = [
-            {"Блок": "Итоги", "Показатель": labels[key], "Принято": value, "Списано": ""}
-            for key, value in report["summary"].items()
-        ]
-        rows.extend(
-            {"Блок": "Проекты", "Показатель": row["name"],
-             "Принято": row["received"], "Списано": row["issued"]}
-            for row in report["projects"]
+    def weekly_report_rows(
+        self, start_date: str, end_date: str
+    ) -> list[dict[str, Any]]:
+        # DEPRECATED: use ApplicationContext.reports.weekly_report_rows.
+        return self._reports_boundary().weekly_report_rows(
+            start_date, end_date
         )
-        rows.extend(
-            {"Блок": "Типы", "Показатель": row["name"],
-             "Принято": row["received"], "Списано": row["issued"]}
-            for row in report["types"]
-        )
-        for kind, problem_rows in report["problems"].items():
-            rows.extend({
-                "Блок": "Проблемные строки", "Показатель": kind,
-                "Принято": row.get("serial_number", row.get("item_name", "")),
-                "Списано": row.get("unmatched_quantity", row.get("count", "")),
-            } for row in problem_rows)
-        return rows
 
     def import_daily_report_rows(
-        self, filename: str, rows: Iterable[dict[str, Any]],
+        self, filename: str, rows: Iterable[dict[str, Any]]
     ) -> dict[str, Any]:
-        """Атомарно сохранить готовый отчет отдельно от журналов работ."""
-        user = self._require_write()
-        filename = self._required(Path(filename).name, "имя файла")
-        prepared: list[dict[str, str]] = []
-        for line_number, source in enumerate(rows, start=2):
-            if not any(str(value or "").strip() for value in source.values()):
-                continue
-            try:
-                prepared.append({
-                    "date": self._date(str(source.get("date", "")), "дата"),
-                    "report_block": str(source.get("report_block", "")).strip(),
-                    "task_number": str(source.get("task_number", "")).strip(),
-                    "description": self._required(
-                        str(source.get("description", "")), "описание / наименование"
-                    ),
-                    "quantity": str(source.get("quantity", "")).strip(),
-                    "serial_number": str(source.get("serial_number", "")).strip(),
-                    "responsible": str(source.get("responsible", "")).strip(),
-                    "comment": str(source.get("comment", "")).strip(),
-                })
-            except WarehouseError as error:
-                raise WarehouseError(f"Строка {line_number}: {error}") from error
-        if not prepared:
-            raise WarehouseError("В CSV-файле нет строк ежедневного отчета")
-        with connect(self.db_path) as db:
-            cursor = db.execute(
-                """INSERT INTO daily_report_uploads(filename, uploaded_by, row_count)
-                   VALUES (?, ?, ?)""",
-                (filename, user["email"], len(prepared)),
-            )
-            upload_id = int(cursor.lastrowid)
-            db.executemany(
-                """INSERT INTO daily_report_rows(
-                       upload_id, row_order, report_date, report_block, task_number,
-                       description, quantity, serial_number, responsible, comment
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                [
-                    (
-                        upload_id, order, row["date"], row["report_block"],
-                        row["task_number"], row["description"], row["quantity"],
-                        row["serial_number"], row["responsible"], row["comment"],
-                    )
-                    for order, row in enumerate(prepared, start=1)
-                ],
-            )
-            self._audit(
-                db, "DAILY_REPORT_UPLOAD", "daily_report_upload", upload_id,
-                {"filename": filename, "rows": len(prepared)},
-            )
-        return {"id": upload_id, "filename": filename, "row_count": len(prepared)}
+        # DEPRECATED: use ApplicationContext.reports.import_daily_report_rows.
+        return self._reports_boundary().import_daily_report_rows(
+            filename, list(rows)
+        )
 
     def daily_report_uploads(self) -> list[dict[str, Any]]:
-        with connect(self.db_path) as db:
-            return [dict(row) for row in db.execute(
-                """SELECT id, filename, uploaded_at, uploaded_by, row_count
-                   FROM daily_report_uploads ORDER BY uploaded_at DESC, id DESC"""
-            )]
+        # DEPRECATED: use ApplicationContext.reports.daily_report_uploads.
+        return self._reports_boundary().daily_report_uploads()
 
     def uploaded_daily_report(self, upload_id: int) -> list[dict[str, Any]]:
-        with connect(self.db_path) as db:
-            exists = db.execute(
-                "SELECT 1 FROM daily_report_uploads WHERE id = ?", (upload_id,)
-            ).fetchone()
-            if exists is None:
-                raise WarehouseError("Загруженный отчет не найден")
-            return [dict(row) for row in db.execute(
-                """SELECT report_date AS date, report_block, task_number, description,
-                          quantity, serial_number, responsible, comment
-                   FROM daily_report_rows WHERE upload_id = ? ORDER BY row_order""",
-                (upload_id,),
-            )]
+        # DEPRECATED: use ApplicationContext.reports.uploaded_daily_report.
+        return self._reports_boundary().uploaded_daily_report(upload_id)
 
     def import_operation_rows(
         self, rows: Iterable[dict[str, Any]], operation_type: str
@@ -3721,23 +3293,10 @@ class WarehouseCore:
     def export_work_logs_csv(
         self, output_file: str | Path, date_from: str = "", date_to: str = ""
     ) -> Path:
-        """Выгрузить логи работ в Excel-совместимый CSV с русскими заголовками."""
-        path = Path(output_file)
-        rows = [
-            {
-                "Дата": row["work_date"],
-                "Источник задачи": row["task_source"],
-                "Тип задачи": row["task_type"],
-                "Номер задачи": row["task_number"],
-                "Описание работы": row["description"],
-                "Статус": row["status"],
-                "Комментарий": row["comment"],
-            }
-            for row in self.work_logs(date_from, date_to)
-        ]
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._write_csv(path, rows)
-        return path
+        # DEPRECATED: use ApplicationContext.reports.export_work_logs_csv.
+        return self._reports_boundary().export_work_logs_csv(
+            output_file, date_from, date_to
+        )
 
     @staticmethod
     def _write_csv(path: Path, rows: Iterable[dict[str, Any]]) -> None:

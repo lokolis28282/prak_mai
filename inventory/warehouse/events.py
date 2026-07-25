@@ -149,6 +149,7 @@ class WarehouseEventReader:
         return result
 
     def _receipt_events(self, start: str, end: str) -> list[WarehouseEvent]:
+        start_dt, end_dt = f"{start} 00:00:00", f"{end} 23:59:59"
         with connect(self.service.db_path) as db:
             rows = db.execute(
                 """SELECT id, receipt_date, created_at, responsible, item_name, model,
@@ -156,9 +157,10 @@ class WarehouseEventReader:
                           supplier, order_number, request_number, equipment_type,
                           component_type, cable_type, is_opening_balance
                    FROM stock_receipts
-                   WHERE is_opening_balance = 0 AND receipt_date BETWEEN ? AND ?
+                   WHERE is_opening_balance = 0
+                     AND datetime(receipt_date) BETWEEN ? AND ?
                    ORDER BY receipt_date, id""",
-                (start, end),
+                (start_dt, end_dt),
             ).fetchall()
         events: list[WarehouseEvent] = []
         for row in rows:
@@ -184,6 +186,7 @@ class WarehouseEventReader:
         return events
 
     def _issue_events(self, start: str, end: str) -> list[WarehouseEvent]:
+        start_dt, end_dt = f"{start} 00:00:00", f"{end} 23:59:59"
         with connect(self.service.db_path) as db:
             issue_rows = db.execute(
                 """SELECT i.id, i.issue_date, i.created_at, i.responsible,
@@ -197,9 +200,9 @@ class WarehouseEventReader:
                    FROM stock_issues i
                    LEFT JOIN stock_issue_allocations a ON a.issue_id = i.id
                    LEFT JOIN stock_receipts r ON r.id = a.receipt_id
-                   WHERE i.issue_date BETWEEN ? AND ?
+                   WHERE datetime(i.issue_date) BETWEEN ? AND ?
                    GROUP BY i.id ORDER BY i.issue_date, i.id""",
-                (start, end),
+                (start_dt, end_dt),
             ).fetchall()
             allocation_rows = db.execute(
                 """SELECT i.id AS issue_id, r.project, r.equipment_type, r.component_type,
@@ -207,10 +210,10 @@ class WarehouseEventReader:
                    FROM stock_issues i
                    JOIN stock_issue_allocations a ON a.issue_id = i.id
                    JOIN stock_receipts r ON r.id = a.receipt_id
-                   WHERE i.issue_date BETWEEN ? AND ?
+                   WHERE datetime(i.issue_date) BETWEEN ? AND ?
                    GROUP BY i.id, r.project, r.equipment_type, r.component_type, r.cable_type
                    ORDER BY i.id""",
-                (start, end),
+                (start_dt, end_dt),
             ).fetchall()
         allocations: dict[int, list[dict[str, Any]]] = {}
         for row in allocation_rows:

@@ -169,6 +169,11 @@ Stage 0.12.2 фиксирует переходное состояние: `Wareho
 
 ## ReportService
 
+**Completed in ODE 0.16.0 Stage 2.** The methods below are implemented by the
+single Reports boundary under `inventory/reports`; compatibility entry points
+are deprecated delegates and the old `inventory/services/report_service.py`
+adapter has been removed.
+
 Методы для переноса:
 
 - `add_work_log`

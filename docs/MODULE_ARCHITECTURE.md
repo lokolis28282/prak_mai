@@ -39,6 +39,9 @@ Reports:
 - owns work logs and report generation;
 - reads warehouse events through `EventReader`;
 - writes work logs and uploaded daily reports through `ReportsFacade`;
+- owns its repository, validation, preview store and CSV export implementation;
+- receives the current actor from Administration rather than from
+  `WarehouseCore`;
 - must not write stock receipts, stock issues or delivery tables.
 
 Monitoring:
@@ -95,16 +98,18 @@ Warehouse pilot adapter:
 
 ## Transitional State
 
-`WarehouseCore` remains the compatibility core for Warehouse and Reports
-legacy flows. Administration no longer delegates business logic to it:
+`WarehouseCore` remains the compatibility core for Warehouse legacy flows.
+Administration and Reports no longer delegate business logic to it:
 `ApplicationContext` wires `AdministrationFacade -> AdministrationService`.
-The legacy core/service administration methods are deprecated thin delegates
-to that same service, preserving callers without keeping duplicate logic.
+The composition layer wires one `ReportsFacade` with a Warehouse-owned
+`WarehouseEventReader` and the Administration actor provider.
+Legacy core/service Administration and Reports methods are deprecated thin
+delegates to those same boundaries, preserving callers without duplicate logic.
 
 Web/API receives `ApplicationContext` via `make_handler()`. Administration
-HTTP paths use `context.administration`; the handler still uses a compatibility
-service adapter for remaining Warehouse/Reports legacy endpoints while those
-module calls are extracted gradually.
+HTTP paths use `context.administration`; Reports paths use `context.reports`.
+The handler still uses a compatibility service adapter for remaining Warehouse
+legacy endpoints while those calls are extracted gradually.
 
 Stage 0.12.7 routes read-only Warehouse GET/CSV paths through:
 
@@ -146,6 +151,15 @@ Stage 0.12.11 routes Reports write/import flows through:
 The migrated flows are `WORK_LOG`, `WORK_LOGS`, work-log CSV import, work-log
 CSV preview/confirm and uploaded daily report import. Preview storage for these
 flows is Reports-owned and in memory.
+
+ODE 0.16.0 Stage 2 removes the remaining Reports implementation from
+`WarehouseCore`:
+
+`web/API -> ApplicationContext.reports -> ReportsFacade -> Reports services/repository`
+
+Warehouse facts enter Reports only through the injected
+`WarehouseEventReader`. The compatibility `ReportService` adapter was removed;
+old Python calls delegate to the shared facade.
 
 Stage 0.12.12 routes equipment/component receipt writes through:
 

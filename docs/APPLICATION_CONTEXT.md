@@ -59,11 +59,27 @@ not contain a second implementation.
 
 ## Stage 0.12.10 Warehouse Events
 
-`ApplicationContext.from_service()` creates one `WarehouseEventReader` and
-injects it into `ReportsFacade`.
+The composition layer creates one `WarehouseEventReader` and injects it into
+`ReportsFacade`.
 
 Reports must not create readers inside individual report methods. This avoids
 cyclic dependencies and keeps event extraction owned by Warehouse.
+
+## ODE 0.16.0 Stage 2 Reports extraction
+
+`WarehouseService` now composes one transitional Reports boundary:
+
+`ReportsFacade(db_path, Administration actor provider, WarehouseEventReader)`
+
+`ApplicationContext.reports` reuses that exact instance, including its
+Reports-owned preview store. The facade no longer receives `WarehouseService`
+as its implementation and does not call report methods on `WarehouseCore`.
+Legacy report methods on `WarehouseService` and `WarehouseCore` are deprecated
+delegates to the same facade.
+
+Reports owns work-log CRUD/imports, uploaded daily reports, daily/weekly
+presentation and work-log CSV export. Warehouse owns event extraction only;
+Reports receives plain `WarehouseEvent` values.
 
 ## Stage 0.13.1/0.13.2 Inventory Number
 

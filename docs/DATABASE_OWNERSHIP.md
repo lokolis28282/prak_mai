@@ -90,6 +90,14 @@ Stage 0.12.11 makes Reports the only module writing `work_logs`,
 write `audit_log` through the shared audit adapter and may create missing
 work-log reference values in soft import mode until reference ownership is split.
 
+ODE 0.16.0 Stage 2 makes this ownership physical in the runtime composition.
+`ReportsFacade`, `ReportsRepository`, `WorkLogService` and
+`DailyReportImportService` contain the only SQL that reads/writes the three
+Reports tables. `WarehouseCore` retains no Reports-owned SQL. Reports receives
+Warehouse facts read-only through `WarehouseEventReader` and receives actor/
+role context from the single Administration service. No schema or table
+ownership changed.
+
 Stage 0.12.12 moves equipment/component receipt writes and imports to
 `WarehouseFacade` and the `inventory/warehouse` receipt modules. The table owner
 does not change, no schema migration is introduced, and cable/delivery receipt

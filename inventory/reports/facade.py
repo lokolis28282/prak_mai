@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 from .daily import DailyReportImportService
+from .exports import export_work_logs_csv
 from .imports import ReportsPreviewStore
 from .repository import ReportsRepository
 from .validators import parse_date
@@ -23,19 +25,29 @@ def _plain(value: Any) -> Any:
 
 
 class ReportsFacade:
-    def __init__(self, service: Any, *, warehouse_events: Any = None):
-        self.service = service
+    def __init__(
+        self,
+        db_path: str | Path,
+        *,
+        actor_provider: Any,
+        strict_reference_validation: bool,
+        warehouse_events: Any = None,
+        legacy_exporter: Any = None,
+    ):
+        self.db_path = Path(db_path)
+        self.actor_provider = actor_provider
         self.warehouse_events = warehouse_events
+        self.legacy_exporter = legacy_exporter
         self._previews = ReportsPreviewStore()
-        self.repository = ReportsRepository(service.db_path)
+        self.repository = ReportsRepository(self.db_path)
         self.work_log_service = WorkLogService(
-            service.db_path,
-            actor_provider=service,
-            strict_reference_validation=service.strict_reference_validation,
+            self.db_path,
+            actor_provider=actor_provider,
+            strict_reference_validation=strict_reference_validation,
             previews=self._previews,
         )
         self.daily_import_service = DailyReportImportService(
-            service.db_path,
+            self.db_path,
             work_logs=self.work_log_service,
             previews=self._previews,
         )
@@ -142,7 +154,20 @@ class ReportsFacade:
         return self.get_weekly_report_rows(*args, **kwargs)
 
     def export_report(self, *args: Any, **kwargs: Any) -> Any:
-        return self.service.export_csv(*args, **kwargs)
+        if self.legacy_exporter is None:
+            raise RuntimeError("Reports legacy exporter is not configured")
+        return self.legacy_exporter(*args, **kwargs)
+
+    def export_work_logs_csv(
+        self,
+        output_file: str | Path,
+        date_from: str = "",
+        date_to: str = "",
+    ) -> Path:
+        rows = self.list_work_logs(
+            {"date_from": date_from, "date_to": date_to}
+        )
+        return export_work_logs_csv(output_file, rows)
 
     def read_warehouse_events(self, limit: int = 300) -> list[Any]:
         if not self.warehouse_events:
@@ -161,7 +186,7 @@ class ReportsFacade:
     def get_daily_report(self, report_date: str) -> list[dict[str, Any]]:
         report_date = parse_date(report_date, "дата отчета")
         work_rows = sorted(
-            self.work_logs(report_date, report_date),
+            self.work_logs(report_date, f"{report_date} 23:59:59"),
             key=lambda row: (str(row.get("work_date") or ""), int(row.get("id") or 0)),
         )
         result: list[dict[str, Any]] = []
