@@ -17,6 +17,13 @@
 фамилия, подпись инженера и видимый title никогда не используются как grant.
 Отдельного UI-переключателя «режим администратора» нет.
 
+Выбор IXcellerate/Solar не является новой аутентификацией и не повышает роль.
+Session user проверяется общей Administration-службой. Для Solar в отдельный
+Warehouse actor context делегируется только public user/role и выбранное ФИО;
+password/password hash/token не копируются и не передаются. Неизвестный
+warehouse key отклоняется сервером, а UI label не используется для выбора
+файлового пути.
+
 Чтение editor catalog, activate/deactivate, rename и merge требуют admin.
 Engineer может создать только inactive pending proposal через контролируемый
 workflow «Другое». Payload валидируется, SQL параметризован, ошибки возвращаются

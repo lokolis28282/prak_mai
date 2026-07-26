@@ -22,6 +22,8 @@
 - S/N preservation: [`../SERIAL_NUMBER_PRESERVATION.md`](../SERIAL_NUMBER_PRESERVATION.md)
 - Reference data: [`../REFERENCE_DATA_ARCHITECTURE.md`](../REFERENCE_DATA_ARCHITECTURE.md)
 - Local DB runbook: [`../LOCAL_WORKING_DATABASE_RUNBOOK.md`](../LOCAL_WORKING_DATABASE_RUNBOOK.md)
+- Multi-Warehouse IXcellerate/Solar:
+  [`../MULTI_WAREHOUSE_ARCHITECTURE.md`](../MULTI_WAREHOUSE_ARCHITECTURE.md)
 
 ## Interpretation rule
 

@@ -10,9 +10,11 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.16.0`.
+- Current source/runtime metadata: `0.17.0`.
 - Последний фактически собранный ZIP: `0.12.17 RC1`.
-- Рабочий runtime: `app.py` → `inventory/` → `data/warehouse.db`.
+- Рабочий runtime: `app.py` → общий application context + выбранный Warehouse
+  site → `data/warehouse.db` (IXcellerate) или
+  `data/warehouse_solar.db` (Solar).
 - Главный продуктовый модуль: Warehouse.
 - Reports предоставляет УВР, сменный и недельный отчёты; Monitoring — ручной
   hostname/DCIM flow и безопасную подготовку сообщения; Knowledge — статьи,
@@ -20,6 +22,22 @@
 - Web routes/templates, Warehouse, Reports и Administration физически
   выделены из монолитов; compatibility adapters сохранены без второй
   реализации бизнес-логики.
+
+Multi-Warehouse slice от 2026-07-26 добавляет session-scoped выбор склада.
+Solar физически изолирован, стартует без operational rows и получает только
+одноразовый снимок справочников IXcellerate. Авторизация, Reports, Monitoring
+и Knowledge остаются общими. Контракт:
+[`../MULTI_WAREHOUSE_ARCHITECTURE.md`](../MULTI_WAREHOUSE_ARCHITECTURE.md).
+
+### ODE 0.17.0 Multi-Warehouse gate
+
+IXcellerate и Solar используют физически разные SQLite-файлы и выбранный в
+HTTP-сессии Warehouse runtime. Solar создаётся с нулевыми operational rows и
+одноразовым снимком справочников; последующие операции и справочники двух
+складов независимы. Полный gate: 598 тестов (`skipped=8`), headless Chrome,
+Python/JavaScript syntax, module/frontend/data audits и clean-DB dry-run —
+PASS. Рабочая IXcellerate DB осталась byte-identical. Подробности:
+`../../RELEASE_REPORT_ODE_0_17_0.md`.
 
 ### ODE 0.16.0 modular extraction gate
 
@@ -249,10 +267,9 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/routes/`, HTML-сборка — в `inventory/templates/`.
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
-module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS;
-после документационного graph-contract follow-up текущий gate — 594 теста,
-code graph содержит 220 узлов / 448 связей. Рабочая БД осталась
-byte-identical, SHA-256
+module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
+Текущий ODE 0.17.0 Multi-Warehouse gate — 598 тестов; code graph содержит
+221 узел / 455 связей. Рабочая БД осталась byte-identical, SHA-256
 `8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`,
 `integrity_check=ok`, FK violations и SQLite sidecars отсутствуют.
 

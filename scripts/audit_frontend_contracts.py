@@ -72,6 +72,8 @@ DYNAMIC_ID_WHITELIST = {
     "globalSearchModal",
     "globalSearchTrigger",
     "shiftProfileCard",
+    # Multi-warehouse shell adds the active-site switcher after /api/data.
+    "warehouseSiteSwitcher",
     # The marker-guarded review is created only for an administrator after
     # /api/data confirms the selected review database.
     "migration_pilot",

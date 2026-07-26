@@ -19,7 +19,6 @@ from typing import Any, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .core.application import ApplicationContext, create_application_context, ensure_application_context
-from .core.context import RuntimeConfig
 from .db import DEFAULT_DB_PATH
 from .knowledge import KnowledgeNotFound, KnowledgePermissionError
 from .monitoring.facade import MonitoringError
@@ -49,11 +48,15 @@ from .warehouse.migration_pilot_review import (
 from .warehouse.baseline.posting_policy import PostingPolicy, WarehousePostingBlocked
 from .warehouse.baseline.workspace import WorkspaceError
 from .warehouse.baseline.xlsx_parser import FullInventoryXlsxError
-
+from .warehouse.sites import (
+    DEFAULT_SITE_KEY,
+    build_warehouse_site_registry,
+    configured_solar_path,
+    warehouse_runtime_config,
+)
 
 STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
 LOGGER = logging.getLogger(__name__)
-
 # Test and migration contours are resolved before the templates are assembled.
 ODE_TEST_MODE = os.environ.get("ODE_TEST_MODE") == "1"
 ODE_MIGRATION_PILOT = migration_pilot_requested()
@@ -63,8 +66,6 @@ LOGIN_HTML, HTML = build_web_templates(
     migration_pilot=ODE_MIGRATION_PILOT,
     full_migration_candidate=ODE_FULL_MIGRATION_CANDIDATE,
 )
-
-
 def _validate_test_mode_database(db_path: str | Path) -> None:
     """Refuse a test-labelled server that actually points at the working DB."""
     if not ODE_TEST_MODE:
@@ -101,7 +102,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
         migration_full_status=migration_full_status,
         migration_pilot_status=migration_pilot_status,
         database_fingerprint=str(database_fingerprint),
+        warehouse_key=DEFAULT_SITE_KEY,
+        warehouse_label="IXcellerate",
     )
+    warehouse_sites = build_warehouse_site_registry(app_context, route_runtime)
     sessions: dict[str, dict[str, str]] = {}
     sessions_lock = threading.Lock()
     session_ttl_seconds = 12 * 60 * 60
@@ -145,6 +149,15 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             try:
                 if path == "/":
                     self._send(200, HTML.encode("utf-8"), "text/html; charset=utf-8")
+                elif path == "/api/warehouses":
+                    selected = self._selected_warehouse_key()
+                    self._send_json(
+                        200,
+                        {
+                            "warehouses": warehouse_sites.public(selected),
+                            "selected": selected,
+                        },
+                    )
                 elif path.startswith("/static/"):
                     self._send_static(path)
                 elif administration_routes.handle_get(
@@ -161,10 +174,18 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self, route_runtime, path, query
                 ):
                     return
-                elif warehouse_routes.handle_get(
-                    self, route_runtime, path, query
-                ) is not False:
-                    return
+                else:
+                    selected = self._selected_warehouse_site()
+                    with warehouse_sites.actor_context(
+                        selected,
+                        app_context,
+                        author_name=self._session_author(),
+                        role_override=self._session_role_override(),
+                    ):
+                        if warehouse_routes.handle_get(
+                            self, selected.runtime, path, query
+                        ) is not False:
+                            return
             except KnowledgeNotFound as error:
                 self._send_json(404, {"error": str(error)})
             except KnowledgePermissionError as error:
@@ -191,10 +212,24 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             if not email:
                 self._send_json(401, {"error": "Требуется вход"})
                 return
-            if (
-                migration_pilot_status.get("enabled") and path != "/api/logout"
-            ) or (
-                migration_full_status.get("read_only") and path != "/api/logout"
+            if path == "/api/warehouse/select":
+                try:
+                    with app_context.administration.user_context(
+                        email,
+                        author_name=self._session_author(),
+                        role_override=self._session_role_override(),
+                    ):
+                        self._select_warehouse()
+                except (WarehouseError, ValueError, json.JSONDecodeError) as error:
+                    self._send_json(400, {"error": str(error)})
+                return
+            selected = self._selected_warehouse_site()
+            selected_runtime = selected.runtime
+            migration_pilot_status = selected_runtime.migration_pilot_status
+            migration_full_status = selected_runtime.migration_full_status
+            if (migration_pilot_status.get("enabled") and path != "/api/logout") or (
+                migration_full_status.get("read_only")
+                and path != "/api/logout"
             ):
                 self._send_json(403, {
                     "error": (
@@ -210,14 +245,23 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     author_name=self._session_author(),
                     role_override=self._session_role_override(),
                 ):
-                    if path.startswith("/api/full-inventory/") or path == "/api/monitoring/manual-search":
-                        self._do_POST()
-                    else:
-                        with service.lock:
-                            if path == "/api/logout":
-                                self._logout()
-                            else:
-                                self._do_POST()
+                    with warehouse_sites.actor_context(
+                        selected,
+                        app_context,
+                        author_name=self._session_author(),
+                        role_override=self._session_role_override(),
+                    ):
+                        if (
+                            path.startswith("/api/full-inventory/")
+                            or path == "/api/monitoring/manual-search"
+                        ):
+                            self._do_POST()
+                        else:
+                            with service.lock, selected_runtime.service.lock:
+                                if path == "/api/logout":
+                                    self._logout()
+                                else:
+                                    self._do_POST()
             except WarehousePostingBlocked as error:
                 self._send_json(409, {"error": str(error), "code": error.code})
             except (WorkspaceError, FullInventoryXlsxError) as error:
@@ -237,7 +281,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             if monitoring_routes.handle_post(self, route_runtime, parsed.path):
                 return
             if warehouse_routes.handle_post(
-                self, route_runtime, parsed
+                self, self._selected_warehouse_site().runtime, parsed
             ) is not False:
                 return
             if parsed.path == "/api/preview-csv":
@@ -283,7 +327,9 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     "FILL_RECEIPT_FIELDS", "FILL_RECEIPT_DATE",
                     "CORRECT_DUPLICATE_SERIAL", "DELETE_DUPLICATE_RECEIPT",
                 }:
-                    app_context.warehouse.assert_posting_allowed(str(action))
+                    self._selected_warehouse_site().runtime.app_context.warehouse.assert_posting_allowed(
+                        str(action)
+                    )
                 if action in {
                     "CREATE_BACKUP", "CHECK_DATABASE", "RESTORE_BACKUP",
                     "CREATE_USER", "CHANGE_PASSWORD", "UPDATE_PROFILE",
@@ -297,7 +343,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 ):
                     pass
                 elif warehouse_routes.handle_action(
-                    self, route_runtime, str(action), data, response
+                    self,
+                    self._selected_warehouse_site().runtime,
+                    str(action),
+                    data,
+                    response,
                 ):
                     pass
                 elif administration_routes.handle_action(
@@ -328,7 +378,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _import_csv(self, kind: str, preview: bool = False) -> None:
             warehouse_routes.import_csv(
-                self, route_runtime, kind=kind, preview=preview
+                self,
+                self._selected_warehouse_site().runtime,
+                kind=kind,
+                preview=preview,
             )
 
         def _login(self) -> None:
@@ -370,13 +423,23 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                             return
                         raise
                     self._clear_login_failures(rate_key)
-                    session = {"email": str(user["email"]), "author": "", "mode": "admin"}
+                    session = {
+                        "email": str(user["email"]),
+                        "author": "",
+                        "mode": "admin",
+                        "warehouse": DEFAULT_SITE_KEY,
+                    }
                 else:
                     full_name = " ".join(str(data.get("full_name", "")).split())
                     if len(full_name) < 3:
                         raise WarehouseError("Укажите ФИО инженера")
                     user = app_context.administration.get_user("lokolis")
-                    session = {"email": "lokolis", "author": full_name, "mode": "engineer"}
+                    session = {
+                        "email": "lokolis",
+                        "author": full_name,
+                        "mode": "engineer",
+                        "warehouse": DEFAULT_SITE_KEY,
+                    }
                     user = {
                         **user,
                         "display_name": full_name,
@@ -419,7 +482,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
         def _session_token(self) -> str:
             cookie = SimpleCookie()
             try:
-                cookie.load(self.headers.get("Cookie", ""))
+                cookie.load(getattr(self, "headers", {}).get("Cookie", ""))
                 return cookie["ode_session"].value if "ode_session" in cookie else ""
             except CookieError:
                 return ""
@@ -432,6 +495,22 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _session_role_override(self) -> str | None:
             return "engineer" if self._session_data().get("mode") == "engineer" else None
+
+        def _selected_warehouse_key(self) -> str:
+            return warehouse_sites.selected_key(self._session_data())
+
+        def _selected_warehouse_site(self):
+            return warehouse_sites.get(self._selected_warehouse_key())
+
+        def _select_warehouse(self) -> None:
+            data = self._read_json_object(10_000)
+            selected = warehouse_sites.select_session(
+                sessions, sessions_lock, token=self._session_token(),
+                requested=str(data.get("warehouse") or ""),
+                last_seen=str(time.monotonic()), purge=self._purge_sessions_locked,
+            )
+            self._send_json(200, {"ok": True, "selected": selected.key,
+                                  "warehouse": selected.public(selected=True)})
 
         def _current_user_payload(self) -> dict[str, Any]:
             current_user = app_context.administration.current_user()
@@ -460,7 +539,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             return current_user
 
         def _full_inventory_actor(self):
-            return app_context.full_inventory.actor_snapshot(
+            warehouse_context = self._selected_warehouse_site().runtime.app_context
+            return warehouse_context.full_inventory.actor_snapshot(
                 app_context.administration.current_user(),
                 display_override=self._session_author(),
             )
@@ -823,10 +903,10 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
     return Handler
 
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ODE — учет работ и склада")
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="путь к файлу SQLite")
+    parser.add_argument("--solar-db", default=None, help="отдельный путь Solar DB; с --db включает Multi-Warehouse")
     parser.add_argument("--host", default="127.0.0.1", help="адрес локального сервера")
     parser.add_argument("--port", type=int, default=8765, help="порт локального сервера")
     parser.add_argument("--no-browser", action="store_true", help="не открывать браузер автоматически")
@@ -842,7 +922,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="внешний application state root для FULL inventory Preview",
     )
     return parser
-
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
@@ -874,17 +953,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     app_context = create_application_context(
         args.db,
         service=service,
-        configuration=RuntimeConfig(
+        configuration=warehouse_runtime_config(
             service.db_path,
-            warehouse_contour=args.warehouse_contour,
-            production_db_path=DEFAULT_DB_PATH,
-            full_inventory_state_root=(
-                Path(args.inventory_state_root).expanduser()
-                if args.inventory_state_root
-                else None
-            ),
+            contour=args.warehouse_contour,
+            inventory_state_root=args.inventory_state_root,
+            solar_path=args.solar_db,
         ),
     )
+    handler_type = make_handler(app_context)
     stats = service.dashboard_stats()
     health = app_context.administration.database_check(
         service.db_path, service.KEY_TABLES
@@ -899,10 +975,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         contour = "DEMO DATABASE" if contour_policy.demo else "WORKING PROVISIONAL DATABASE"
     print(contour)
     print(f"Path: {service.db_path.resolve()}")
+    if app_context.configuration.settings.get("warehouse_sites_enabled"):
+        print(f"Solar path: {configured_solar_path(app_context.configuration.settings)}")
     print(f"ODE version: {PRODUCT_VERSION}")
     print(f"Cards: {int(stats.get('cards', stats['positions']))}")
     print(f"Integrity: {integrity_status}")
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(app_context))
+    server = ThreadingHTTPServer((args.host, args.port), handler_type)
     url = f"http://{args.host}:{server.server_port}"
     print(f"Интерфейс открыт: {url}")
     print("Для завершения нажмите Ctrl+C.")

@@ -22,6 +22,12 @@ Production baseline: 46 active vendors, 336 active vendor-scoped models,
 source/warnings. Физического delete используемого значения нет: deactivate или
 merge после impact preview. Все writes role-checked, transactional и audited.
 
+Multi-Warehouse update (2026-07-26): при первом создании Solar таблицы
+`reference_values` и `reference_*_v2` копируются из IXcellerate в отдельную
+`data/warehouse_solar.db`. Это одноразовый seed, не синхронизация: последующие
+proposal/rename/deactivate/merge выполняются только в выбранном складе и не
+переписывают второй contour.
+
 Дата: 2026-07-14. Source stage: 0.13.3A.5. Runtime metadata:
 `0.12.17.1 RC2`.
 

@@ -41,7 +41,7 @@ class WebappExtractionContractTest(unittest.TestCase):
             with self.subTest(filename=filename):
                 self.assertTrue((ROOT / "inventory/routes" / filename).is_file())
 
-    def test_templates_are_external_and_runtime_html_is_unchanged(self) -> None:
+    def test_templates_are_external_and_runtime_html_matches_release(self) -> None:
         template_source = (
             ROOT / "inventory/templates/webapp.py"
         ).read_text(encoding="utf-8")
@@ -50,11 +50,11 @@ class WebappExtractionContractTest(unittest.TestCase):
         self.assertIn('id="knowledge"', webapp.HTML)
         self.assertEqual(
             hashlib.sha256(webapp.LOGIN_HTML.encode("utf-8")).hexdigest(),
-            "8cda15db416d3607df8c9918803ee66f23c6a029a952361c4a81275e2529f82d",
+            "42146d8fabf9fc66f5369c22219efc3f203ca88547a8ac992f1f86cc9d51c906",
         )
         self.assertEqual(
             hashlib.sha256(webapp.HTML.encode("utf-8")).hexdigest(),
-            "e7486fa09c947a68c7adb9bc31e167844c2c6517c88e0401dabade69c213d9d3",
+            "10d6d770fa3260495d8d8855e35b95b9313dca2fde7098ab978a40f2af1fd395",
         )
 
     def test_routes_and_templates_do_not_own_business_sql(self) -> None:

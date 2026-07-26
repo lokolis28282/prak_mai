@@ -20,7 +20,7 @@ browser. Полная ручная проверка описана в
 
 Дата: 2026-07-14. Область действия: один локальный экземпляр ODE.
 
-## Единственный рабочий контур
+## Два изолированных складских контура
 
 Из корня репозитория обычный запуск всегда использует один путь:
 
@@ -29,10 +29,17 @@ cd ~/Documents/prak_mai
 python3 app.py
 ```
 
-Рабочая БД: `data/warehouse.db`. В консоли должны появиться `WORKING
+Основная БД IXcellerate: `data/warehouse.db`. В консоли должны появиться `WORKING
 DATABASE`, её абсолютный путь, версия ODE, число карточек и integrity status.
 Интерфейс доступен на `http://127.0.0.1:8765` и открывается на обычной главной
 странице. Migration env/launchers для рабочей смены не нужны.
+
+При входе в `Склад` выберите `IXcellerate` или `Solar`. Solar использует
+`data/warehouse_solar.db`. Если файла ещё нет, обычный startup атомарно создаёт
+его с нулевыми operational rows и одноразовым снимком справочников IXcellerate.
+Существующий Solar-файл startup не перезаписывает. Перед переносом или
+восстановлением сохраняйте и проверяйте обе БД отдельно. Полная граница:
+[`MULTI_WAREHOUSE_ARCHITECTURE.md`](MULTI_WAREHOUSE_ARCHITECTURE.md).
 
 `migration_inputs/workspace/warehouse_full_candidate.db` — immutable build
 artifact, из которого была получена рабочая БД. Pilot и остальные candidate DB

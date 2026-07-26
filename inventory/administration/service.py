@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Iterable
 
+from ..shared.helpers import WarehouseError
 from .audit import AdministrationAuditService
 from .backup import AdministrationBackupService
 from .diagnostics import AdministrationDiagnosticsService
@@ -39,6 +40,9 @@ class AdministrationService:
         )
         self._actor_role_override: ContextVar[str | None] = ContextVar(
             f"administration_actor_role_{id(self)}", default=None
+        )
+        self._actor_user_override: ContextVar[dict[str, Any] | None] = ContextVar(
+            f"administration_actor_user_{id(self)}", default=None
         )
         self.audit_service = AdministrationAuditService(self)
         self.user_service = AdministrationUserService(self)
@@ -76,6 +80,38 @@ class AdministrationService:
             role_override=role_override,
         ) as user:
             yield user
+
+    @contextmanager
+    def delegated_user_context(
+        self,
+        user: dict[str, Any],
+        *,
+        author_name: str | None = None,
+        role_override: str | None = None,
+    ) -> Iterable[dict[str, Any]]:
+        """Trust an already authenticated application user in another DB contour."""
+        if role_override not in {None, "engineer", "viewer"}:
+            raise WarehouseError("Недопустимое ограничение роли")
+        public_user = self._public_user(user)
+        email = str(public_user.get("email") or "").strip()
+        if not email:
+            raise WarehouseError("Пользователь не определён")
+        effective_user = dict(public_user)
+        if role_override:
+            effective_user.update(role=role_override, must_change_password=0)
+        email_token = self._actor_email.set(email)
+        name_token = self._actor_name.set(
+            author_name.strip() if author_name else None
+        )
+        role_token = self._actor_role_override.set(role_override)
+        user_token = self._actor_user_override.set(effective_user)
+        try:
+            yield effective_user
+        finally:
+            self._actor_user_override.reset(user_token)
+            self._actor_role_override.reset(role_token)
+            self._actor_name.reset(name_token)
+            self._actor_email.reset(email_token)
 
     def _require_role(self, *roles: str) -> dict[str, Any]:
         return self.user_service.require_role(*roles)

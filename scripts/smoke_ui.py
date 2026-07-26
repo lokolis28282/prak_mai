@@ -25,6 +25,7 @@ from inventory.db import (
     install_reports_uvr_schema,
 )
 from inventory.core.application import create_application_context
+from inventory.core.context import RuntimeConfig
 from inventory.service import WarehouseService
 from inventory.webapp import make_handler
 CHROME_CANDIDATES = [
@@ -81,8 +82,15 @@ def main(argv: list[str] | None = None) -> int:
         context = create_application_context(
             database,
             service=service,
-            warehouse_contour="demo",
-            full_inventory_state_root=work / "full_inventory_state",
+            configuration=RuntimeConfig(
+                database,
+                warehouse_contour="demo",
+                full_inventory_state_root=work / "full_inventory_state",
+                settings={
+                    "warehouse_sites_enabled": True,
+                    "solar_db_path": work / "warehouse_solar.db",
+                },
+            ),
         )
         server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(context))
         server.daemon_threads = True

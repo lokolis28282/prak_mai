@@ -1,5 +1,25 @@
 # Changelog ODE
 
+## ODE 0.17.0 — Multi-Warehouse IXcellerate/Solar (2026-07-26)
+
+- раздел `Склад` теперь открывается через явный выбор `IXcellerate` или
+  `Solar`; выбранный склад хранится отдельно в каждой HTTP-сессии;
+- существующая `data/warehouse.db` остаётся IXcellerate и общим application
+  contour, а Solar использует ignored `data/warehouse_solar.db`;
+- первый Solar bootstrap атомарно создаёт пустой operational Warehouse и
+  переносит только одноразовый снимок legacy/v2 справочников IXcellerate;
+  повторный startup не синхронизирует и не перезаписывает Solar;
+- Warehouse reads, exports, imports, previews, mutations, posting policy,
+  lock, audit, Full Inventory state и browser drafts изолированы по выбранной
+  БД; авторизация, Reports, Monitoring и Knowledge остаются общими;
+- добавлены `/api/warehouses`, `POST /api/warehouse/select`,
+  `warehouse_site` в `/api/data`, UI-переключатель и isolation/bootstrap tests;
+- рабочая `data/warehouse.db` не менялась; все mutation tests выполняются на
+  disposable БД;
+- полный gate содержит 598 тестов (`skipped=8`), headless Chrome smoke и
+  module/frontend/data audits; file/import graph обновлён до 221 узла и
+  455 связей, внешний Codebase Memory — до 6 949 узлов / 29 294 ребра.
+
 ## ODE 0.16.0 — modular extraction (2026-07-25)
 
 ### Verification and documentation follow-up (2026-07-26)

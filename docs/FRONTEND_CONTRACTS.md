@@ -3,6 +3,8 @@
 ## Warehouse stabilization contract
 
 - постоянной строки глобальных модулей нет; ODE возвращает на module cards;
+- вход в Warehouse показывает выбор IXcellerate/Solar; активный site явно
+  виден в шапке и переключается только через серверную session selection;
 - Warehouse subnav содержит ровно семь складских разделов;
 - Monitoring и Reports UI показывают только «В разработке»; готовый Monitoring
   hostname-routing backend не включается скрыто без отдельного UI/API slice;
@@ -12,6 +14,8 @@
   и `parent_key` для vendor → model; hardcoded vendor/model arrays запрещены;
 - draft schema v3 включает user, DB fingerprint, operation, step, fields, rows,
   timestamps и TTL 14 дней; restore только после явного выбора;
+- при смене склада in-memory scanner/delivery/preview state очищается, а
+  сохранённые drafts остаются изолированными database fingerprint;
 - смена вкладки сохраняет draft, но новая вкладка открывает начальный экран;
 - scanner поддерживает delete one/selected/all и повторное добавление до confirm;
 - global search: минимум 2 символа, debounce, AbortController, sequence guard,
@@ -33,7 +37,7 @@
   дублирует вход в профиль или смену пароля отдельными кнопками;
   `openShiftProfile()` остается единственной, role-aware точкой входа.
 
-Дата актуализации: 2026-07-25
+Дата актуализации: 2026-07-26
 
 ## Зачем нужен контракт
 

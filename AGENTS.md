@@ -2,7 +2,10 @@
 
 ## Current Warehouse stabilization boundary
 
-- Единственный активный продуктовый контур — Warehouse на `data/warehouse.db`.
+- Активный Warehouse разделён на два физически изолированных site runtime:
+  IXcellerate на `data/warehouse.db` и Solar на `data/warehouse_solar.db`.
+  Solar при первом bootstrap пуст по operations и получает только одноразовый
+  снимок справочников IXcellerate.
 - Monitoring и Reports принадлежат отдельным направлениям и не связываются со
   складом. Monitoring предоставляет изолированный manual hostname/DCIM flow и
   routing по локальным ignored JSON rules; Reports — УВР и сменные отчёты.
@@ -22,15 +25,17 @@
 0.13 architecture index — в `docs/README.md`, пользовательская инструкция —
 в `README.md`.
 
-Current source: ODE `0.16.0` с физически выделенными Web routes/templates,
-Warehouse, Reports и Administration boundaries. FULL Inventory Preview /
-resolutions и disposable baseline rehearsal сохранены. Последний фактический
-ZIP остаётся `0.12.17 RC1`; новый Windows artifact не собран.
+Current source: ODE `0.17.0` с Multi-Warehouse IXcellerate/Solar, физически
+выделенными Web routes/templates, Warehouse, Reports и Administration
+boundaries. FULL Inventory Preview / resolutions и disposable baseline
+rehearsal сохранены. Последний фактический ZIP остаётся `0.12.17 RC1`; новый
+Windows artifact не собран.
 
-## Текущий локальный контур (2026-07-14)
+## Текущий локальный контур (2026-07-26)
 
-- `data/warehouse.db` — единственная обычная локальная рабочая БД; `python3
-  app.py` обязан выбирать её без migration env/launcher.
+- `data/warehouse.db` — основной application/IXcellerate contour;
+  `data/warehouse_solar.db` — отдельный Solar Warehouse contour. Обычный
+  `python3 app.py` подключает оба без migration env/launcher.
 - Это проверенная promotion полного historical candidate: 50 000 карточек,
   50 000 receipt states, 18 798 issues и 18 798 allocations. Legacy
   `equipment/operations` не являются read-path карточек, KPI или баланса.
@@ -322,7 +327,7 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 594 tests under
+Current full discover result is 598 tests under
 `-W error::ResourceWarning`. Never run a 51,003-row
 operational import as a performance test.
 

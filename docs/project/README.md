@@ -17,6 +17,8 @@ DDL или stage evidence, а связывает их и явно разделя
 7. [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) — статус документации.
 8. [RISKS_AND_BACKLOG.md](RISKS_AND_BACKLOG.md) — риски и отложенная работа.
 9. [AGENT_HANDOFF.md](AGENT_HANDOFF.md) — минимальный handoff нового агента.
+10. [Multi-Warehouse](../MULTI_WAREHOUSE_ARCHITECTURE.md) — физическая
+    изоляция IXcellerate/Solar и bootstrap Solar.
 
 ## Иерархия источников
 

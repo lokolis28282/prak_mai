@@ -1,8 +1,8 @@
 # Runtime Warehouse data
 
-`data/warehouse.db` is a local runtime database. It never belongs to Git, a
-source archive or a code release. A repository clone intentionally contains no
-production or operator data.
+`data/warehouse.db` and `data/warehouse_solar.db` are local runtime databases.
+They never belong to Git, a source archive or a code release. A repository
+clone intentionally contains no production or operator data.
 
 For a new local installation, select an installation-owned database path
 explicitly, for example `python3 app.py web --db data/warehouse.db`. The current
@@ -20,9 +20,12 @@ Before first use:
    `integrity_check` and `foreign_key_check`;
 4. never copy a test, candidate or historical source DB over the runtime DB.
 
-The ordinary local Warehouse path remains `data/warehouse.db`. Test and
-migration review databases must use distinct filenames and the documented
-guarded launchers.
+The ordinary IXcellerate path remains `data/warehouse.db`. On normal startup,
+ODE creates `data/warehouse_solar.db` only if it is absent: the Solar database
+starts with zero operational rows and receives a one-time snapshot of
+IXcellerate reference tables. Existing Solar data is never resynchronized or
+overwritten by startup. Test and migration review databases must use distinct
+filenames and the documented guarded launchers.
 
 `data/monitoring/*.json` contains generated, environment-specific hostname
 routing and recipient data. These files are local runtime configuration and

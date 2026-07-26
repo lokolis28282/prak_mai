@@ -8,8 +8,8 @@
 Работает полностью офлайн: Python (только стандартная библиотека) + SQLite,
 интерфейс открывается в браузере на локальном компьютере.
 
-> **Версия 0.16.0** · Python 3.10+ · Windows / macOS / Linux · внешние
-> зависимости не требуются · 594 автоматических теста
+> **Версия 0.17.0** · Python 3.10+ · Windows /
+> macOS / Linux · внешние зависимости не требуются · 598 автоматических тестов
 
 ## Возможности
 
@@ -63,8 +63,8 @@ python3 app.py
 Репозиторий содержит **только код, тесты и документацию**. Не коммитятся и
 защищены `.gitignore`:
 
-- `data/warehouse.db` — рабочая база с реальными серийными номерами
-  оборудования;
+- `data/warehouse.db` и `data/warehouse_solar.db` — локальные рабочие БД
+  IXcellerate и Solar с реальными серийными номерами оборудования;
 - `data/monitoring/*.json` — локальные правила маршрутизации с внутренними
   hostname и адресатами;
 - резервные копии (`data/backups/`), выгрузки, скриншоты, release-архивы и
@@ -75,13 +75,21 @@ python3 app.py
 
 ## Текущий контур данных
 
-Единственная рабочая БД — `data/warehouse.db`; `python3 app.py` всегда
-открывает именно её. В неё атомарно опубликована проверенная полная
+Основная рабочая БД IXcellerate — `data/warehouse.db`; `python3 app.py`
+подключает её без дополнительных параметров. В неё атомарно опубликована проверенная полная
 историческая база: 50 000 карточек, 50 000 состояний прихода, 18 798 расходов
 и 18 798 allocations. До утверждения полной инвентаризации остаток считается
 рабочим предварительным балансом (`PROVISIONAL_HISTORICAL`,
 `authoritative=false`): все обычные складские операции доступны, а проверки
 ролей, дубликатов S/N и недостаточного остатка сохраняются.
+
+При открытии `Склад` программа предлагает выбрать `IXcellerate` или `Solar`.
+Solar хранится независимо в `data/warehouse_solar.db` и при первом запуске
+создаётся с пустыми операциями и балансом. Из IXcellerate один раз копируются
+только справочники; затем справочники и все складские операции двух контуров
+развиваются независимо. Пользователи, УВР, Monitoring и Knowledge остаются
+общими. Подробный контракт:
+[Multi-Warehouse](docs/MULTI_WAREHOUSE_ARCHITECTURE.md).
 
 Экран `Склад → Инвентаризация` ведёт безопасный FULL-workflow: строгий
 XLSX-шаблон → загрузка в внешний workspace → потоковый Preview без записи в
@@ -153,10 +161,10 @@ baseline-кандидат. Скачиваемый XLSX уже содержит `
 
 ### Граф файлов и импортов
 
-[![ODE 0.16.0 — граф файлов и импортов](docs/assets/ode-code-graph-0.16.0.png)](docs/assets/code_graph.html)
+[![ODE 0.17.0 — граф файлов и импортов](docs/assets/ode-code-graph-0.17.0.png)](docs/assets/code_graph.html)
 
 Статичный PNG отображается прямо на GitHub:
-[`docs/assets/ode-code-graph-0.16.0.png`](docs/assets/ode-code-graph-0.16.0.png).
+[`docs/assets/ode-code-graph-0.17.0.png`](docs/assets/ode-code-graph-0.17.0.png).
 Интерактивная версия с поиском, фильтрами, панорамой и масштабированием:
 [`docs/assets/code_graph.html`](docs/assets/code_graph.html).
 
@@ -171,17 +179,18 @@ flowchart LR
   C --> M["MonitoringFacade"]
   C --> K["KnowledgeFacade"]
   C --> A["AdministrationFacade"]
-  W --> DB[("warehouse.db")]
-  R --> DB
-  A --> DB
-  K --> DB
+  W --> IX[("warehouse.db · IXcellerate")]
+  W --> SOL[("warehouse_solar.db · Solar")]
+  R --> IX
+  A --> IX
+  K --> IX
   Uploads["private attachment directory"] --> K
   Rules["local hostname rules"] --> M
 ```
 
 Подробная схема и границы интерактивного локального графа:
 [docs/CODEBASE_GRAPH.md](docs/CODEBASE_GRAPH.md). Интерактивный офлайн-граф
-всех связей кодовой базы (220 узлов, 448 связей, фильтры по модулям, поиск, зум) —
+всех связей кодовой базы (221 узел, 455 связей, фильтры по модулям, поиск, зум) —
 [docs/assets/code_graph.html](docs/assets/code_graph.html); перегенерация:
 `python3 scripts/generate_code_graph.py`. Release-проверка актуальности без
 перезаписи: `python3 scripts/generate_code_graph.py --check`.
@@ -210,7 +219,8 @@ app.py
      inventory/db.py          схема и миграции
              │
              ▼
-     data/warehouse.db        локальная SQLite-база
+     data/warehouse.db        склад IXcellerate + общие модули
+     data/warehouse_solar.db  независимый пустой при bootstrap склад Solar
 ```
 
 Основной рабочий путь — браузерный интерфейс. `inventory/service.py` остается
@@ -234,7 +244,8 @@ inventory/migration/       candidate-only reference, S/N и staging modules
 inventory/warehouse/       целевые warehouse services/repositories/facade
 static/js/warehouse/       модульный frontend склада
 tests/                     unit, contract, API и frontend тесты
-data/warehouse.db          рабочая база
+data/warehouse.db          рабочая база IXcellerate
+data/warehouse_solar.db    независимая рабочая база склада Solar
 migration_inputs/workspace/ignored disposable candidate artifacts
 start_*migration*           marker-guarded read-only pilot/full launchers
 ```
@@ -452,7 +463,8 @@ ODE при импорте принимает оба разделителя: `,` 
 python3 -m unittest discover -s tests -v
 ```
 
-Полный discover-набор версии 0.16.0 содержит 594 автоматических теста
+Текущий discover-набор версии 0.17.0 содержит
+598 автоматических тестов
 Warehouse, Monitoring, Knowledge, УВР и CLI-контура. Исторические
 составы gate по отдельным Stage сохранены в датированных CHANGELOG/manual QA и
 не используются как текущий счётчик. Набор включает CSV и шаблоны,
@@ -565,5 +577,7 @@ git diff --check
 [docs/STAGES_HISTORY.md](docs/STAGES_HISTORY.md), детальный список изменений —
 в [CHANGELOG.md](CHANGELOG.md). Старые QA/review/release-файлы являются
 датированными историческими снимками своих версий и не переписываются.
-Текущий release gate, аудит рефакторинга и ограничения зафиксированы в
+Текущий release gate 0.17.0 и ограничения зафиксированы в
+[RELEASE_REPORT_ODE_0_17_0.md](RELEASE_REPORT_ODE_0_17_0.md); аудит
+предшествующего рефакторинга сохранён в
 [RELEASE_REPORT_ODE_0_16_0.md](RELEASE_REPORT_ODE_0_16_0.md).

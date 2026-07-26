@@ -27,12 +27,24 @@ The web handler normalizes both forms to `ApplicationContext`.
 
 ## ODE 0.16.0 Stage 4 HTTP routing
 
-`make_handler()` creates one immutable `RouteRuntime` from the normalized
-context and launch-contour status. Domain handlers under `inventory/routes/`
-receive that runtime; they do not construct services or contexts. The common
+`make_handler()` creates the primary immutable `RouteRuntime` from the
+normalized context and launch-contour status. In the normal production launch,
+`WarehouseSiteRegistry` adds an independent Solar Warehouse runtime. Domain
+handlers under `inventory/routes/` receive the selected Warehouse runtime for
+Warehouse routes and the primary runtime for shared modules; they do not
+construct services or contexts. The common
 HTTP shell retains authentication, request actor scoping, locks, validation and
 response security headers. HTML assembly is provided by
 `inventory/templates/webapp.py`.
+
+Authentication, Reports, Monitoring, Knowledge and Administration remain
+primary/shared. The selected session site changes only `WarehouseFacade`,
+compatibility service, posting policy, Full Inventory state root, DB lock and
+database fingerprint. Solar authorisation uses
+`AdministrationService.delegated_user_context()` with the already
+authenticated public user; no credential or password hash is copied as an
+authentication source. Normative details:
+[`MULTI_WAREHOUSE_ARCHITECTURE.md`](MULTI_WAREHOUSE_ARCHITECTURE.md).
 
 ## Stage 0.12.9 Administration
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
-  <title id="title">ODE 0.16.0 — карта связей модулей</title>
-  <desc id="desc">Тонкий Web shell с выделенными routes и templates и CLI входят в ApplicationContext, который связывает пять независимых фасадов. Warehouse, Reports, Knowledge и Administration используют SQLite с раздельным владением таблицами. Monitoring использует только локальные правила и опциональный DCIM.</desc>
+  <title id="title">ODE 0.17.0 — карта связей модулей</title>
+  <desc id="desc">Тонкий Web shell с выделенными routes и templates и CLI входят в ApplicationContext. WarehouseSiteRegistry выбирает физически изолированную SQLite-базу IXcellerate или Solar, а Reports, Knowledge и Administration остаются в общем application contour. Monitoring использует только локальные правила и опциональный DCIM.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071521"/><stop offset="1" stop-color="#10152a"/></linearGradient>
     <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -12,8 +12,8 @@
   <rect width="1400" height="820" rx="24" fill="url(#bg)"/>
   <circle cx="700" cy="420" r="265" fill="none" stroke="#2dd4bf" stroke-opacity=".08" stroke-width="85"/>
   <circle cx="700" cy="420" r="330" fill="none" stroke="#8b5cf6" stroke-opacity=".06" stroke-width="2"/>
-  <text x="56" y="62" class="title">ODE 0.16.0 · архитектурный граф</text>
-  <text x="56" y="88" class="meta">Codebase Memory snapshot · 6 879 nodes · 28 890 edges · 521 files · 35 HTTP routes</text>
+  <text x="56" y="62" class="title">ODE 0.17.0 · архитектурный граф</text>
+  <text x="56" y="88" class="meta">Codebase Memory snapshot · 6 949 nodes · 29 294 edges · 525 files · 35 HTTP routes</text>
 
   <path class="edge" d="M215 178C365 178 446 285 570 366"/><path class="edge" d="M215 265C365 265 460 330 570 386"/>
   <path class="edge" d="M830 385C936 310 1004 206 1110 188"/><path class="edge" d="M830 405C970 365 1040 322 1110 315"/>
@@ -35,7 +35,7 @@
   <g transform="translate(1110 402)"><rect class="node" width="230" height="92" rx="18" fill="#1d3048" stroke="#60a5fa"/><text x="24" y="35" class="label">Reports</text><text x="24" y="58" class="sub">УВР · смена · неделя · export</text><text x="24" y="78" class="count">105 graph nodes</text></g>
   <g transform="translate(1110 530)"><rect class="node" width="230" height="92" rx="18" fill="#3b2d1c" stroke="#f6b94c"/><text x="24" y="35" class="label">Knowledge</text><text x="24" y="58" class="sub">articles · tags · attachments</text><text x="24" y="78" class="count">role protected</text></g>
 
-  <g transform="translate(610 672)"><rect class="node" width="180" height="92" rx="46" fill="#232640" stroke="#9893ff"/><text x="45" y="37" class="label">SQLite</text><text x="30" y="60" class="sub">warehouse.db</text><text x="43" y="79" class="count">owned tables</text></g>
+  <g transform="translate(565 672)"><rect class="node" width="270" height="92" rx="46" fill="#232640" stroke="#9893ff"/><text x="90" y="32" class="label">SQLite sites</text><text x="38" y="56" class="sub">warehouse.db · IXcellerate</text><text x="38" y="77" class="count">warehouse_solar.db · Solar</text></g>
   <g transform="translate(1200 675)"><rect class="node" width="140" height="64" rx="14" fill="#172637" stroke="#70849b"/><text x="18" y="28" class="label">Admin</text><text x="18" y="49" class="sub">98 nodes · audit · backup</text></g>
   <g transform="translate(1260 235)"><circle r="32" cx="32" cy="32" fill="#282142" stroke="#8b7cf6"/><text x="18" y="37" class="chip">JSON</text></g>
   <g transform="translate(1260 385)"><circle r="32" cx="32" cy="32" fill="#282142" stroke="#8b7cf6"/><text x="18" y="37" class="chip">DCIM</text></g>

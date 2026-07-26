@@ -75,9 +75,49 @@
     openTask('monitoring','monitoring');
   };
 
-  openWarehouseHub=function(){
-    openTask('warehouse','overview');
-  };
+  async function selectWarehouseSite(key){
+    try{
+      await request('/api/warehouse/select',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({warehouse:key})
+      });
+      window.resetWarehouseTransientState?.();
+      await loadAll();
+      openTask('warehouse','overview');
+      notify(`Открыт склад ${state.warehouse_site?.label||key}`);
+    }catch(error){notify(error.message,true)}
+  }
+
+  async function renderWarehouseSiteSelector(){
+    try{
+      const payload=await request('/api/warehouses');
+      showSection('warehouse');
+      const root=byId('overview');if(!root)return;
+      root.replaceChildren(
+        renderElement('div',{className:'landing-head compact',children:[
+          renderElement('p',{className:'eyebrow',text:'Склад'}),
+          renderElement('h2',{text:'Выберите склад'}),
+          renderElement('p',{text:'Операции, баланс, поставки и справочники каждого склада изолированы.'})
+        ]}),
+        renderElement('div',{className:'warehouse-site-grid',children:payload.warehouses.map(site=>
+          renderButton({
+            className:`warehouse-site-card ${site.selected?'selected':''}`,
+            onClick:()=>selectWarehouseSite(site.key),
+            children:[
+              renderElement('span',{className:'warehouse-site-mark',text:site.key==='solar'?'S':'IX'}),
+              renderElement('strong',{text:site.label}),
+              renderElement('small',{text:site.selected?'Открыт сейчас':'Выбрать'})
+            ]
+          })
+        )})
+      );
+      showView('overview');
+    }catch(error){notify(error.message,true)}
+  }
+
+  openWarehouseHub=function(){renderWarehouseSiteSelector()};
+  window.openWarehouseSelector=renderWarehouseSiteSelector;
 
   function warehouseTypeIcon(type,category){
     const value=String(type||'').toLocaleLowerCase();
@@ -1019,6 +1059,21 @@
     balancePageOffset=0;balanceHasMore=false;balanceLoadingMore=false;
     clearTimeout(balanceSearchTimer);balanceSearchTimer=0;
     initServerBalanceSearch();window.warehouseStockTree?.invalidate();renderWarehouseOverview();
+    const warehouseLabel=String(state.warehouse_site?.label||'IXcellerate');
+    const title=byId('pageTitle');
+    if(title&&currentSection==='warehouse')title.textContent=`Склад · ${warehouseLabel}`;
+    let switcher=byId('warehouseSiteSwitcher');
+    const actions=document.querySelector('.profile-actions');
+    if(actions&&!switcher){
+      switcher=renderButton({
+        text:'',
+        className:'button warehouse-site-switcher',
+        onClick:()=>renderWarehouseSiteSelector()
+      });
+      switcher.id='warehouseSiteSwitcher';
+      actions.prepend(switcher);
+    }
+    if(switcher)switcher.textContent=`Склад: ${warehouseLabel}`;
   };
   // 0.12.17.1: ODE always opens the four-module launcher built by
   // warehouseLanding() (static/js/ui.js). renderDashboard() (KPI overview,

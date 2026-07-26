@@ -25,6 +25,10 @@ Core:
 Warehouse:
 
 - owns stock operations, balance, deliveries, warehouse history and inventory analysis;
+- resolves one of two physical Warehouse sites per HTTP session:
+  `data/warehouse.db` for IXcellerate or `data/warehouse_solar.db` for Solar;
+- keeps operational rows, locks, posting policy, audit and Full Inventory state
+  independent per site; the Solar bootstrap copies references only once;
 - writes equipment/component receipts through `WarehouseFacade`;
 - writes cable receipt/issue operations through `WarehouseFacade`;
 - writes serialized equipment/component issues through `WarehouseFacade`;
@@ -65,6 +69,9 @@ Administration:
 - is composed as a dedicated `AdministrationService` behind
   `AdministrationFacade`;
 - must not contain warehouse or report business rules.
+- authenticates once in the primary application contour and may delegate the
+  already authenticated public user/role to a selected secondary Warehouse
+  actor context without copying credentials.
 
 Migration staging (offline tooling, not an application runtime module):
 

@@ -16,6 +16,7 @@ class AdministrationContext(Protocol):
     _actor_email: Any
     _actor_name: Any
     _actor_role_override: Any
+    _actor_user_override: Any
 
     def _audit(
         self,
@@ -74,7 +75,12 @@ class AdministrationUserService:
         return self.public_user(row)
 
     def current_user(self) -> dict[str, Any]:
-        user = self.user_by_email(self.context._actor_email.get() or "lokolis")
+        delegated = self.context._actor_user_override.get()
+        user = (
+            dict(delegated)
+            if delegated is not None
+            else self.user_by_email(self.context._actor_email.get() or "lokolis")
+        )
         role_override = self.context._actor_role_override.get()
         if role_override:
             user = {**user, "role": role_override, "must_change_password": 0}

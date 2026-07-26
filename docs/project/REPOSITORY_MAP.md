@@ -39,8 +39,10 @@
 - `inventory/shared/` — SQLite/CSV/validation adapters.
 - `inventory/db.py` — действующая legacy-compatible schema initialization.
 - `data/README.md` — clone/setup policy для installation-owned runtime data.
-- `data/warehouse.db` — единственная локальная рабочая DB; ignored и никогда
-  не является содержимым Git, clone или code release.
+- `data/warehouse.db` — локальная рабочая DB IXcellerate и общих модулей;
+- `data/warehouse_solar.db` — независимая локальная Warehouse DB Solar,
+  создаваемая пустой по operations с одноразовым reference snapshot;
+- обе DB ignored и никогда не являются содержимым Git, clone или code release.
 
 `data/` после clone содержит только документацию. Новая установка явно выбирает
 и создаёт собственный DB path. `.gitignore` — canonical repository policy;

@@ -122,9 +122,9 @@ secrets/credentials и session-data. SQLite-файлы дополнительн�
 самим indexer. `.cbmignore` сейчас не используется.
 
 Текущий проект в cache называется `Users-lokolis-Documents-prak_mai`.
-Full reindex ODE 0.16.0 от 2026-07-26: 6 879 узлов, 28 890 рёбер, 521 файл
-и 35 распознанных HTTP routes; `artifact_present=false`, DB-файлов в `File`
-nodes нет.
+Full reindex ODE 0.17.0 от 2026-07-26: 6 949 узлов,
+29 294 ребра, 525 файлов и 35 распознанных HTTP routes;
+`artifact_present=false`, DB-файлов в `File` nodes нет.
 
 После существенного изменения кода или topology используется единая команда:
 

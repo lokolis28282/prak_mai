@@ -1,8 +1,8 @@
-# ODE 0.16.0 — справочник HTTP API
+# ODE 0.17.0 — справочник HTTP API
 
 Фактическая поверхность локального HTTP API (`inventory/webapp.py` и
 `inventory/routes/`, порт по умолчанию `8765`). Составлен по коду версии
-0.16.0. API предназначен
+0.17.0. API предназначен
 для собственного браузерного UI; внешние интеграции появятся после 1.0.
 
 ## Общий контракт
@@ -16,10 +16,14 @@
   `admin` (всё). Ролевая проверка выполняется на сервере
   (`_require_write`/`_require_role`); отдельные действия дополнительно требуют
   админ-режим сессии (`_require_admin_session`).
-- Все мутации `/api/action` выполняются под глобальным `RLock` и одной
-  SQLite-транзакцией; каждая значимая мутация пишет запись в `audit_log`.
+- Все мутации `/api/action` выполняются под `RLock` выбранного склада и одной
+  SQLite-транзакцией; каждая значимая мутация пишет запись в `audit_log`
+  выбранной Warehouse БД.
 - Складские мутации дополнительно проходят posting-guard: в состояниях
   `NOT_INITIALIZED`/`DEGRADED`/чужой контур запись блокируется (HTTP 409).
+- Warehouse API работает с выбранным в HTTP-сессии site. IXcellerate и Solar
+  используют разные SQLite-файлы; Reports/Monitoring/Knowledge/Admin остаются
+  в общем application contour.
 
 ### Коды ошибок
 
@@ -39,12 +43,14 @@
 |---|---|
 | `POST /api/login` | Вход: `{email, password, mode?}`; `mode:"admin"` открывает админ-режим; rate-limit → 429. Ставит cookie. |
 | `POST /api/logout` | Завершение сессии, сброс cookie. |
+| `POST /api/warehouse/select` | Выбрать склад для текущей сессии: `{"warehouse":"ixcellerate"}` или `{"warehouse":"solar"}`. Неизвестный key → 400. |
 
 ## Чтение данных (GET)
 
 | Путь | Назначение |
 |---|---|
-| `/api/data` | Основной снапшот UI: stats/KPI, последние 20 обычных приходов (`recent_receipts`), последние 20 расходов (`recent_issues`) с целевым оборудованием, проблемы качества данных (`problems`, `problem_counts`), справочники, история склада, текущий пользователь, сводка категорий/типов и `warehouse_model_options`. Обычный UI запрашивает `include_balance=0`; без него сохраняется совместимый ограниченный список первых 500 строк (`balance_limit`, `balance_truncated`). |
+| `/api/warehouses` | Доступные Warehouse sites, выбранный key, display label и безопасное имя DB-файла. |
+| `/api/data` | Основной снапшот выбранного склада: `warehouse_site`, stats/KPI, последние 20 обычных приходов (`recent_receipts`), последние 20 расходов (`recent_issues`) с целевым оборудованием, проблемы качества данных (`problems`, `problem_counts`), справочники, история склада, текущий пользователь, сводка категорий/типов и `warehouse_model_options`. Обычный UI запрашивает `include_balance=0`; без него сохраняется совместимый ограниченный список первых 500 строк (`balance_limit`, `balance_truncated`). |
 | `/api/warehouse-stock-tree` | Текущий read-path экрана остатков: агрегированное ленивое дерево `category → item_type → vendor → model`. Принимает `level`, родительский путь, фильтры баланса, `limit` 1…200 и `offset` до 1 000 000; возвращает узлы, итоги и признак следующей страницы. UI загружает по 100 групп при раскрытии ветви. |
 | `/api/balance` | Совместимый плоский серверный поиск/сортировка баланса по всей БД: фильтры `query`, category/type, project/object, supplier/vendor, unit/datacenter и stock state; `limit` 1…5000, `offset` до 1 000 000, ответ содержит `has_previous`/`has_more`. Используется экспортом и вспомогательными сценариями, но не является текущим read-path дерева остатков. |
 | `/api/position-card?serial_number=…` (или `position_key`) | Полная карточка позиции: реквизиты, остаток, размещение, поставка, Timeline. |

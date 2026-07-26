@@ -18,3 +18,5 @@ class RouteRuntime:
     migration_full_status: dict[str, Any]
     migration_pilot_status: dict[str, Any]
     database_fingerprint: str
+    warehouse_key: str = "ixcellerate"
+    warehouse_label: str = "IXcellerate"

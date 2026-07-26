@@ -22,8 +22,9 @@
 - `RELEASE_REPORT_ODE_0_14_INTEGRATION.md` — integration/release evidence от
   2026-07-18.
 - `RELEASE_REPORT_ODE_0_15_0.md` — исторический gate версии 0.15.0.
-- `RELEASE_REPORT_ODE_0_16_0.md` — текущий аудит modular extraction,
-  совместимость с рабочей БД и release gate.
+- `RELEASE_REPORT_ODE_0_16_0.md` — исторический аудит modular extraction.
+- `RELEASE_REPORT_ODE_0_17_0.md` — текущий Multi-Warehouse release gate,
+  совместимость с рабочей БД и ограничения.
 
 ## Normative target
 

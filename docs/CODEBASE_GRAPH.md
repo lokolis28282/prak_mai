@@ -1,18 +1,18 @@
-# ODE 0.16.0 — карта кода и зависимостей
+# ODE 0.17.0 — карта кода и зависимостей
 
-![ODE 0.16 architecture graph](assets/ode-architecture-graph.svg)
+![ODE 0.17 architecture graph](assets/ode-architecture-graph.svg)
 
 ## Граф файлов и импортов
 
-[![ODE 0.16.0 — граф файлов и импортов](assets/ode-code-graph-0.16.0.png)](assets/code_graph.html)
+[![ODE 0.17.0 — граф файлов и импортов](assets/ode-code-graph-0.17.0.png)](assets/code_graph.html)
 
 - GitHub-friendly PNG:
-  [`assets/ode-code-graph-0.16.0.png`](assets/ode-code-graph-0.16.0.png);
+  [`assets/ode-code-graph-0.17.0.png`](assets/ode-code-graph-0.17.0.png);
 - интерактивный self-contained HTML:
   [`assets/code_graph.html`](assets/code_graph.html).
 
-Проверенный full-снимок Codebase Memory от 2026-07-26 содержит 6 879 узлов,
-28 890 рёбер, 521 файл и 35 распознанных HTTP-маршрутов. В Git публикуются
+Проверенный full-снимок Codebase Memory от 2026-07-26 содержит 6 949 узлов,
+29 294 ребра, 525 файлов и 35 распознанных HTTP-маршрутов. В Git публикуются
 только эта поддерживаемая карта и детерминированный HTML-граф уровня файлов;
 локальный индекс, cache и исходные данные не публикуются.
 
@@ -25,10 +25,12 @@ flowchart LR
   Web --> Routes["inventory/routes/<br/>domain HTTP handlers"]
   Web --> Static["static/css + static/js"]
   Web --> Context["ApplicationContext"]
+  Web --> Sites["WarehouseSiteRegistry<br/>session site selection"]
 
   Routes --> Context
   Routes -. "legacy runtime metadata / lock / preview adapter" .-> Compat["WarehouseService<br/>compatibility only"]
-  Context --> W["WarehouseFacade"]
+  Context --> W["WarehouseFacade · IXcellerate"]
+  Sites --> WS["WarehouseFacade · Solar"]
   Context --> R["ReportsFacade"]
   Context --> M["MonitoringFacade"]
   Context --> K["KnowledgeFacade"]
@@ -41,6 +43,8 @@ flowchart LR
   M --> MD["manual hostname/DCIM flow<br/>local ignored rules"]
 
   WD --> DB[("data/warehouse.db")]
+  WS --> WDS["Warehouse domain services · Solar"]
+  WDS --> SDB[("data/warehouse_solar.db")]
   Compat --> WD
   RD --> DB
   AD --> DB
@@ -49,10 +53,13 @@ flowchart LR
   Events --> R
 ```
 
-Фактический web-path после 0.16.0:
+Фактический web-path в 0.17.0:
 
-`browser → webapp HTTP shell → inventory/routes → ApplicationContext → facade
-→ domain service/repository → SQLite`.
+`browser → webapp HTTP shell → session WarehouseSite → inventory/routes →
+selected facade → domain service/repository → selected SQLite`.
+
+Shared Administration, Reports, Monitoring и Knowledge продолжают получать
+primary `ApplicationContext`; Warehouse routes получают выбранный site runtime.
 
 `inventory/templates` отвечает только за детерминированную HTML-сборку.
 Стили и браузерная логика реально загружаются из `static/`; SQL в
@@ -68,7 +75,7 @@ handlers используют его для общего lock, пути/имен
 
 | Контур | Вход | Реализация | Данные/зависимости |
 |---|---|---|---|
-| Warehouse | `WarehouseFacade` | `inventory/warehouse/` | `stock_*`, deliveries, balance/history; публикует события |
+| Warehouse | `WarehouseFacade` + `WarehouseSiteRegistry` | `inventory/warehouse/` | независимые `stock_*`, deliveries, balance/history в IXcellerate/Solar; публикует события |
 | Reports | `ReportsFacade` | `inventory/reports/` | `work_logs`, `daily_report_*`; Warehouse читает только через `WarehouseEventReader` |
 | Administration | `AdministrationFacade` | `AdministrationService` | users, audit, backup/restore, diagnostics |
 | Monitoring | `MonitoringFacade` | `inventory/monitoring/` | локальные ignored rules и optional DCIM; не импортирует Warehouse/Reports |
@@ -103,8 +110,8 @@ Migration packages не импортируются runtime Web/API и не пу�
 - `python3 scripts/generate_code_graph.py` обновляет
   [`assets/code_graph.html`](assets/code_graph.html) из Python AST и
   static-layout; версия читается из `inventory.__version__`.
-- PNG `assets/ode-code-graph-0.16.0.png` является GitHub-снимком
-  интерактивного графа версии 0.16.0 и обновляется явно при публикации нового
+- PNG `assets/ode-code-graph-0.17.0.png` является GitHub-снимком
+  интерактивного графа версии 0.17.0 и обновляется явно при публикации нового
   визуального snapshot.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если
   committed HTML устарел.
