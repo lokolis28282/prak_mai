@@ -2,6 +2,26 @@
 
 ## ODE 0.16.0 — modular extraction (2026-07-25)
 
+### Verification and documentation follow-up (2026-07-26)
+
+- upstream `main` fast-forwarded through all four 0.16.0 extraction commits
+  only after a clean tree/data audit and a separate worktree gate on an exact
+  copy of the current Warehouse database;
+- schema/ownership remain unchanged; the working `data/warehouse.db` stayed
+  byte-identical with SHA-256
+  `8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`;
+- 593 upstream tests and headless Chrome smoke passed on the copied database;
+  the local graph-version contract raises the current suite to 594 tests;
+- current-state, repository map, documentation index, Codebase Memory snapshot,
+  SVG and interactive code graph are synchronized with the extracted
+  routes/templates and domain boundaries;
+- `scripts/refresh_project_knowledge.py` is the single post-change command for
+  committed graph regeneration and external Codebase Memory full reindex with
+  `persistence=false`.
+- headless Chrome polling now tolerates the short interval in which navigation
+  has replaced the document but the new classic scripts are not yet defined;
+  a persistent predicate error is still reported with its last exception.
+
 ### Stage 4 — Web routes and templates
 
 - `inventory/webapp.py` сокращён с 2415 до 921 строки и оставлен HTTP-shell:

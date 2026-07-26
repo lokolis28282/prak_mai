@@ -14,14 +14,18 @@ repository, включая рабочий Warehouse source/runtime track, нах
 [Monitoring and Knowledge Base](MONITORING_KNOWLEDGE_GUIDE.md). Этот документ
 не меняет нормативный статус target ODE 0.13 architecture track.
 
-Актуальные операционные документы версии 0.15.0 (главный вход —
-[`ITOG.md`](../ITOG.md) в корне):
-[полная опись исполняемого кода и архитектура](CODE_INVENTORY_0_15_0.md),
+Актуальные операционные документы версии 0.16.0 (главный вход —
+[`README.md`](../README.md) в корне):
+[границы модулей](MODULE_ARCHITECTURE.md),
 [справочник HTTP API](API_REFERENCE.md),
+[карта проекта и Codebase Memory snapshot](CODEBASE_GRAPH.md),
 [интерактивный граф связей кодовой базы](assets/code_graph.html),
 [операции контроля качества данных](DATA_QUALITY_OPERATIONS.md),
 [история реализованных этапов](STAGES_HISTORY.md),
-[runbook рабочей БД](LOCAL_WORKING_DATABASE_RUNBOOK.md).
+[runbook рабочей БД](LOCAL_WORKING_DATABASE_RUNBOOK.md) и
+[release gate 0.16.0](../RELEASE_REPORT_ODE_0_16_0.md).
+Полная опись 0.15.0 сохранена как исторический снимок и не выдаётся за
+текущую топологию.
 
 ## Порядок чтения ODE 0.13
 

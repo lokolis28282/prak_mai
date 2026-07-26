@@ -15,11 +15,15 @@
 - `docs/CODEBASE_GRAPH.md` — GitHub-rendered карта поддерживаемых зависимостей.
 - `docs/assets/code_graph.html` — интерактивный офлайн-граф текущего кода;
   `scripts/generate_code_graph.py --check` проверяет его актуальность.
+- `scripts/refresh_project_knowledge.py` — единое обновление committed
+  HTML-графа и внешнего Codebase Memory index без repository artifact.
 - `docs/MONITORING_KNOWLEDGE_GUIDE.md` — настройка Monitoring/Knowledge и
   backup-guarded runtime module migration.
 - `RELEASE_REPORT_ODE_0_14_INTEGRATION.md` — integration/release evidence от
   2026-07-18.
-- `RELEASE_REPORT_ODE_0_15_0.md` — текущий release gate, ограничения и SHA БД.
+- `RELEASE_REPORT_ODE_0_15_0.md` — исторический gate версии 0.15.0.
+- `RELEASE_REPORT_ODE_0_16_0.md` — текущий аудит modular extraction,
+  совместимость с рабочей БД и release gate.
 
 ## Normative target
 

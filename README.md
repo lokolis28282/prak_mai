@@ -9,7 +9,7 @@
 интерфейс открывается в браузере на локальном компьютере.
 
 > **Версия 0.16.0** · Python 3.10+ · Windows / macOS / Linux · внешние
-> зависимости не требуются · 593 автоматических теста
+> зависимости не требуются · 594 автоматических теста
 
 ## Возможности
 
@@ -172,7 +172,7 @@ flowchart LR
 
 Подробная схема и границы интерактивного локального графа:
 [docs/CODEBASE_GRAPH.md](docs/CODEBASE_GRAPH.md). Интерактивный офлайн-граф
-всех связей кодовой базы (219 узлов, 448 связей, фильтры по модулям, поиск, зум) —
+всех связей кодовой базы (220 узлов, 448 связей, фильтры по модулям, поиск, зум) —
 [docs/assets/code_graph.html](docs/assets/code_graph.html); перегенерация:
 `python3 scripts/generate_code_graph.py`. Release-проверка актуальности без
 перезаписи: `python3 scripts/generate_code_graph.py --check`.
@@ -443,7 +443,7 @@ ODE при импорте принимает оба разделителя: `,` 
 python3 -m unittest discover -s tests -v
 ```
 
-Полный discover-набор версии 0.16.0 содержит 593 автоматических теста
+Полный discover-набор версии 0.16.0 содержит 594 автоматических теста
 Warehouse, Monitoring, Knowledge, УВР и CLI-контура. Исторические
 составы gate по отдельным Stage сохранены в датированных CHANGELOG/manual QA и
 не используются как текущий счётчик. Набор включает CSV и шаблоны,
@@ -556,5 +556,5 @@ git diff --check
 [docs/STAGES_HISTORY.md](docs/STAGES_HISTORY.md), детальный список изменений —
 в [CHANGELOG.md](CHANGELOG.md). Старые QA/review/release-файлы являются
 датированными историческими снимками своих версий и не переписываются.
-Текущий release gate и ограничения зафиксированы в
-[RELEASE_REPORT_ODE_0_15_0.md](RELEASE_REPORT_ODE_0_15_0.md).
+Текущий release gate, аудит рефакторинга и ограничения зафиксированы в
+[RELEASE_REPORT_ODE_0_16_0.md](RELEASE_REPORT_ODE_0_16_0.md).

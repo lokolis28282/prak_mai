@@ -122,8 +122,22 @@ secrets/credentials и session-data. SQLite-файлы дополнительн�
 самим indexer. `.cbmignore` сейчас не используется.
 
 Текущий проект в cache называется `Users-lokolis-Documents-prak_mai`.
-Первичная full-индексация: 2 478 узлов, 11 168 рёбер, 221 файл, около 10 MiB;
-`artifact_present=false`, DB-файлов в `File` nodes нет.
+Full reindex ODE 0.16.0 от 2026-07-26: 6 877 узлов, 28 888 рёбер, 521 файл
+и 35 распознанных HTTP routes; `artifact_present=false`, DB-файлов в `File`
+nodes нет.
+
+После существенного изменения кода или topology используется единая команда:
+
+```bash
+python3 scripts/refresh_project_knowledge.py
+```
+
+Она сначала регенерирует `docs/assets/code_graph.html`, затем запускает
+`index_repository --mode full --persistence false` для корня текущего clone и
+проверяет отсутствие `.codebase-memory/` до и после. Для окружения без
+Codebase Memory разрешён только явный
+`python3 scripts/refresh_project_knowledge.py --graph-only`; это не считается
+обновлением внешнего индекса.
 
 ## Диагностика и stale index
 

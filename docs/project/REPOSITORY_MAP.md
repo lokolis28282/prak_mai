@@ -21,9 +21,12 @@
 ## Runtime Warehouse
 
 - `app.py` — entry point.
-- `inventory/webapp.py` — общий HTTP shell, auth/session/security и dispatch.
-- `inventory/routes/` — доменные HTTP/API handlers.
-- `inventory/templates/` — детерминированная сборка HTML-каркаса.
+- `inventory/webapp.py` — тонкий HTTP shell, auth/session/security и dispatch.
+- `inventory/routes/` — физически выделенные domain HTTP/API handlers:
+  Administration, Reports, Warehouse, Monitoring, Knowledge и CSV/runtime
+  adapters; они не владеют business SQL.
+- `inventory/templates/` — детерминированная сборка HTML-каркаса; фактические
+  CSS/JS по-прежнему externalized.
 - `static/` — реально загружаемые CSS/JS.
 - `inventory/core/` — ApplicationContext и общие contracts.
 - `inventory/warehouse/` — Warehouse domain/services/repositories.
@@ -66,6 +69,10 @@ Target DDL не применяется к `data/warehouse.db`.
 - `tests/` — unit/contract/API/browser contracts.
 - `scripts/create_clean_test_db.py` — disposable Warehouse DB builder.
 - `scripts/smoke_ui.py` — browser smoke на временной копии.
+- `scripts/generate_code_graph.py` — детерминированный committed HTML-граф.
+- `scripts/refresh_project_knowledge.py` — обновляет HTML-граф и внешний
+  Codebase Memory index с `persistence=false`; выполняется после существенных
+  изменений кода/топологии.
 - `release/` — generated artifacts, не source; ZIP не коммитятся. Code release
   не должен содержать локальную runtime DB. До исправления package builder
   создание нового release заблокировано.

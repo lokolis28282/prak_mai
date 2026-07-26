@@ -21,8 +21,9 @@
 подробности — в `docs/README.md` (индекс архитектурной документации) и в
 `README.md` (пользовательская инструкция).
 
-Current source/runtime metadata: ODE `0.15.0`; последний фактический ZIP
-остаётся `0.12.17 RC1`. Новый Windows artifact не собран.
+Current source/runtime metadata: ODE `0.16.0` с физически выделенными Web
+routes/templates, Warehouse, Reports и Administration boundaries; последний
+фактический ZIP остаётся `0.12.17 RC1`. Новый Windows artifact не собран.
 
 ## Текущий локальный контур (2026-07-14)
 
@@ -287,6 +288,7 @@ done
 python3 scripts/audit_module_boundaries.py
 python3 scripts/audit_frontend_contracts.py
 python3 scripts/audit_repository_data.py
+python3 scripts/generate_code_graph.py --check
 python3 -W error::ResourceWarning -m unittest discover -s tests -v
 python3 scripts/create_clean_test_db.py --dry-run
 python3 scripts/smoke_ui.py            # headless Chrome E2E, нужен Node+Chrome
@@ -318,7 +320,7 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 574 tests under
+Current full discover result is 594 tests under
 `-W error::ResourceWarning`. Never run a 51,003-row
 operational import as a performance test.
 
@@ -330,8 +332,11 @@ operational import as a performance test.
 - Разрешенный корень индекса — только этот репозиторий. Не индексировать
   `data/*.db*`, секреты, release/backup/cache и не включать `persistence=true`.
 - Индекс и cache не коммитятся; при `auto_index=false`/`auto_watch=false`
-  после существенного diff нужна явная переиндексация. Подробности —
-  `docs/CODEBASE_MEMORY_MCP.md`.
+  после каждого существенного изменения кода или топологии модулей обязательно
+  выполнить `python3 scripts/refresh_project_knowledge.py`. Команда
+  регенерирует committed HTML-граф и делает full reindex с
+  `persistence=false`; результаты всё равно сверяются с `rg`/исходниками.
+  Подробности — `docs/CODEBASE_MEMORY_MCP.md`.
 
 ## Git safety
 
@@ -377,7 +382,7 @@ Stage создаётся датированный report/appendix.
 5. Актуальные release-заметки хранить в `RELEASE_REPORT_ODE_*.md`; release-
    архивы находятся в `release/` и не коммитятся.
 
-## Известные ограничения (source/runtime 0.15.0; ZIP 0.12.17 RC1)
+## Известные ограничения (source/runtime 0.16.0; ZIP 0.12.17 RC1)
 
 - SQLite не рассчитана на активную многопользовательскую запись — актуально
   для этапов «несколько инженеров» и «сервер», требует отдельного решения.
@@ -386,8 +391,9 @@ Stage создаётся датированный report/appendix.
 - Monitoring manual UI и optional DCIM collector реализованы; email/Rooms
   transport и Kaiten отсутствуют, недельный отчёт — базовая агрегация.
 - Нет автоматического расписания/ротации backup.
-- `inventory/webapp.py` — монолит (см. «Архитектура» выше) — главный источник
-  риска регрессий при правке разметки/JS.
+- `inventory/webapp.py` уже отделён от routes/templates, но общий
+  auth/session/security shell и dispatch всё ещё крупные; compatibility
+  `WarehouseService`/`WarehouseCore` удаляются только постепенно.
 - Stage 0.13.3A.5 создаёт только 200-row review pilot (130 imported cards in a
   disposable DB): массовые receipts, issues, production reference migration и
   reset рабочей БД относятся к будущему Stage и требуют отдельного

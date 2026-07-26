@@ -1,4 +1,4 @@
-# ITOG — главная техническая документация ODE 0.15.0
+# ITOG — главная техническая документация ODE 0.16.0
 
 Основной технический документ проекта. При будущих патчах начинать отсюда:
 здесь описано, как работает код, где входы и выходы, какие инварианты нельзя
@@ -10,7 +10,7 @@ ODE («Отдел дежурных инженеров») — локальный 
 ЦОД: складской учёт (S/N-first), приход/расход со сканером, поставки,
 инвентаризация, контроль качества данных, УВР и отчёты, база знаний, ручной
 мониторинг. Python 3.10+ (только стандартная библиотека) + SQLite; UI в
-браузере; 574 автоматических теста.
+браузере; 594 автоматических теста.
 
 Рабочая база — `data/warehouse.db` (50 000 карточек, 18 798 расходов;
 предварительный provisional-баланс до утверждения FULL-инвентаризации).
@@ -37,17 +37,18 @@ ODE («Отдел дежурных инженеров») — локальный 
 ```
 ApplicationContext.from_service(service)
  ├─ WarehouseFacade(service, posting_policy, full_inventory)
- ├─ ReportsFacade(service, warehouse_events=WarehouseEventReader(service))
+ ├─ ReportsFacade (тот же instance, собранный WarehouseService)
  ├─ MonitoringFacade()          ← без service и без пути к БД
  ├─ KnowledgeFacade(service)
- └─ AdministrationFacade(service)
+ └─ AdministrationFacade(AdministrationService)
 ```
 
 Поток любой мутации:
 
 ```
-браузер → POST /api/action (webapp.py, под service.lock=RLock)
-  → валидация payload → Facade (posting-guard)
+браузер → webapp.py HTTP/auth shell → inventory/routes/
+  → POST /api/action (под service.lock=RLock)
+  → валидация payload → профильный Facade (posting-guard)
   → write-service (_require_write: admin/engineer)
   → repository → SQLite-транзакция + запись в audit_log
 ```
@@ -69,8 +70,8 @@ Monitoring и Reports между собой не связаны никак (ни
 
 ## 4. Инварианты (нарушение = регрессия)
 
-1. Web/API → только публичные фасады; не `WarehouseCore`/`WarehouseService`
-   напрямую.
+1. Web/API → `inventory/routes` → только публичные фасады; не
+   `WarehouseCore`/`WarehouseService` напрямую.
 2. S/N — identity карточки; инв.№ — вторичный; полка — placement; canonical
    name — display. Повторный приход/расход того же S/N блокируется в
    транзакции.
@@ -83,8 +84,9 @@ Monitoring и Reports между собой не связаны никак (ни
 6. Внешние зависимости не добавляются (`requirements.txt` пуст).
 7. Мутации рабочей БД вне приложения — только по runbook (backup + SHA-256 +
    транзакция + audit + integrity/FK post-check).
-8. Инлайновые `<style>/<script>` в webapp.py до браузера не доходят
-   (`_externalized_html()`); поведение живёт в `static/js/*`, стили — в
+8. HTML собирается в `inventory/templates/webapp.py`, но инлайновые
+   `<style>/<script>` до браузера не доходят (`_externalized_html()` в
+   webapp shell); поведение живёт в `static/js/*`, стили — в
    `static/css/main.css`.
 
 ## 5. Проверки перед любым патчем (gate)
@@ -94,7 +96,9 @@ python3 -m py_compile app.py inventory/**/*.py scripts/*.py tests/*.py
 for f in static/js/**/*.js tests/headless_smoke.js; do node --check "$f"; done
 python3 scripts/audit_module_boundaries.py
 python3 scripts/audit_frontend_contracts.py
-python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 574 OK
+python3 scripts/audit_repository_data.py
+python3 scripts/generate_code_graph.py --check
+python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 594 OK
 git diff --check
 python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 ```
@@ -109,12 +113,14 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 
 Техническая:
 
-- **`docs/CODE_INVENTORY_0_15_0.md`** — опись каждого исполняемого файла +
-  архитектура + трассировка Monitoring/Reports от main;
+- **`docs/CODEBASE_GRAPH.md`** — текущая карта runtime/offline contours,
+  границ и Codebase Memory snapshot;
+- `docs/CODE_INVENTORY_0_15_0.md` — историческая полная опись предыдущей
+  топологии, не current source map;
 - **`docs/API_REFERENCE.md`** — полный справочник HTTP API (маршруты, все
   actions, payload'ы, коды ошибок, лимиты);
 - **`docs/assets/code_graph.html`** — интерактивный граф связей кодовой базы
-  (206 узлов / 369 связей: Python-импорты + webapp→static; фильтры по модулям,
+  (220 узлов / 448 связей: Python-импорты + webapp→static; фильтры по модулям,
   поиск, зум). Открывается в браузере офлайн; перегенерация после патча:
   `python3 scripts/generate_code_graph.py`; проверка актуальности без записи:
   `python3 scripts/generate_code_graph.py --check`;
@@ -131,7 +137,8 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
   — Monitoring/Knowledge;
 - `CLAUDE.md` / `AGENTS.md` — правила работы с кодовой базой (люди и
   AI-агенты); `TECH_DEBT.md` — актуальный долг;
-- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_15_0.md` — изменения и релизный отчёт;
+- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_16_0.md` — изменения и текущий
+  релизный отчёт;
 - `docs/STAGES_HISTORY.md`, `docs/history/` — история этапов и датированные
   снимки старых отчётов;
 - `WINDOWS_RELEASE.md`, `README_WINDOWS.md`, `build_windows_package.py` —
@@ -157,8 +164,9 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 ## 8. Известные ограничения и долг
 
 Кратко: нет сторнирующих операций (data-quality исправления их не заменяют);
-SQLite — однопользовательская запись; монолит `inventory/webapp.py` и
-compatibility-ядро `WarehouseCore` разбираются постепенно; Windows ZIP
+SQLite — однопользовательская запись; webapp auth/session shell и
+compatibility-слой `WarehouseService`/`WarehouseCore` разбираются постепенно;
+Windows ZIP
 остаётся `0.12.17 RC1`; 291 историческая карточка `item_name='#N/A'` ждёт
 отдельного data-correction этапа. Полные списки: `README.md` («Ограничения»)
 и `TECH_DEBT.md`.
@@ -171,7 +179,7 @@ compatibility-ядро `WarehouseCore` разбираются постепенн
 3. Добавить/обновить тесты рядом с изменением.
 4. Прогнать полный gate (п.5).
 5. Обновить документацию (Documentation Gate) в том же коммите; при
-   изменении структуры кода перегенерировать граф связей
-   (`python3 scripts/generate_code_graph.py`).
+   изменении структуры кода обновить граф и внешний Codebase Memory index
+   (`python3 scripts/refresh_project_knowledge.py`).
 6. Проверить `git status`: БД, backup'ы, JSON-правила и candidate-артефакты
    не должны попасть в коммит.

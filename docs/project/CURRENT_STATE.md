@@ -1,6 +1,6 @@
 # Current State
 
-Дата проверки: 2026-07-25. Authoritative repository:
+Дата проверки: 2026-07-26. Authoritative repository:
 `~/Documents/prak_mai`.
 
 ## Два разных Stage-трека
@@ -10,13 +10,27 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.15.0`.
+- Current source/runtime metadata: `0.16.0`.
 - Последний фактически собранный ZIP: `0.12.17 RC1`.
 - Рабочий runtime: `app.py` → `inventory/` → `data/warehouse.db`.
 - Главный продуктовый модуль: Warehouse.
 - Reports предоставляет УВР, сменный и недельный отчёты; Monitoring — ручной
   hostname/DCIM flow и безопасную подготовку сообщения; Knowledge — статьи,
   теги и вложения. Все три контура изолированы от складских writes.
+- Web routes/templates, Warehouse, Reports и Administration физически
+  выделены из монолитов; compatibility adapters сохранены без второй
+  реализации бизнес-логики.
+
+### ODE 0.16.0 modular extraction gate
+
+Четыре upstream-коммита 0.16.0 проверены 2026-07-26 сначала в отдельном
+worktree, затем на точной byte-copy рабочей БД. Схема SQLite и ownership
+таблиц не менялись. Full discover: 593 upstream tests, `OK (skipped=8)`;
+headless Chrome прошёл Warehouse, Reports, Monitoring, Knowledge и
+Administration без console/window/unhandled/resource/HTTP/API500 ошибок.
+После добавления контракта актуальности графа локальный gate содержит 594
+теста. Рабочая `data/warehouse.db` во время обновления осталась byte-identical;
+подробности — `../../RELEASE_REPORT_ODE_0_16_0.md`.
 
 Обычная локальная рабочая БД содержит 50 000 receipts/cards, 18 798 issues и
 18 798 allocations. Текущий SHA и правила работы с ней находятся в
@@ -234,10 +248,12 @@ ODE 0.16.0 Stage 4 завершил декомпозицию web delivery: до�
 Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/routes/`, HTML-сборка — в `inventory/templates/`.
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
-Полный gate: 593 теста (`skipped=15`), Python/JS syntax, module/frontend/data
-audits, clean-DB dry-run и headless Chrome smoke — PASS; code graph содержит
-219 узлов / 448 связей. Рабочая БД осталась byte-identical, SHA-256
-`7284c73a11771f4869bf6b198794fdc8787f789d7463a43f8f50e1a657db6450`,
+Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
+module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS;
+после документационного graph-contract follow-up текущий gate — 594 теста,
+code graph содержит 220 узлов / 448 связей. Рабочая БД осталась
+byte-identical, SHA-256
+`8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`,
 `integrity_check=ok`, FK violations и SQLite sidecars отсутствуют.
 
 Следующий приоритет — пользовательская операторская приёмка и презентация

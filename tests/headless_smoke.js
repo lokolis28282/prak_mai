@@ -44,7 +44,21 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (m.result?.exceptionDetails) throw new Error(m.result.exceptionDetails.exception?.description||m.result.exceptionDetails.text);
     return m.result?.result?.value;
   };
-  const waitFor = async expression => { for (let i=0;i<50;i++) { if (await evaluate(expression)) return; await sleep(100); } throw new Error(`Timeout: ${expression}`); };
+  const waitFor = async expression => {
+    let lastError = null;
+    for (let i=0;i<50;i++) {
+      try {
+        if (await evaluate(expression)) return;
+        lastError = null;
+      } catch (error) {
+        // A navigation may replace the page between CDP polls. Retry until
+        // the new document and its classic scripts are ready.
+        lastError = error;
+      }
+      await sleep(100);
+    }
+    throw new Error(`Timeout: ${expression}${lastError ? `; last evaluation: ${lastError.message}` : ''}`);
+  };
   const scanInto = async (inputId,serial) => { await evaluate(`(()=>{const input=document.getElementById(${JSON.stringify(inputId)});input.value=${JSON.stringify(serial)};input.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return true})()`); await sleep(220); };
   const uploadInventoryNumberCsv = () => evaluate(`(()=>{const input=document.getElementById('inventoryNumberCsv'),transfer=new DataTransfer(),file=new File([${JSON.stringify(inventoryNumberCsv)}],'inventory_numbers.csv',{type:'text/csv;charset=utf-8'});transfer.items.add(file);input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true})()`);
   const installAutoConfirm = () => evaluate(`window.__confirmCalls=0;window.confirm=()=>{window.__confirmCalls+=1;return true}`);

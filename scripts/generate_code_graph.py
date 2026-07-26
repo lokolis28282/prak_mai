@@ -33,6 +33,7 @@ GROUPS = {
     "reports": "#fbbf24", "monitoring": "#f472b6", "knowledge": "#a78bfa",
     "administration": "#fb923c", "services": "#2dd4bf", "shared": "#94a3b8",
     "models": "#64748b", "migration": "#e879f9", "webapp": "#38bdf8",
+    "routes": "#22d3ee", "templates": "#818cf8",
     "ode013": "#c084fc", "scripts": "#facc15", "frontend": "#4ade80",
     "other": "#cbd5e1",
 }
@@ -59,6 +60,23 @@ def group_of(path: Path) -> str:
             return "webapp" if parts[1] in {"webapp.py"} else "core"
         return parts[1] if parts[1] in GROUPS else "other"
     return "other"
+
+
+def product_version() -> str:
+    """Read the single product version source without importing runtime code."""
+    tree = ast.parse((ROOT / "inventory" / "__init__.py").read_text(encoding="utf-8"))
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "__version__"
+                for target in node.targets
+            )
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            return node.value.value
+    raise RuntimeError("inventory.__version__ is missing or is not a string literal")
 
 
 def collect_python() -> list[Path]:
@@ -150,6 +168,7 @@ def build_model() -> dict:
 
     return {"nodes": nodes, "edges": edges,
             "groups": GROUPS,
+            "version": product_version(),
             "counts": {"nodes": len(nodes), "edges": len(edges)}}
 
 
@@ -221,7 +240,7 @@ for(const [g,color] of Object.entries(G)){
  panel.appendChild(l);
 }
 document.getElementById('meta').textContent=
- `${DATA.counts.nodes} узлов / ${DATA.counts.edges} связей · ODE 0.15.0`;
+ `${DATA.counts.nodes} узлов / ${DATA.counts.edges} связей · ODE ${DATA.version}`;
 document.getElementById('search').oninput=e=>query=e.target.value.trim().toLowerCase();
 // Камера: авто-fit, пока пользователь не вмешался.
 let scale=1,ox=0,oy=0,userCam=false,fitPending=true;
