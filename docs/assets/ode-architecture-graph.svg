@@ -13,7 +13,7 @@
   <circle cx="700" cy="420" r="265" fill="none" stroke="#2dd4bf" stroke-opacity=".08" stroke-width="85"/>
   <circle cx="700" cy="420" r="330" fill="none" stroke="#8b5cf6" stroke-opacity=".06" stroke-width="2"/>
   <text x="56" y="62" class="title">ODE 0.16.0 · архитектурный граф</text>
-  <text x="56" y="88" class="meta">Codebase Memory snapshot · 6 877 nodes · 28 888 edges · 521 files · 35 HTTP routes</text>
+  <text x="56" y="88" class="meta">Codebase Memory snapshot · 6 879 nodes · 28 890 edges · 521 files · 35 HTTP routes</text>
 
   <path class="edge" d="M215 178C365 178 446 285 570 366"/><path class="edge" d="M215 265C365 265 460 330 570 386"/>
   <path class="edge" d="M830 385C936 310 1004 206 1110 188"/><path class="edge" d="M830 405C970 365 1040 322 1110 315"/>

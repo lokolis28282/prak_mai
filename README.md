@@ -151,6 +151,15 @@ baseline-кандидат. Скачиваемый XLSX уже содержит `
 
 ![ODE architecture graph](docs/assets/ode-architecture-graph.svg)
 
+### Граф файлов и импортов
+
+[![ODE 0.16.0 — граф файлов и импортов](docs/assets/ode-code-graph-0.16.0.png)](docs/assets/code_graph.html)
+
+Статичный PNG отображается прямо на GitHub:
+[`docs/assets/ode-code-graph-0.16.0.png`](docs/assets/ode-code-graph-0.16.0.png).
+Интерактивная версия с поиском, фильтрами, панорамой и масштабированием:
+[`docs/assets/code_graph.html`](docs/assets/code_graph.html).
+
 GitHub отображает эту поддерживаемую архитектурную диаграмму без публикации
 локального Codebase Memory cache:
 

@@ -21,6 +21,8 @@
 - headless Chrome polling now tolerates the short interval in which navigation
   has replaced the document but the new classic scripts are not yet defined;
   a persistent predicate error is still reported with its last exception.
+- GitHub documentation now embeds a high-resolution PNG snapshot of the
+  interactive ODE 0.16.0 file/import graph and links both PNG and HTML paths.
 
 ### Stage 4 — Web routes and templates
 

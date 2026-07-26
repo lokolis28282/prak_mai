@@ -2,8 +2,17 @@
 
 ![ODE 0.16 architecture graph](assets/ode-architecture-graph.svg)
 
-Проверенный full-снимок Codebase Memory от 2026-07-26 содержит 6 877 узлов,
-28 888 рёбер, 521 файл и 35 распознанных HTTP-маршрутов. В Git публикуются
+## Граф файлов и импортов
+
+[![ODE 0.16.0 — граф файлов и импортов](assets/ode-code-graph-0.16.0.png)](assets/code_graph.html)
+
+- GitHub-friendly PNG:
+  [`assets/ode-code-graph-0.16.0.png`](assets/ode-code-graph-0.16.0.png);
+- интерактивный self-contained HTML:
+  [`assets/code_graph.html`](assets/code_graph.html).
+
+Проверенный full-снимок Codebase Memory от 2026-07-26 содержит 6 879 узлов,
+28 890 рёбер, 521 файл и 35 распознанных HTTP-маршрутов. В Git публикуются
 только эта поддерживаемая карта и детерминированный HTML-граф уровня файлов;
 локальный индекс, cache и исходные данные не публикуются.
 
@@ -94,6 +103,9 @@ Migration packages не импортируются runtime Web/API и не пу�
 - `python3 scripts/generate_code_graph.py` обновляет
   [`assets/code_graph.html`](assets/code_graph.html) из Python AST и
   static-layout; версия читается из `inventory.__version__`.
+- PNG `assets/ode-code-graph-0.16.0.png` является GitHub-снимком
+  интерактивного графа версии 0.16.0 и обновляется явно при публикации нового
+  визуального snapshot.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если
   committed HTML устарел.
 - `python3 scripts/refresh_project_knowledge.py` обновляет HTML-граф и делает
