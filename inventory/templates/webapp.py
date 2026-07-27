@@ -151,6 +151,37 @@ HTML = HTML.replace(
     "ODE 0.12 — учет работ и склада",
     f"{PRODUCT_NAME} {PRODUCT_VERSION} — учет работ и склада",
 )
+HTML = HTML.replace(
+    '<div class="box"><h3>Backup и проверка</h3><div class="import-actions">'
+    '<button class="button primary" onclick="createBackup()">Создать backup</button>'
+    '<button class="button" onclick="checkDatabase()">Проверить базу</button></div>'
+    '<p id="integrityResult" class="hint" style="margin-top:14px">'
+    'Проверка еще не выполнялась.</p></div>',
+    '<div class="box runtime-database-box"><h3>Runtime-базы</h3>'
+    '<p class="hint">Три независимых файла проверяются без чтения содержимого '
+    'рабочих таблиц.</p><div class="table-wrap"><table><thead><tr>'
+    '<th>База</th><th>Путь</th><th>Размер</th><th>Изменена</th>'
+    '<th>Состояние</th><th>Последняя копия</th><th></th></tr></thead>'
+    '<tbody id="runtimeDatabaseBody"></tbody></table></div></div>',
+).replace(
+    '<div class="box"><h3>Восстановление</h3><p class="hint">'
+    'Перед восстановлением автоматически создается страховочный backup.</p>'
+    '<select id="restoreBackup" style="width:100%;padding:9px;margin-bottom:10px">'
+    '</select><button class="button" style="color:#991b1b" '
+    'onclick="restoreBackup()">Восстановить backup</button></div>',
+    '<div class="box runtime-backup-storage"><h3>Внешнее хранилище</h3>'
+    '<p class="hint">Копии создаются SQLite Backup API вне Git-репозитория.</p>'
+    '<p id="runtimeBackupRoot" class="database-path"></p></div>',
+).replace(
+    '<div class="box"><h3>Загрузить базу в прод</h3><p class="hint">'
+    'Текущая база будет сохранена; при ошибке выполнится откат.</p>'
+    '<label class="button" for="prodDb">Выбрать SQLite .db</label>'
+    '<input class="file-input" id="prodDb" type="file" accept=".db"></div>',
+    '<div class="box runtime-restore-disabled"><h3>Восстановление</h3>'
+    '<p class="hint" id="runtimeRestoreStatus">Восстановление отключено до '
+    'реализации проверяемой подготовки, одноразового подтверждения и атомарной '
+    'публикации. Частично работающей кнопки нет.</p></div>',
+)
 
 HTML = HTML.replace(
     '<main class="main">',

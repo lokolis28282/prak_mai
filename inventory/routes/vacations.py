@@ -108,7 +108,11 @@ def handle_post(handler: Any, runtime: RouteRuntime, path: str) -> bool:
         handler._send_json(400, {"error": str(error)})
         return True
     except sqlite3.IntegrityError as error:
-        handler._send_json(409, {"error": f"Изменение конфликтует с данными: {error}"})
+        if "vacation_employees.full_name" in str(error):
+            message = "Сотрудник с таким ФИО уже существует"
+        else:
+            message = "Изменение конфликтует с существующими данными"
+        handler._send_json(409, {"error": message})
         return True
     except sqlite3.DatabaseError:
         handler._send_json(500, {"error": "Не удалось сохранить данные отпусков"})

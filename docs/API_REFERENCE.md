@@ -1,8 +1,8 @@
-# ODE 0.18.0 — справочник HTTP API
+# ODE 0.18.1 — справочник HTTP API
 
 Фактическая поверхность локального HTTP API (`inventory/webapp.py` и
 `inventory/routes/`, порт по умолчанию `8765`). Составлен по коду версии
-0.18.0. API предназначен
+0.18.1. API предназначен
 для собственного браузерного UI; внешние интеграции появятся после 1.0.
 
 ## Общий контракт
@@ -63,7 +63,7 @@
 | `/api/daily-report?date=…` | Отчёт за смену из событий склада. |
 | `/api/weekly-report?date_from=…&date_to=…` | Недельная агрегация. |
 | `/api/uploaded-daily-report?id=…` | Строки загруженного готового отчёта. |
-| `/api/admin` | Только admin: backup-файлы, пользователи, журнал аудита. |
+| `/api/admin` | Только admin: `databases` (IX/Solar/Vacations health/path/last backup), `database_backups`, `backup_capabilities`, legacy `backups`, пользователи и журнал аудита. Содержимое бизнес-таблиц не возвращается. |
 | `/api/warehouse/system-status` | Состояние складского контура (baseline/provisional, authoritative). |
 | `/api/monitoring/status` | Статус Monitoring-модуля и его capabilities. |
 | `/api/vacations/bootstrap?date_from=…&date_to=…` | Общий календарь, сотрудники, effective assignments, отпуска, pending-конфликты и справочники статусов. Доступен всем аутентифицированным пользователям. |
@@ -126,9 +126,10 @@
 
 | Action | Назначение |
 |---|---|
-| `CREATE_BACKUP` | Согласованная копия в `data/backups`. |
+| `CREATE_RUNTIME_BACKUP` | Обязателен `database_id`: `warehouse_ix`, `warehouse_solar` или `vacations`. Создаёт проверенный SQLite snapshot и manifest во внешнем storage. |
+| `CREATE_BACKUP` | Fail-closed: требуется выбрать конкретный `database_id`. |
 | `CHECK_DATABASE` | `PRAGMA integrity_check` + проверка ключевых таблиц. |
-| `RESTORE_BACKUP` | `filename` (только basename, `.db`), `confirmed: true`; автоматический страховочный backup, атомарная публикация. |
+| `RESTORE_BACKUP` | В 0.18.1 всегда отклоняется: безопасный preview-token/confirm/publish vertical ещё не реализован. |
 | `CREATE_USER`, `UPDATE_PROFILE`, `CHANGE_PASSWORD` | Пользователи и профиль (PBKDF2-хеши). |
 
 ### Legacy (совместимость CLI-модели)
@@ -143,7 +144,7 @@
 | `POST /api/preview-csv?kind=…` | Preview CSV (приход/расход/УВР/массовое списание/инв.№): статистика, первые 100 строк, до 200 ошибок; БД не меняется. |
 | `POST /api/preview-xlsx?sheet=…` | Preview XLSX (УВР). |
 | `POST /api/import-csv?kind=…` | Прямой импорт для допустимых kind (одной транзакцией). |
-| `POST /api/upload-prod-db` | Только admin: загрузка `.db` с backup, проверкой и откатом при ошибке. |
+| `POST /api/upload-prod-db` | Legacy admin-only endpoint; в UI 0.18.1 отсутствует и не является multi-DB restore. Не использовать вместо ADR-013 workflow. |
 
 Лимиты: файл ≤ 50 МБ, ≤ 40 000 непустых строк; разделители `;`/`,`;
 кодировки UTF-8 BOM и Windows-1251; preview живёт в памяти до 1 часа.

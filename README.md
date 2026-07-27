@@ -8,8 +8,8 @@
 Работает полностью офлайн: Python (только стандартная библиотека) + SQLite,
 интерфейс открывается в браузере на локальном компьютере.
 
-> **Версия 0.18.0** · Python 3.10+ · Windows /
-> macOS / Linux · внешние зависимости не требуются · 619 автоматических тестов
+> **Версия 0.18.1** · Python 3.10+ · Windows /
+> macOS / Linux · внешние зависимости не требуются
 
 ## Возможности
 
@@ -48,8 +48,8 @@
   круглосуточные смены `1/3`, ручной статус согласования в Сфере, подменный и
   отдельная очередь конфликтов с подтверждением/отклонением.
 - **Безопасность** — роли `admin` / `engineer` / `viewer` на сервере, PBKDF2
-  хеши паролей, единый `audit_log` всех операций, резервные копии и
-  восстановление с автоматическим страховочным backup.
+  хеши паролей, единый `audit_log` всех операций и проверенные внешние
+  резервные копии каждой runtime-БД.
 
 ## Быстрый старт
 
@@ -71,7 +71,7 @@ python3 app.py
 - `data/vacations.db` — отдельная БД отпусков с ФИО, графиками и заявками;
 - `data/monitoring/*.json` — локальные правила маршрутизации с внутренними
   hostname и адресатами;
-- резервные копии (`data/backups/`), выгрузки, скриншоты, release-архивы и
+- резервные копии (внешний каталог ODE), выгрузки, скриншоты, release-архивы и
   disposable-артефакты миграции (`migration_inputs/…`).
 
 Перед публикацией изменений всегда проверяйте `git status`: файлы с реальными
@@ -181,10 +181,10 @@ Rooms/email-текст, но не отправляет письмо автома
 
 ### Граф файлов и импортов
 
-[![ODE 0.18.0 — граф файлов и импортов](docs/assets/ode-code-graph-0.18.0.png)](docs/assets/code_graph.html)
+[![ODE 0.18.1 — граф файлов и импортов](docs/assets/ode-code-graph-0.18.1.png)](docs/assets/code_graph.html)
 
 Статичный PNG отображается прямо на GitHub:
-[`docs/assets/ode-code-graph-0.18.0.png`](docs/assets/ode-code-graph-0.18.0.png).
+[`docs/assets/ode-code-graph-0.18.1.png`](docs/assets/ode-code-graph-0.18.1.png).
 Интерактивная версия с поиском, фильтрами, панорамой и масштабированием:
 [`docs/assets/code_graph.html`](docs/assets/code_graph.html).
 
@@ -200,12 +200,15 @@ flowchart LR
   C --> K["KnowledgeFacade"]
   C --> V["VacationFacade"]
   C --> A["AdministrationFacade"]
+  A --> REG["RuntimeDatabaseRegistry"]
+  REG --> BS["MultiDatabaseBackupService"]
   W --> IX[("warehouse.db · IXcellerate")]
   W --> SOL[("warehouse_solar.db · Solar")]
   R --> IX
   A --> IX
   K --> IX
   V --> VDB[("vacations.db · отдельный модуль")]
+  BS --> EXT[("внешний ignored backup root")]
   Uploads["private attachment directory"] --> K
   Rules["local hostname rules"] --> M
 ```
@@ -377,15 +380,22 @@ python3 app.py seed --reset
 
 ## Резервные копии и восстановление
 
-Основной способ — раздел `Администрирование`, доступный только `admin`:
+Раздел `Администрирование → Резервные копии` доступен только `admin` и
+показывает три независимые runtime-БД: IXcellerate, Solar и Vacations. Для
+каждой отображаются точный путь, размер, время изменения, integrity/FK/schema
+status и последняя копия. Кнопка конкретной базы:
 
-- «Создать резервную копию» формирует проверенную копию в `data/backups`;
-- «Проверить базу» запускает `PRAGMA integrity_check` и проверку таблиц;
-- список резервных копий показывает имя, время и размер;
-- восстановление требует подтверждения и автоматически сохраняет текущее состояние.
-- «Загрузить базу» принимает `.db`, предварительно создает резервную копию, проверяет новый файл и при ошибке возвращает прежнюю базу.
+- создаёт snapshot через SQLite Backup API под общим write-lock;
+- пишет его только во внешний каталог (`ODE_BACKUP_DIR` либо системный каталог
+  данных ODE), а не в Git-репозиторий;
+- проверяет `integrity_check`, foreign keys и профиль таблиц;
+- сохраняет manifest с database id, размером и SHA-256;
+- пишет событие `RUNTIME_DATABASE_BACKUP_CREATE` без содержимого БД.
 
-Во время backup и restore веб-запросы к базе сериализуются. Не закрывайте приложение до получения сообщения о завершении.
+Восстановление из UI в 0.18.1 намеренно отключено. Частично безопасной кнопки
+нет: следующий этап должен реализовать read-only preview, одноразовый token,
+защиту от cross-database restore, safety backup и атомарный `os.replace` по
+[ADR multi-DB restore](docs/decisions/ADR-013-multi-database-backup-restore.md).
 
 Перед файловыми операциями остановите ODE и убедитесь, что нет writer-процесса
 и SQLite sidecar-файлов. Не выполняйте обычный `cp`/`copy` поверх открытой
@@ -403,10 +413,13 @@ byte-copy остановленной БД и независимый SQLite `.bac
 - периодическая проверка копии запуском ODE с параметром `--db`;
 - восстановление сначала проверять на отдельном пути.
 
-Проверка backup без замены рабочей базы:
+Проверка копии без замены рабочей базы выполняется только на отдельном порту и
+с отдельными путями Solar/Vacations:
 
 ```bash
-python3 app.py gui --db data/backups/warehouse_YYYYMMDD_HHMMSS.db --port 8876
+python3 app.py web --no-browser --db /external/backup.db \
+  --solar-db /external/disposable-solar.db \
+  --vacations-db /external/disposable-vacations.db --port 8876
 ```
 
 Для восстановления остановите приложение, проверьте backup, подготовьте
@@ -490,8 +503,7 @@ ODE при импорте принимает оба разделителя: `,` 
 python3 -m unittest discover -s tests -v
 ```
 
-Текущий discover-набор версии 0.18.0 содержит
-619 автоматических тестов
+Текущий discover-набор версии 0.18.1 содержит автоматические тесты
 Warehouse, Vacations, Monitoring, Knowledge, УВР и CLI-контура. Исторические
 составы gate по отдельным Stage сохранены в датированных CHANGELOG/manual QA и
 не используются как текущий счётчик. Набор включает CSV и шаблоны,
@@ -517,7 +529,8 @@ python3 scripts/smoke_migration_full_ui.py
 ## Ограничения
 
 - SQLite не рассчитана на активную многопользовательскую запись;
-- backup и восстановление доступны из интерфейса, но нет автоматического расписания и внешней ротации копий;
+- создание backup доступно из интерфейса, но restore, автоматическое расписание
+  и ротация пока не реализованы;
 - прямое редактирование SQLite-файла не защищено аудитом;
 - нет сторнирующих операций для ошибочно проведённого прихода или расхода;
   точечные исправления данных доступны только на экране «Контроль качества
@@ -607,8 +620,10 @@ git diff --check
 [docs/STAGES_HISTORY.md](docs/STAGES_HISTORY.md), детальный список изменений —
 в [CHANGELOG.md](CHANGELOG.md). Старые QA/review/release-файлы являются
 датированными историческими снимками своих версий и не переписываются.
-Текущий release gate 0.18.0 и ограничения зафиксированы в
-[RELEASE_REPORT_ODE_0_18_0.md](RELEASE_REPORT_ODE_0_18_0.md); отчёт
+Текущий release gate 0.18.1 и ограничения зафиксированы в
+[RELEASE_REPORT_ODE_0_18_1.md](RELEASE_REPORT_ODE_0_18_1.md); отчёт
+Vacations/UX 0.18.0 сохранён в
+[RELEASE_REPORT_ODE_0_18_0.md](RELEASE_REPORT_ODE_0_18_0.md), отчёт
 Multi-Warehouse 0.17.0 сохранён в
 [RELEASE_REPORT_ODE_0_17_0.md](RELEASE_REPORT_ODE_0_17_0.md), а аудит
 предшествующего рефакторинга сохранён в

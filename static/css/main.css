@@ -327,6 +327,15 @@ tr.problem-group-start td{border-top:2px solid #cbd5e1}
 .warehouse-site-card strong{grid-area:title;font-size:21px}
 .warehouse-site-card small{grid-area:state;color:#2563eb;font-weight:700}
 .warehouse-site-switcher{font-weight:700;white-space:nowrap}
+#admin .split{grid-template-columns:minmax(0,2fr) minmax(260px,1fr);align-items:start}
+#admin .split>.box{min-width:0}
+#admin .runtime-database-box{grid-row:span 2}
+#admin .runtime-database-box table{min-width:1050px}
+#admin .runtime-database-box td{vertical-align:top}
+#admin .runtime-database-box .database-path{min-width:300px;max-width:420px;white-space:normal;overflow-wrap:anywhere}
+#admin .runtime-database-box td:last-child .button{white-space:nowrap}
+.database-path{max-width:420px;white-space:normal;overflow-wrap:anywhere;color:var(--muted)}
+@media(max-width:950px){#admin .split{grid-template-columns:minmax(0,1fr)}#admin .runtime-database-box{grid-row:auto}}
 @media(max-width:720px){.warehouse-site-grid{grid-template-columns:1fr}.warehouse-site-switcher{display:none}}
 
 /* Lazy warehouse balance tree. Kept inside its own root to protect the page above it. */

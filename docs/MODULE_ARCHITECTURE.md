@@ -77,7 +77,14 @@ Vacations:
 
 Administration:
 
-- owns users, backup, restore, audit view and diagnostics;
+- owns users, audit view, diagnostics and the safe multi-database backup
+  application profile;
+- uses `RuntimeDatabaseRegistry` only as topology metadata for IXcellerate,
+  Solar and Vacations; the registry never owns their business tables;
+- delegates snapshot creation to `MultiDatabaseBackupService`, which uses
+  SQLite Backup API, external storage, verification, manifest and audit;
+- does not expose restore in ODE 0.18.1; ADR-013 is the required contract for
+  preview/confirm/atomic publish;
 - owns authentication, actor context, role policy and administration writes;
 - is composed as a dedicated `AdministrationService` behind
   `AdministrationFacade`;
@@ -156,9 +163,12 @@ ODE 0.16.0 Stage 1 completes the Administration route:
 
 `web/API -> ApplicationContext -> AdministrationFacade -> AdministrationService`
 
-This includes authentication, actor context, user/profile writes,
-backup/restore, integrity checks and confirmed database upload. Logout remains
-an in-memory HTTP session operation and does not bypass the Administration
+This includes authentication, actor context, user/profile writes and integrity
+checks. Historical single-DB backup/restore/upload remains compatibility code.
+ODE 0.18.1 routes the active backup UI through
+`AdministrationFacade -> AdministrationService -> MultiDatabaseBackupService`
+and disables HTTP restore until ADR-013 is implemented. Logout remains an
+in-memory HTTP session operation and does not bypass the Administration
 business boundary.
 
 Stage 0.12.10 wires warehouse events through:

@@ -60,11 +60,11 @@ class WebappExtractionContractTest(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(webapp.LOGIN_HTML.encode("utf-8")).hexdigest(),
-            "d5b644eaf2250b8889a0b2feae3bc38eda890208c3f980726ae69f1637190535",
+            "b219f37918519f68e8f5954815d0c74dc0db2d084c2149332e2e91d0728db715",
         )
         self.assertEqual(
             hashlib.sha256(webapp.HTML.encode("utf-8")).hexdigest(),
-            "5e33000bc9d8c37b8945289936a7270536c4dce43dd10acf6bccca5d385a0d53",
+            "eb75d1e8b9836df280d6be60f85018fd68f9bf0d6a0937fe00fb3b143ceebc3a",
         )
 
     def test_routes_and_templates_do_not_own_business_sql(self) -> None:
@@ -84,6 +84,20 @@ class WebappExtractionContractTest(unittest.TestCase):
             ROOT / "inventory/templates/webapp.py"
         ).read_text(encoding="utf-8").casefold()
         self.assertNotIn("sqlite3.connect", template_source)
+
+    def test_runtime_database_table_keeps_long_paths_readable(self) -> None:
+        css = (ROOT / "static/css/main.css").read_text(encoding="utf-8")
+        self.assertIn("runtime-database-box", webapp.HTML)
+        self.assertIn("#admin .split{grid-template-columns:minmax(0,2fr)", css)
+        self.assertIn("#admin .split>.box{min-width:0}", css)
+        self.assertIn(
+            "#admin .runtime-database-box .database-path{min-width:300px",
+            css,
+        )
+        self.assertIn(
+            "@media(max-width:950px){#admin .split{grid-template-columns:minmax(0,1fr)}",
+            css,
+        )
 
 
 if __name__ == "__main__":

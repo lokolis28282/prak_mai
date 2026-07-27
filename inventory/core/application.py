@@ -12,10 +12,15 @@ from inventory.service import WarehouseService
 from .context import FeatureFlags, RuntimeConfig
 from .events import AuditLogEventReader, NoopEventPublisher
 from inventory.administration.facade import AdministrationFacade
+from inventory.administration.runtime_databases import (
+    RuntimeDatabase,
+    RuntimeDatabaseRegistry,
+)
 from inventory.knowledge.facade import KnowledgeFacade
 from inventory.monitoring.facade import MonitoringFacade
 from inventory.reports.facade import ReportsFacade
 from inventory.vacations.facade import VacationFacade
+from inventory.vacations.schema import VACATION_TABLES
 from inventory.warehouse.facade import WarehouseFacade
 from inventory.warehouse.baseline.posting_policy import PostingPolicy
 from inventory.warehouse.baseline.service import FullInventoryService
@@ -62,9 +67,47 @@ class ApplicationContext:
             service.db_path,
             state_root=runtime.full_inventory_state_root,
         )
-        vacations_path = Path(
+        vacations_candidate = Path(
             runtime.vacations_db_path or service.db_path.with_name("vacations.db")
-        ).expanduser().resolve()
+        ).expanduser().absolute()
+        vacations_path = vacations_candidate.resolve()
+        database_entries = [
+            RuntimeDatabase(
+                "warehouse_ix",
+                "IXcellerate",
+                service.db_path,
+                "warehouse",
+                frozenset(service.KEY_TABLES),
+            )
+        ]
+        if runtime.settings.get("warehouse_sites_enabled"):
+            database_entries.append(
+                RuntimeDatabase(
+                    "warehouse_solar",
+                    "Solar",
+                    Path(
+                        runtime.settings.get(
+                            "solar_db_path",
+                            service.db_path.with_name("warehouse_solar.db"),
+                        )
+                    ),
+                    "warehouse",
+                    frozenset(service.KEY_TABLES),
+                )
+            )
+        database_entries.append(
+            RuntimeDatabase(
+                "vacations",
+                "Vacations",
+                vacations_candidate,
+                "vacations",
+                frozenset(VACATION_TABLES),
+            )
+        )
+        service.administration_service.configure_runtime_databases(
+            RuntimeDatabaseRegistry(database_entries),
+            backup_root=runtime.settings.get("backup_root"),
+        )
         event_publisher = NoopEventPublisher()
         return cls(
             db_path=service.db_path,

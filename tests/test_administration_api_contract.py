@@ -100,12 +100,27 @@ class AdministrationReadApiContractTest(unittest.TestCase):
     def test_admin_endpoint_contract_and_security(self) -> None:
         status, payload, _ = self._call_get("/api/admin")
         self.assertEqual(status, 200)
-        self.assertEqual(set(payload), {"backups", "audit", "users"})
+        self.assertEqual(
+            set(payload),
+            {
+                "backups",
+                "databases",
+                "database_backups",
+                "backup_capabilities",
+                "audit",
+                "users",
+            },
+        )
         self.assertTrue(any(user["email"] == "lokolis" for user in payload["users"]))
         self.assertTrue(all("password_hash" not in user for user in payload["users"]))
         self.assertTrue(all(Path(item["name"]).name == item["name"] for item in payload["backups"]))
         self.assertTrue(all(item["name"].endswith(".db") for item in payload["backups"]))
         self.assertFalse(any(item["name"] == "ignore.txt" for item in payload["backups"]))
+        self.assertFalse(payload["backup_capabilities"]["restore"]["available"])
+        self.assertEqual(
+            {item["database_id"] for item in payload["databases"]},
+            {"warehouse_ix", "vacations"},
+        )
         assert_no_secret_keys(self, payload)
 
     def test_non_admin_cannot_read_admin_endpoint(self) -> None:

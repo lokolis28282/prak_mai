@@ -13,6 +13,17 @@ DEFAULT_VACATIONS_DB_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "vacations.db"
 )
 
+VACATION_TABLES = frozenset(
+    {
+        "vacation_employees",
+        "vacation_assignments",
+        "vacation_requests",
+        "vacation_conflicts",
+        "vacation_history",
+        "vacation_audit_log",
+    }
+)
+
 VACATION_SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -164,14 +175,6 @@ def prepare_vacations_database(
 
 def vacations_schema_ready(db_path: str | Path) -> bool:
     """Return whether all module-owned tables exist."""
-    required = {
-        "vacation_employees",
-        "vacation_assignments",
-        "vacation_requests",
-        "vacation_conflicts",
-        "vacation_history",
-        "vacation_audit_log",
-    }
     try:
         uri = f"file:{Path(db_path).resolve().as_posix()}?mode=ro"
         with closing(sqlite3.connect(uri, uri=True)) as db:
@@ -181,6 +184,6 @@ def vacations_schema_ready(db_path: str | Path) -> bool:
                     "SELECT name FROM sqlite_master WHERE type = 'table'"
                 )
             }
-        return required <= tables
+        return VACATION_TABLES <= tables
     except sqlite3.Error:
         return False

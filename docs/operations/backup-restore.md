@@ -1,6 +1,33 @@
 # Backup and restore
 
-Статус: **PROPOSED**
+Статус: **PARTIALLY IMPLEMENTED** — create/status в ODE 0.18.1; restore
+остаётся **PROPOSED** по ADR-013.
+
+## Current ODE 0.18.1 runtime slice
+
+Administration регистрирует три независимых файла:
+
+| database id | Profile | Runtime target |
+|---|---|---|
+| `warehouse_ix` | Warehouse | `data/warehouse.db` |
+| `warehouse_solar` | Warehouse | `data/warehouse_solar.db` |
+| `vacations` | Vacations | `data/vacations.db` |
+
+Backup root задаётся `ODE_BACKUP_DIR`; без него используется внешний системный
+каталог данных ODE. Каталог внутри repository отклоняется. HTTP-клиент передаёт
+только database id, не filesystem path.
+
+Snapshot выполняется SQLite Backup API под общим application write-lock в
+sibling `.next`. До atomic rename проверяются integrity, foreign keys,
+required tables и отсутствие alias source (symlink/hardlink). Рядом сохраняется
+manifest с database id/profile/source path/time/size/SHA/method/verification.
+Backup и manifest имеют mode `0600` на POSIX.
+
+Admin UI показывает health и последнюю копию, но не строки бизнес-таблиц.
+Успех пишет `RUNTIME_DATABASE_BACKUP_CREATE` в primary Administration audit;
+details содержат только технические metadata.
+
+Restore-кнопки нет. `RESTORE_BACKUP` fail-closed до завершения ADR-013.
 
 ## Backup set
 

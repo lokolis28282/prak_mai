@@ -12,6 +12,8 @@ from ..shared.helpers import WarehouseError
 from .audit import AdministrationAuditService
 from .backup import AdministrationBackupService
 from .diagnostics import AdministrationDiagnosticsService
+from .multi_database_backup import MultiDatabaseBackupService
+from .runtime_databases import RuntimeDatabase, RuntimeDatabaseRegistry
 from .users import AdministrationUserService
 
 
@@ -48,6 +50,32 @@ class AdministrationService:
         self.user_service = AdministrationUserService(self)
         self.diagnostics_service = AdministrationDiagnosticsService(self)
         self.backup_service = AdministrationBackupService(self)
+        self.runtime_database_registry = RuntimeDatabaseRegistry(
+            (
+                RuntimeDatabase(
+                    "warehouse_ix",
+                    "IXcellerate",
+                    self.db_path,
+                    "warehouse",
+                    frozenset(self.key_tables),
+                ),
+            )
+        )
+        self.multi_database_backup_service = MultiDatabaseBackupService(
+            self, self.runtime_database_registry
+        )
+
+    def configure_runtime_databases(
+        self,
+        registry: RuntimeDatabaseRegistry,
+        *,
+        backup_root: str | Path | None = None,
+    ) -> None:
+        """Configure runtime file topology at the application composition root."""
+        self.runtime_database_registry = registry
+        self.multi_database_backup_service.configure(
+            registry, backup_root=backup_root
+        )
 
     @staticmethod
     def _public_user(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
@@ -196,3 +224,19 @@ class AdministrationService:
 
     def check_integrity(self) -> dict[str, Any]:
         return self.diagnostics_service.check_integrity()
+
+    def runtime_database_statuses(self) -> list[dict[str, Any]]:
+        return self.multi_database_backup_service.database_statuses()
+
+    def runtime_database_backups(
+        self, database_id: str | None = None
+    ) -> list[dict[str, Any]]:
+        return self.multi_database_backup_service.list_backups(database_id)
+
+    def runtime_backup_capabilities(self) -> dict[str, Any]:
+        return self.multi_database_backup_service.capabilities()
+
+    def create_runtime_database_backup(
+        self, database_id: str
+    ) -> dict[str, Any]:
+        return self.multi_database_backup_service.create_backup(database_id)

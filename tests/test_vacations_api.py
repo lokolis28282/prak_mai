@@ -176,6 +176,10 @@ class VacationsApiTest(unittest.TestCase):
             },
         )
         self.assertEqual(status, 409, duplicate)
+        self.assertEqual(
+            duplicate["error"], "Сотрудник с таким ФИО уже существует"
+        )
+        self.assertNotIn("UNIQUE constraint", duplicate["error"])
 
 
 if __name__ == "__main__":

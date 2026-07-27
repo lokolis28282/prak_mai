@@ -25,14 +25,24 @@
   2026-07-18.
 - `RELEASE_REPORT_ODE_0_15_0.md` — исторический gate версии 0.15.0.
 - `RELEASE_REPORT_ODE_0_16_0.md` — исторический аудит modular extraction.
-- `RELEASE_REPORT_ODE_0_18_0.md` — текущий Vacations/UX stabilization release
+- `RELEASE_REPORT_ODE_0_18_0.md` — исторический Vacations/UX stabilization release
   gate, сохранность трёх рабочих БД и ограничения.
+- `RELEASE_REPORT_ODE_0_18_1.md` — текущий stabilization/multi-DB backup
+  release gate.
+- `docs/decisions/ADR-013-multi-database-backup-restore.md` — implemented
+  status/create-backup slice и обязательный restore design.
+- `docs/decisions/ADR-014-warehouse-correction-reversal.md` — отдельный
+  контракт будущих компенсирующих складских операций.
+- `docs/MANUAL_TESTING_0_18_1.md` — ручная приёмка Administration backup и
+  regression общих модулей.
 - `RELEASE_REPORT_ODE_0_17_0.md` — исторический Multi-Warehouse release gate.
 - `docs/project/reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md` —
   post-release UX-аудит, полный regression gate и доказательство неизменности
   рабочих IXcellerate/Solar DB.
 - `docs/project/reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md` — правила,
   браузерная приёмка и полный gate общего модуля отпусков.
+- `docs/project/reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md` —
+  датированный review status/create-backup slice и его fail-closed границ.
 
 ## Normative target
 
@@ -64,6 +74,7 @@ Evidence не переписывается задним числом. Новый
 - `docs/project/reviews/2026-07-15_SCANNER_OPERATIONS_0_13_4.md`.
 - `docs/project/reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md`.
 - `docs/project/reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md`.
+- `docs/project/reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md`.
 
 ## Historical or scoped
 

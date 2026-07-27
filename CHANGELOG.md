@@ -1,5 +1,26 @@
 # Changelog ODE
 
+## ODE 0.18.1 — stabilization and multi-DB backup slice (2026-07-27)
+
+- Administration получил `RuntimeDatabaseRegistry` для трёх независимых
+  файлов: IXcellerate, Solar и Vacations; registry описывает путь/профиль
+  схемы и не владеет бизнес-таблицами.
+- Новый профильный `MultiDatabaseBackupService` показывает read-only health и
+  создаёт проверенные SQLite snapshots во внешнем каталоге: Backup API,
+  integrity/FK/schema, SHA-256 manifest, atomic rename и Administration audit.
+- UI больше не предлагает небезопасный частичный restore/upload: полный
+  restore отложен до preview-token, cross-database guards, safety backup и
+  атомарной публикации, описанных в ADR-013.
+- длинные Windows-пути runtime-БД сохраняют читаемую ширину в прокручиваемой
+  таблице и не сжимают соседние Administration-карточки.
+- duplicate ФИО в Vacations по-прежнему возвращает HTTP 409, но больше не
+  раскрывает внутренний текст SQLite `UNIQUE constraint`.
+- генератор code graph использует POSIX repository paths на всех ОС; устранён
+  ложный stale-result при проверке одного артефакта на Windows и Linux.
+- добавлены regression-тесты трёх backup-профилей, read-only status, внешнего
+  storage, ролей, alias guards, отключённого restore, friendly Vacations 409 и
+  кроссплатформенной детерминированности графа и layout длинных DB-путей.
+
 ## ODE 0.18.0 — Vacations and UX stabilization (2026-07-27)
 
 - добавлен общий для IXcellerate/Solar модуль `Отпуска`: календарь,

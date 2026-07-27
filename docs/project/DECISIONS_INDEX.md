@@ -24,6 +24,12 @@
 - Local DB runbook: [`../LOCAL_WORKING_DATABASE_RUNBOOK.md`](../LOCAL_WORKING_DATABASE_RUNBOOK.md)
 - Multi-Warehouse IXcellerate/Solar:
   [`../MULTI_WAREHOUSE_ARCHITECTURE.md`](../MULTI_WAREHOUSE_ARCHITECTURE.md)
+- Multi-database backup/restore:
+  [`ADR-013`](../decisions/ADR-013-multi-database-backup-restore.md)
+  (status/create implemented; restore proposed).
+- Warehouse correction/reversal:
+  [`ADR-014`](../decisions/ADR-014-warehouse-correction-reversal.md)
+  (proposed, не входит в текущий runtime).
 
 ## Interpretation rule
 

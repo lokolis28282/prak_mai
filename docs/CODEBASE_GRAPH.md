@@ -1,20 +1,22 @@
-# ODE 0.18.0 — карта кода и зависимостей
+# ODE 0.18.1 — карта кода и зависимостей
 
 ![ODE 0.18 architecture graph](assets/ode-architecture-graph.svg)
 
 ## Граф файлов и импортов
 
-[![ODE 0.18.0 — граф файлов и импортов](assets/ode-code-graph-0.18.0.png)](assets/code_graph.html)
+[![ODE 0.18.1 — граф файлов и импортов](assets/ode-code-graph-0.18.1.png)](assets/code_graph.html)
 
 - GitHub-friendly PNG:
-  [`assets/ode-code-graph-0.18.0.png`](assets/ode-code-graph-0.18.0.png);
+  [`assets/ode-code-graph-0.18.1.png`](assets/ode-code-graph-0.18.1.png);
 - интерактивный self-contained HTML:
   [`assets/code_graph.html`](assets/code_graph.html).
 
-Проверенный full-снимок Codebase Memory от 2026-07-27 содержит 7 067 узлов,
-30 991 ребро, 550 файлов и 42 распознанных HTTP-маршрута. В Git публикуются
-только эта поддерживаемая карта и детерминированный HTML-граф уровня файлов;
-локальный индекс, cache и исходные данные не публикуются.
+Детерминированный committed graph ODE 0.18.1 содержит 245 файлов/модулей и
+502 import/serve edges. Последний успешно зафиксированный внешний full-снимок
+Codebase Memory от 2026-07-27 (до 0.18.1) содержит 7 067 узлов, 30 991 ребро,
+550 файлов и 42 распознанных HTTP-маршрута. В текущей Windows-среде binary/MCP
+Codebase Memory не установлен, поэтому новые full-метрики не выдаются за
+полученные. `artifact_present=false`; `.codebase-memory` в repository нет.
 
 ## Runtime path
 
@@ -40,6 +42,8 @@ flowchart LR
   W --> WD["Warehouse domain services<br/>receipt · issue · delivery · balance · history"]
   R --> RD["Reports services/repository<br/>work logs · daily · weekly"]
   A --> AD["AdministrationService<br/>users · audit · backup · diagnostics"]
+  AD --> REG["RuntimeDatabaseRegistry<br/>IX · Solar · Vacations"]
+  AD --> MDB["MultiDatabaseBackupService<br/>status · verified snapshot"]
   K --> KD["Knowledge repository<br/>articles · tags · attachments"]
   V --> VD["Vacations services/repository<br/>calendar · assignments · conflicts"]
   M --> MD["manual hostname/DCIM flow<br/>local ignored rules"]
@@ -52,11 +56,12 @@ flowchart LR
   AD --> DB
   KD --> DB
   VD --> VDB[("data/vacations.db")]
+  MDB --> EXT[("external backup root<br/>SQLite API · manifests")]
   WD --> Events["WarehouseEventReader"]
   Events --> R
 ```
 
-Фактический web-path в 0.18.0:
+Фактический web-path в 0.18.1:
 
 `browser → webapp HTTP shell → session WarehouseSite → inventory/routes →
 selected facade → domain service/repository → selected SQLite`.
@@ -81,7 +86,7 @@ handlers используют его для общего lock, пути/имен
 |---|---|---|---|
 | Warehouse | `WarehouseFacade` + `WarehouseSiteRegistry` | `inventory/warehouse/` | независимые `stock_*`, deliveries, balance/history в IXcellerate/Solar; публикует события |
 | Reports | `ReportsFacade` | `inventory/reports/` | `work_logs`, `daily_report_*`; Warehouse читает только через `WarehouseEventReader` |
-| Administration | `AdministrationFacade` | `AdministrationService` | users, audit, backup/restore, diagnostics |
+| Administration | `AdministrationFacade` | `AdministrationService` + runtime registry + multi-DB backup service | users, audit, diagnostics, status/create backup; restore disabled |
 | Monitoring | `MonitoringFacade` | `inventory/monitoring/` | локальные ignored rules и optional DCIM; не импортирует Warehouse/Reports |
 | Knowledge | `KnowledgeFacade` | `inventory/knowledge/` | `knowledge_*` и private attachments |
 | Vacations | `VacationFacade` | `inventory/vacations/` | собственные `vacation_*` и audit в `data/vacations.db`; складские БД не используются |
@@ -115,8 +120,8 @@ Migration packages не импортируются runtime Web/API и не пу�
 - `python3 scripts/generate_code_graph.py` обновляет
   [`assets/code_graph.html`](assets/code_graph.html) из Python AST и
   static-layout; версия читается из `inventory.__version__`.
-- PNG `assets/ode-code-graph-0.18.0.png` является GitHub-снимком
-  интерактивного графа версии 0.18.0 и обновляется явно при публикации нового
+- PNG `assets/ode-code-graph-0.18.1.png` является GitHub-снимком
+  интерактивного графа версии 0.18.1 и обновляется явно при публикации нового
   визуального snapshot.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если
   committed HTML устарел.

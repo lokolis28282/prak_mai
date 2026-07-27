@@ -137,9 +137,19 @@ equipment/operations SQL lives only in focused modules under
 `inventory/warehouse`; `WarehouseCore` and the composition root contain no
 business SQL.
 
-Backup files under the configured backup directory are owned by Administration.
-Read APIs expose only safe file metadata (`name`, `size`, `modified`) and do not
-return absolute filesystem paths.
+Verified runtime backup files and manifests under the configured external
+backup root are owned by Administration. `RuntimeDatabaseRegistry` describes
+the exact IXcellerate/Solar/Vacations targets and their schema profiles but
+does not read or own domain rows. The admin-only status API exposes the exact
+runtime path required for operator verification; backup-list rows expose only
+database id/label, basename, size, timestamp, SHA availability and verification
+state.
+
+`MultiDatabaseBackupService` is the only active web backup implementation in
+0.18.1. It serializes with the application write-lock, uses SQLite Backup API,
+checks integrity/FK/required tables, writes a SHA-256 manifest and audits the
+operation in primary Administration `audit_log`. Warehouse/Vacations facades
+do not copy or replace database files. Restore remains disabled pending ADR-013.
 
 ODE 0.16.0 Stage 1 makes this ownership physical in code:
 `AdministrationService` and its user/audit/diagnostics/backup collaborators are

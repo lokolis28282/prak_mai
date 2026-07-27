@@ -21,6 +21,9 @@ DDL или stage evidence, а связывает их и явно разделя
     изоляция IXcellerate/Solar и bootstrap Solar.
 11. [Vacations](../VACATIONS_ARCHITECTURE.md) — самостоятельный календарь,
     графики и очередь конфликтов двух площадок.
+12. [Multi-DB backup/restore](../decisions/ADR-013-multi-database-backup-restore.md)
+    — реализованный status/create-backup slice и обязательный контракт будущего
+    restore.
 
 ## Иерархия источников
 

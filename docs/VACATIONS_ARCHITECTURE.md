@@ -1,6 +1,6 @@
 # Отпуска — архитектура и рабочий процесс
 
-Статус: реализовано в ODE `0.18.0`, 2026-07-27.
+Статус: реализовано в ODE `0.18.0`, стабилизировано в `0.18.1`, 2026-07-27.
 
 ## Назначение
 
@@ -123,6 +123,10 @@ Monitoring или Knowledge tables.
 - `POST /api/vacations/conflicts/{request_id}/resolve`;
 - `POST /api/vacations/employees/{employee_id}/assignment`.
 
+Повторное ФИО отклоняется HTTP 409 с пользовательским сообщением
+`Сотрудник с таким ФИО уже существует`; внутреннее имя SQLite constraint не
+выдаётся клиенту.
+
 ## Инициализация и rollback
 
 Обычный `python3 app.py` создаёт пустую `data/vacations.db`, если файла ещё
@@ -133,9 +137,11 @@ Monitoring или Knowledge tables.
 быть symbolic link. `scripts/migrate_runtime_modules.py` работает только с
 Reports/Knowledge в primary DB и не устанавливает Vacations.
 
-Rollback данных отпусков выполняется восстановлением отдельного backup
-`vacations.db` при остановленном приложении. Складские backup при этом не
-затрагиваются.
+ODE 0.18.1 умеет создать отдельный проверенный backup `vacations.db` из
+Administration. Runtime restore пока отключён; ручной rollback допустим только
+при остановленном приложении по внешнему проверенному backup/runbook и не
+должен затрагивать складские БД. Автоматизированный restore подчиняется
+ADR-013.
 
 ## Manual QA
 

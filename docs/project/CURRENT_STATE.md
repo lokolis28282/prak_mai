@@ -10,7 +10,7 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.18.0`.
+- Current source/runtime metadata: `0.18.1`.
 - Последний фактически собранный ZIP: `0.12.17 RC1`.
 - Рабочий runtime: `app.py` → общий application context + выбранный Warehouse
   site → `data/warehouse.db` (IXcellerate) или
@@ -69,6 +69,27 @@ dry-run — PASS. Рабочие IXcellerate/Solar DB остались byte-iden
 Контракт: [`../VACATIONS_ARCHITECTURE.md`](../VACATIONS_ARCHITECTURE.md).
 Evidence:
 [`reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md`](reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md).
+
+### ODE 0.18.1 stabilization and multi-DB backup slice
+
+Administration знает три независимые runtime-БД через описательный
+`RuntimeDatabaseRegistry`: IXcellerate, Solar и Vacations. Read-only status
+показывает точный target, размер, mtime, integrity/FK/schema и последнюю копию.
+Создание копии доступно только admin и выполняется профильным
+`MultiDatabaseBackupService`: общий write-lock, SQLite Backup API, внешний
+storage, проверка результата, SHA-256 manifest, atomic rename и
+`RUNTIME_DATABASE_BACKUP_CREATE` в общем Administration audit.
+
+Restore в 0.18.1 не реализован и не отображается как действие. Legacy
+`RESTORE_BACKUP` через HTTP fail-closed; обязательный design описан в
+[`../decisions/ADR-013-multi-database-backup-restore.md`](../decisions/ADR-013-multi-database-backup-restore.md).
+Отдельный будущий correction/reversal контур Warehouse описан в ADR-014 и не
+смешан с этим изменением.
+
+Стабилизация также скрывает внутренний SQLite constraint в Vacations HTTP 409
+и делает code graph кроссплатформенно детерминированным (`static/...` на всех
+ОС). Финальные gate/evidence зафиксированы в
+`../../RELEASE_REPORT_ODE_0_18_1.md`.
 
 ### ODE 0.16.0 modular extraction gate
 

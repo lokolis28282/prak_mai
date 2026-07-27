@@ -78,11 +78,14 @@ Admin-only:
 
 - список пользователей;
 - audit log;
-- список backup-файлов;
+- status и список backup для IXcellerate/Solar/Vacations;
 - database diagnostics;
-- create/restore backup;
+- создание проверенного backup конкретной runtime-БД;
 - create/disable/change users;
-- production DB upload.
+- legacy production DB upload API (не отображается в UI и не является
+  multi-DB restore).
+
+Restore через Administration UI/`RESTORE_BACKUP` в ODE 0.18.1 отключён.
 
 Доступны текущему пользователю:
 
@@ -94,12 +97,17 @@ Admin-only:
 
 Read-only список backup должен:
 
-- читать только разрешенный `backup_dir`;
+- читать только настроенный внешний backup root;
 - показывать только ожидаемые `.db` файлы;
-- не возвращать абсолютные пути;
+- не возвращать содержимое БД или произвольные filesystem entries;
 - не принимать пользовательский path для чтения списка.
 
-Restore остается write/action и не входит в read-only migration.
+Admin-only runtime status отдельно возвращает exact path зарегистрированной БД,
+но никогда не принимает path от HTTP-клиента. Create принимает только
+allowlisted `database_id`.
+
+Restore остаётся будущим write/action. До ADR-013 implementation он обязан
+fail-closed; filename/`confirmed: true` не являются достаточным подтверждением.
 
 ## Audit
 

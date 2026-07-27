@@ -14,18 +14,21 @@ repository, включая рабочий Warehouse source/runtime track, нах
 [Monitoring and Knowledge Base](MONITORING_KNOWLEDGE_GUIDE.md). Этот документ
 не меняет нормативный статус target ODE 0.13 architecture track.
 
-Актуальные операционные документы версии 0.18.0 (главный вход —
+Актуальные операционные документы версии 0.18.1 (главный вход —
 [`README.md`](../README.md) в корне):
 [границы модулей](MODULE_ARCHITECTURE.md),
 [Multi-Warehouse IXcellerate/Solar](MULTI_WAREHOUSE_ARCHITECTURE.md),
 [архитектура и правила отпусков](VACATIONS_ARCHITECTURE.md),
+[multi-DB backup/restore ADR](decisions/ADR-013-multi-database-backup-restore.md),
 [справочник HTTP API](API_REFERENCE.md),
 [карта проекта и Codebase Memory snapshot](CODEBASE_GRAPH.md),
 [интерактивный граф связей кодовой базы](assets/code_graph.html),
 [операции контроля качества данных](DATA_QUALITY_OPERATIONS.md),
 [история реализованных этапов](STAGES_HISTORY.md),
 [runbook рабочей БД](LOCAL_WORKING_DATABASE_RUNBOOK.md) и
-[release gate 0.18.0](../RELEASE_REPORT_ODE_0_18_0.md).
+[ручная приёмка 0.18.1](MANUAL_TESTING_0_18_1.md),
+[датированный multi-DB backup review](project/reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md)
+и [release gate 0.18.1](../RELEASE_REPORT_ODE_0_18_1.md).
 Полная опись 0.15.0 сохранена как исторический снимок и не выдаётся за
 текущую топологию.
 

@@ -170,6 +170,22 @@ class AdministrationFacade:
     def get_administration_overview(self) -> dict[str, Any]:
         return {
             "backups": self.list_backups(),
+            "databases": self._plain(
+                self.service.runtime_database_statuses()
+            ),
+            "database_backups": self._plain(
+                self.service.runtime_database_backups()
+            ),
+            "backup_capabilities": self._plain(
+                self.service.runtime_backup_capabilities()
+            ),
             "audit": self.list_audit_entries(),
             "users": self.list_users(),
         }
+
+    def create_runtime_database_backup(
+        self, database_id: str
+    ) -> dict[str, Any]:
+        return self._plain(
+            self.service.create_runtime_database_backup(database_id)
+        )

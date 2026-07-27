@@ -59,14 +59,20 @@ def handle_action(
 ) -> bool:
     """Handle Administration mutations routed through its facade."""
     administration = runtime.app_context.administration
-    if action == "CREATE_BACKUP":
-        response["backup"] = administration.create_backup()
+    if action == "CREATE_RUNTIME_BACKUP":
+        response["backup"] = administration.create_runtime_database_backup(
+            str(data.get("database_id") or "")
+        )
+    elif action == "CREATE_BACKUP":
+        raise WarehouseError(
+            "Выберите конкретную runtime-базу для резервного копирования"
+        )
     elif action == "CHECK_DATABASE":
         response["integrity"] = administration.check_integrity()
     elif action == "RESTORE_BACKUP":
-        response["restore"] = administration.restore_backup(
-            data.get("filename", ""),
-            handler._json_boolean(data.get("confirmed", False), "confirmed"),
+        raise WarehouseError(
+            "Восстановление временно недоступно: сначала требуется "
+            "проверяемая подготовка и одноразовое подтверждение"
         )
     elif action == "CREATE_USER":
         response["user_id"] = administration.create_user(

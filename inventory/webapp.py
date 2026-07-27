@@ -334,9 +334,9 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                         str(action)
                     )
                 if action in {
-                    "CREATE_BACKUP", "CHECK_DATABASE", "RESTORE_BACKUP",
-                    "CREATE_USER", "CHANGE_PASSWORD", "UPDATE_PROFILE",
-                    "REFERENCE_RENAME",
+                    "CREATE_BACKUP", "CREATE_RUNTIME_BACKUP",
+                    "CHECK_DATABASE", "RESTORE_BACKUP", "CREATE_USER",
+                    "CHANGE_PASSWORD", "UPDATE_PROFILE", "REFERENCE_RENAME",
                     "REFERENCE_MERGE_PREVIEW", "REFERENCE_MERGE",
                 }:
                     self._require_admin_session(allow_password_change=action == "CHANGE_PASSWORD")

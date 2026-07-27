@@ -144,7 +144,7 @@ def build_model() -> dict:
         index[name] = len(nodes)
         nodes.append({
             "id": name,
-            "label": str(f.relative_to(ROOT)),
+            "label": f.relative_to(ROOT).as_posix(),
             "group": group_of(f),
             "kind": "py",
             "lines": f.read_text(encoding="utf-8", errors="replace").count("\n") + 1,
@@ -156,7 +156,9 @@ def build_model() -> dict:
     webapp = index.get("inventory.webapp")
     css = ROOT / "static" / "css" / "main.css"
     for f in sorted(JS_ROOT.rglob("*.js")) + ([css] if css.is_file() else []):
-        name = str(f.relative_to(ROOT))
+        # Graph ids are committed artifacts, so host-specific path separators
+        # would make --check fail after moving between POSIX and Windows.
+        name = f.relative_to(ROOT).as_posix()
         index[name] = len(nodes)
         nodes.append({
             "id": name, "label": name, "group": "frontend",
