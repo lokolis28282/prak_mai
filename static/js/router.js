@@ -16,9 +16,9 @@ function showSection(name){
   const entries=sections[name];
   if(!entries||!entries.length){showPlaceholder(name);return}
   currentSection=name;
-  setText('pageTitle',{home:'ODE',monitoring:'Мониторинг',knowledge:'База знаний',works:'Работы',warehouse:'Склад',reports:'Отчеты',administration:'Администрирование',profile:'Профиль'}[name]||'Раздел');
+  setText('pageTitle',{home:'ODE',monitoring:'Мониторинг',knowledge:'База знаний',works:'Работы',vacations:'Отпуска',warehouse:'Склад',reports:'Отчеты',administration:'Администрирование',profile:'Профиль'}[name]||'Раздел');
   const nav=byId('subnav');
-  nav.style.display=['warehouse','works','reports','administration'].includes(name)?'flex':'none';
+  nav.style.display=['warehouse','works','vacations','reports','administration'].includes(name)?'flex':'none';
   nav.replaceChildren(...entries.map((entry,index)=>renderButton({
     text:entry[1],
     className:`subtab ${index?'':'active'}`,
@@ -39,6 +39,7 @@ function showView(id){
   if(id==='weekly'&&typeof buildWeek==='function')buildWeek();
   if(adminMode){setAdminMode(adminMode);loadAdmin()}
   if(id==='deliveries')loadDeliveries();
+  if(id.startsWith('vacations_'))window.ODE?.vacations?.render(id);
 }
 function openTask(section,view){showSection(section);showView(view)}
 function setAdminMode(mode){

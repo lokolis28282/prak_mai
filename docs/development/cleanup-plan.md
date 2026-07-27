@@ -29,7 +29,7 @@ rollback-window expiration и verified archive. Current Git tag/old DB оста�
 |---|---|---|---|
 | inventory/migration/full_builder.py, pilot_builder.py, candidate_db.py and other one-off builders | Reproduce 0.12 migration interpretation | Tool hash, environment, source manifests, successful independent archive run | After full migration signed |
 | inventory/warehouse/migration_full.py, migration_full_review.py, migration_pilot.py, migration_pilot_review.py | Candidate/pilot review runtime only | New legacy UI/mapping acceptance | Never package in 0.13 |
-| scripts/migration_full_candidate.py, migration_pilot.py, migration_reference_data.py, audit_warehouse_database.py, stabilize_reference_data.py, remove_test_serial.py | One-off operational tools | Commands/dependencies/tool hashes in archive README | After cutover |
+| scripts/migration_full_candidate.py, migration_pilot.py, migration_reference_data.py, audit_warehouse_database.py, stabilize_reference_data.py | One-off operational tools | Commands/dependencies/tool hashes in archive README | After cutover |
 | scripts/smoke_migration_full_ui.py, smoke_migration_pilot_ui.py and headless migration smoke files | Stage UI evidence | Replacement migration/E2E tests pass | After rehearsal |
 | start_full_migration_candidate_macos.command/.bat, start_migration_pilot_macos.command/.bat | Old launchers | No support/runbook reference | After archive |
 | tests/test_migration_candidate_db.py, test_migration_full_candidate.py, test_migration_full_frontend_contract.py, test_migration_pilot_*.py | Freeze old behavior | New mapping/contract tests cover retained invariants | Archive with old tag |

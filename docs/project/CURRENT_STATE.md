@@ -1,6 +1,6 @@
 # Current State
 
-Дата проверки: 2026-07-26. Authoritative repository:
+Дата проверки: 2026-07-27. Authoritative repository:
 `~/Documents/prak_mai`.
 
 ## Два разных Stage-трека
@@ -10,7 +10,7 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.17.0`.
+- Current source/runtime metadata: `0.18.0`.
 - Последний фактически собранный ZIP: `0.12.17 RC1`.
 - Рабочий runtime: `app.py` → общий application context + выбранный Warehouse
   site → `data/warehouse.db` (IXcellerate) или
@@ -38,6 +38,37 @@ HTTP-сессии Warehouse runtime. Solar создаётся с нулевым�
 Python/JavaScript syntax, module/frontend/data audits и clean-DB dry-run —
 PASS. Рабочая IXcellerate DB осталась byte-identical. Подробности:
 `../../RELEASE_REPORT_ODE_0_17_0.md`.
+
+### Post-release UX regression
+
+После релиза унифицирован словарь Warehouse: `Приход / принять` и
+`Расход / списать`; пользовательские подписи `Выдать / Выдано` удалены.
+Повторный полный gate содержит 599 тестов (`skipped=8`), headless Chrome и
+все repository/module/frontend/data checks — PASS. Рабочие IXcellerate и
+Solar DB остались byte-identical. Доказательства:
+[`reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md`](reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md).
+
+### Common Vacations slice
+
+ODE 0.18.0 включает отдельный `inventory/vacations` bounded context:
+общий календарь IXcellerate/Solar, ручные статусы Сферы, effective-dated
+площадки/графики и очередь конфликтов. Правила покрывают цикл `1/3` от
+26.07.2026, подменного, непересечение начальника/старших и минимум одного
+дежурного в активной группе. Доступ не ограничен ролью, но каждая мутация
+сохраняет actor/history/audit.
+
+Свежая `vacations.db` создаётся без состава команды. Сотрудники и назначения
+добавляются через UI/API, а рабочие ФИО остаются только в локальной ignored DB.
+
+Обычный startup создаёт/открывает самостоятельную `data/vacations.db`.
+`vacation_*` и `vacation_audit_log` отсутствуют в обеих Warehouse DB;
+runtime migration Reports/Knowledge модуль отпусков не устанавливает.
+Полный gate: 620 тестов (`skipped=8`), headless Chrome со всеми основными
+разделами, Python/JavaScript syntax, module/frontend/data audits и clean-DB
+dry-run — PASS. Рабочие IXcellerate/Solar DB остались byte-identical.
+Контракт: [`../VACATIONS_ARCHITECTURE.md`](../VACATIONS_ARCHITECTURE.md).
+Evidence:
+[`reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md`](reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md).
 
 ### ODE 0.16.0 modular extraction gate
 
@@ -268,8 +299,9 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий ODE 0.17.0 Multi-Warehouse gate — 598 тестов; code graph содержит
-221 узел / 455 связей. Рабочая БД осталась byte-identical, SHA-256
+Текущий release-кандидат ODE 0.18.0 — 620 тестов; code graph содержит
+актуальные значения из `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
+из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256
 `8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`,
 `integrity_check=ok`, FK violations и SQLite sidecars отсутствуют.
 

@@ -65,7 +65,6 @@ OPERATIONAL_TABLES_IN_DELETE_ORDER = [
     "work_logs",
     "audit_log",
 ]
-
 # Справочники, пользователи и настройки: сохраняются без изменений.
 PRESERVED_TABLES = ["users", "categories", "locations", "reference_values"]
 
@@ -133,8 +132,18 @@ def snapshot_source_database(source: Path, destination: Path) -> None:
 def table_counts_from_connection(
     connection: sqlite3.Connection, tables: list[str]
 ) -> dict[str, int]:
+    existing = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
     return {
-        table: int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+        table: (
+            int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+            if table in existing
+            else 0
+        )
         for table in tables
     }
 
@@ -142,7 +151,15 @@ def table_counts_from_connection(
 def clear_operational_data(connection: sqlite3.Connection) -> None:
     if int(connection.execute("PRAGMA foreign_keys").fetchone()[0]) != 1:
         raise RuntimeError("foreign_keys должен быть включен до очистки тестовой базы")
+    existing = {
+        str(row[0])
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        )
+    }
     for table in OPERATIONAL_TABLES_IN_DELETE_ORDER:
+        if table not in existing:
+            continue
         connection.execute(f"DELETE FROM {table}")
         connection.execute("DELETE FROM sqlite_sequence WHERE name = ?", (table,))
     errors = connection.execute("PRAGMA foreign_key_check").fetchall()
@@ -398,7 +415,11 @@ def main(argv: list[str] | None = None) -> int:
                     if args.profile == "demo":
                         seed_demo_data(connection)
                     ensure_admin_password_known(connection)
-
+            finally:
+                connection.close()
+            connection = sqlite3.connect(tmp_path)
+            try:
+                connection.execute("PRAGMA foreign_keys = ON")
                 integrity = connection.execute("PRAGMA integrity_check").fetchall()
                 integrity_ok = len(integrity) == 1 and str(integrity[0][0]) == "ok"
                 fk_errors = connection.execute("PRAGMA foreign_key_check").fetchall()

@@ -13,6 +13,7 @@ from typing import Any
 from inventory.core.application import create_application_context
 from inventory.core.context import RuntimeConfig
 from inventory.service import WarehouseService
+from inventory.vacations.schema import install_vacations_schema
 from inventory.warehouse.sites import (
     OPERATIONAL_TABLES,
     WarehouseSiteRegistry,
@@ -83,6 +84,8 @@ class WarehouseSiteApiTest(unittest.TestCase):
         root = Path(self.tmp.name)
         self.primary = root / "warehouse.db"
         self.solar = root / "warehouse_solar.db"
+        self.vacations = root / "vacations.db"
+        install_vacations_schema(self.vacations)
         service = WarehouseService(self.primary)
         service.add_stock_receipt(**{
             "receipt_date": "2026-07-26",
@@ -110,6 +113,7 @@ class WarehouseSiteApiTest(unittest.TestCase):
                 self.primary,
                 warehouse_contour="production",
                 production_db_path=self.primary,
+                vacations_db_path=self.vacations,
                 settings={
                     "warehouse_sites_enabled": True,
                     "solar_db_path": self.solar,
@@ -250,6 +254,47 @@ class WarehouseSiteApiTest(unittest.TestCase):
                 ).fetchone()[0],
                 1,
             )
+
+    def test_vacations_stay_in_third_database_when_warehouse_changes(self) -> None:
+        self.context.vacations.create_employee(
+            {
+                "first_name": "Тестовый",
+                "last_name": "Инженер",
+                "site": "ixcellerate",
+                "schedule_type": "FIVE_TWO",
+                "valid_from": "2026-07-26",
+            },
+            actor="Автоматический тест",
+        )
+        status, before, _ = self._request(
+            "GET",
+            "/api/vacations/bootstrap?date_from=2026-07-26&date_to=2026-07-30",
+            cookie=self.cookie,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(before["employees"]), 1)
+        self._request(
+            "POST",
+            "/api/warehouse/select",
+            {"warehouse": "solar"},
+            cookie=self.cookie,
+        )
+        status, after, _ = self._request(
+            "GET",
+            "/api/vacations/bootstrap?date_from=2026-07-26&date_to=2026-07-30",
+            cookie=self.cookie,
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(after["employees"], before["employees"])
+        self.assertEqual(self.context.vacations.db_path, self.vacations.resolve())
+        for path in (self.primary, self.solar):
+            with closing(sqlite3.connect(path)) as db:
+                self.assertIsNone(
+                    db.execute(
+                        """SELECT 1 FROM sqlite_master
+                           WHERE type='table' AND name='vacation_employees'"""
+                    ).fetchone()
+                )
 
     def test_full_inventory_state_is_external_and_isolated(self) -> None:
         registry = WarehouseSiteRegistry(

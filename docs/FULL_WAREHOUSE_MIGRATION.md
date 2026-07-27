@@ -7,12 +7,12 @@ identities и migration provenance сохранены character-exact. Reference
 изменяет только canonical `reference_*_v2`/audit и не переписывает historical
 receipt datacenter/shelf/supplier или S/N.
 
-Ручная запись receipt 1050001 с exact S/N `1` была создана 2026-07-14 20:28:22
-после full build, не имела строк в staging/serial cells/reconciliation/identity,
-delivery, issue или allocation. После отдельного byte-copy и SQLite `.backup`
-она удалена SHA-guarded transaction скриптом `scripts/remove_test_serial.py`.
-Сохранён audit `TEST_DATA_REMOVED_AFTER_MANUAL_REVIEW`; 50 000 migration
-identities и digest всех оставшихся S/N не изменились.
+Одна доказанная ручная тестовая запись после full build не имела связей со
+staging, delivery, issue или allocation и была удалена SHA-guarded
+транзакцией после byte-copy и SQLite `.backup`. Конкретные идентификаторы,
+S/N и одноразовый correction-скрипт хранятся только во внешнем защищённом
+архиве. Audit коррекции сохранён; 50 000 migration identities и digest всех
+оставшихся S/N не изменились.
 
 ## Статус и граница
 

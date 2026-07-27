@@ -1,18 +1,18 @@
-# ODE 0.17.0 — карта кода и зависимостей
+# ODE 0.18.0 — карта кода и зависимостей
 
-![ODE 0.17 architecture graph](assets/ode-architecture-graph.svg)
+![ODE 0.18 architecture graph](assets/ode-architecture-graph.svg)
 
 ## Граф файлов и импортов
 
-[![ODE 0.17.0 — граф файлов и импортов](assets/ode-code-graph-0.17.0.png)](assets/code_graph.html)
+[![ODE 0.18.0 — граф файлов и импортов](assets/ode-code-graph-0.18.0.png)](assets/code_graph.html)
 
 - GitHub-friendly PNG:
-  [`assets/ode-code-graph-0.17.0.png`](assets/ode-code-graph-0.17.0.png);
+  [`assets/ode-code-graph-0.18.0.png`](assets/ode-code-graph-0.18.0.png);
 - интерактивный self-contained HTML:
   [`assets/code_graph.html`](assets/code_graph.html).
 
-Проверенный full-снимок Codebase Memory от 2026-07-26 содержит 6 949 узлов,
-29 294 ребра, 525 файлов и 35 распознанных HTTP-маршрутов. В Git публикуются
+Проверенный full-снимок Codebase Memory от 2026-07-27 содержит 7 067 узлов,
+30 991 ребро, 550 файлов и 42 распознанных HTTP-маршрута. В Git публикуются
 только эта поддерживаемая карта и детерминированный HTML-граф уровня файлов;
 локальный индекс, cache и исходные данные не публикуются.
 
@@ -34,12 +34,14 @@ flowchart LR
   Context --> R["ReportsFacade"]
   Context --> M["MonitoringFacade"]
   Context --> K["KnowledgeFacade"]
+  Context --> V["VacationFacade"]
   Context --> A["AdministrationFacade"]
 
   W --> WD["Warehouse domain services<br/>receipt · issue · delivery · balance · history"]
   R --> RD["Reports services/repository<br/>work logs · daily · weekly"]
   A --> AD["AdministrationService<br/>users · audit · backup · diagnostics"]
   K --> KD["Knowledge repository<br/>articles · tags · attachments"]
+  V --> VD["Vacations services/repository<br/>calendar · assignments · conflicts"]
   M --> MD["manual hostname/DCIM flow<br/>local ignored rules"]
 
   WD --> DB[("data/warehouse.db")]
@@ -49,17 +51,19 @@ flowchart LR
   RD --> DB
   AD --> DB
   KD --> DB
+  VD --> VDB[("data/vacations.db")]
   WD --> Events["WarehouseEventReader"]
   Events --> R
 ```
 
-Фактический web-path в 0.17.0:
+Фактический web-path в 0.18.0:
 
 `browser → webapp HTTP shell → session WarehouseSite → inventory/routes →
 selected facade → domain service/repository → selected SQLite`.
 
-Shared Administration, Reports, Monitoring и Knowledge продолжают получать
-primary `ApplicationContext`; Warehouse routes получают выбранный site runtime.
+Shared Administration, Reports, Monitoring, Knowledge и Vacations продолжают
+получать primary `ApplicationContext`; Warehouse routes получают выбранный
+site runtime.
 
 `inventory/templates` отвечает только за детерминированную HTML-сборку.
 Стили и браузерная логика реально загружаются из `static/`; SQL в
@@ -80,6 +84,7 @@ handlers используют его для общего lock, пути/имен
 | Administration | `AdministrationFacade` | `AdministrationService` | users, audit, backup/restore, diagnostics |
 | Monitoring | `MonitoringFacade` | `inventory/monitoring/` | локальные ignored rules и optional DCIM; не импортирует Warehouse/Reports |
 | Knowledge | `KnowledgeFacade` | `inventory/knowledge/` | `knowledge_*` и private attachments |
+| Vacations | `VacationFacade` | `inventory/vacations/` | собственные `vacation_*` и audit в `data/vacations.db`; складские БД не используются |
 
 `WarehouseService` и `WarehouseCore` сохранены как compatibility path для CLI,
 старых тестов и ещё не перенесённых Python-вызовов. Они делегируют тем же
@@ -110,8 +115,8 @@ Migration packages не импортируются runtime Web/API и не пу�
 - `python3 scripts/generate_code_graph.py` обновляет
   [`assets/code_graph.html`](assets/code_graph.html) из Python AST и
   static-layout; версия читается из `inventory.__version__`.
-- PNG `assets/ode-code-graph-0.17.0.png` является GitHub-снимком
-  интерактивного графа версии 0.17.0 и обновляется явно при публикации нового
+- PNG `assets/ode-code-graph-0.18.0.png` является GitHub-снимком
+  интерактивного графа версии 0.18.0 и обновляется явно при публикации нового
   визуального snapshot.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если
   committed HTML устарел.

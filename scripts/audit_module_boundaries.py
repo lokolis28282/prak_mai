@@ -611,6 +611,45 @@ def main() -> int:
         if bad:
             errors.append(f"{path.relative_to(ROOT)} imports forbidden modules: {', '.join(bad)}")
 
+    # Vacations is a standalone application module with its own SQLite file.
+    forbidden_vacations = (
+        "inventory.service",
+        "inventory.warehouse",
+        "inventory.reports",
+        "inventory.monitoring",
+        "inventory.knowledge",
+        "inventory.administration",
+    )
+    for path in files("inventory/vacations"):
+        imports = python_imports(path)
+        bad = sorted(
+            item
+            for item in imports
+            for forbidden in forbidden_vacations
+            if item == forbidden or item.startswith(forbidden + ".")
+        )
+        if bad:
+            errors.append(
+                f"{path.relative_to(ROOT)} imports forbidden modules: "
+                + ", ".join(bad)
+            )
+        forbidden_storage = contains(
+            path,
+            (
+                "warehouse.db",
+                "warehouse_solar.db",
+                "stock_receipts",
+                "stock_issues",
+                "work_logs",
+                "INSERT INTO audit_log",
+            ),
+        )
+        if forbidden_storage:
+            errors.append(
+                f"{path.relative_to(ROOT)} references non-vacation storage: "
+                + ", ".join(forbidden_storage)
+            )
+
     for path in files("inventory/monitoring"):
         if contains(path, ("WarehouseEventReader", "warehouse_events")):
             errors.append(f"{path.relative_to(ROOT)} references WarehouseEventReader")

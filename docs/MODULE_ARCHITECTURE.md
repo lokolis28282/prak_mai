@@ -62,6 +62,19 @@ Knowledge:
 - exposes safe Markdown, search and role-checked CRUD through `KnowledgeFacade`;
 - does not import Warehouse, Reports or Monitoring.
 
+Vacations:
+
+- owns the common two-site vacation plan and effective-dated employee
+  assignments;
+- exposes `VacationFacade` through `ApplicationContext` and
+  `/api/vacations/*` through `inventory/routes/vacations.py`;
+- uses only standalone `data/vacations.db` and is independent of both
+  IXcellerate/Solar Warehouse DBs and the selected site;
+- detects employee, leadership, substitute and duty-coverage conflicts by
+  roles/assignments rather than names;
+- writes actor/action evidence to its own `vacation_audit_log`; does not read
+  or write Warehouse, shared audit, Reports, Monitoring or Knowledge tables.
+
 Administration:
 
 - owns users, backup, restore, audit view and diagnostics;

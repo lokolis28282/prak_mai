@@ -4,7 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
-from inventory import webapp
+from inventory import __version__, webapp
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +31,10 @@ class ScannerDraftFrontendContractTest(unittest.TestCase):
         ):
             self.assertIn(f'id="{element_id}"', webapp.HTML)
         self.assertIn("<th>Действие</th>", webapp.HTML)
-        self.assertIn('<script src="/static/js/ui.js"></script>', webapp.HTML)
+        self.assertIn(
+            f'<script src="/static/js/ui.js?v={__version__}"></script>',
+            webapp.HTML,
+        )
         self.assertNotRegex(webapp.HTML, re.compile(r"<script(?!\s+src=)[^>]*>"))
 
     def test_receipt_and_issue_confirm_use_only_current_canonical_rows(self) -> None:

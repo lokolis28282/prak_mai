@@ -19,12 +19,20 @@
   HTML-графа и внешнего Codebase Memory index без repository artifact.
 - `docs/MONITORING_KNOWLEDGE_GUIDE.md` — настройка Monitoring/Knowledge и
   backup-guarded runtime module migration.
+- `docs/VACATIONS_ARCHITECTURE.md` — общий календарь двух площадок, графики,
+  конфликты, API, ownership, миграция и manual QA.
 - `RELEASE_REPORT_ODE_0_14_INTEGRATION.md` — integration/release evidence от
   2026-07-18.
 - `RELEASE_REPORT_ODE_0_15_0.md` — исторический gate версии 0.15.0.
 - `RELEASE_REPORT_ODE_0_16_0.md` — исторический аудит modular extraction.
-- `RELEASE_REPORT_ODE_0_17_0.md` — текущий Multi-Warehouse release gate,
-  совместимость с рабочей БД и ограничения.
+- `RELEASE_REPORT_ODE_0_18_0.md` — текущий Vacations/UX stabilization release
+  gate, сохранность трёх рабочих БД и ограничения.
+- `RELEASE_REPORT_ODE_0_17_0.md` — исторический Multi-Warehouse release gate.
+- `docs/project/reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md` —
+  post-release UX-аудит, полный regression gate и доказательство неизменности
+  рабочих IXcellerate/Solar DB.
+- `docs/project/reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md` — правила,
+  браузерная приёмка и полный gate общего модуля отпусков.
 
 ## Normative target
 
@@ -54,6 +62,8 @@ Evidence не переписывается задним числом. Новый
 - `docs/project/reviews/2026-07-15_REPOSITORY_CLEANUP_EXECUTION.md`.
 - `docs/project/reviews/2026-07-15_WAREHOUSE_OPERATIONAL_ACCEPTANCE.md`.
 - `docs/project/reviews/2026-07-15_SCANNER_OPERATIONS_0_13_4.md`.
+- `docs/project/reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md`.
+- `docs/project/reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md`.
 
 ## Historical or scoped
 

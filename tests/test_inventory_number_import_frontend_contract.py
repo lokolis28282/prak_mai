@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from inventory import webapp
+from inventory import __version__, webapp
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +17,7 @@ class InventoryNumberImportFrontendContractTest(unittest.TestCase):
         self.assertIn('id="inventoryNumberCsv"', webapp.HTML)
         self.assertIn('id="inventoryNumberImport"', webapp.HTML)
         self.assertIn(
-            '<script src="/static/js/warehouse/inventory.js"></script>',
+            f'<script src="/static/js/warehouse/inventory.js?v={__version__}"></script>',
             webapp.HTML,
         )
 

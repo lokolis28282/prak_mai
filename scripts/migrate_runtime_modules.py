@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Safely install additive Reports and Knowledge schemas into an existing DB."""
+"""Safely install additive Reports and Knowledge schemas in the primary DB."""
 
 from __future__ import annotations
 
@@ -136,7 +136,9 @@ def main() -> int:
     after_sidecars = sidecars(database)
     if after["integrity_check"] != "ok" or after["foreign_key_violations"]:
         raise SystemExit("Post-migration DB health check failed; restore external backup")
-    if not after["reports_ready"] or not after["knowledge_ready"]:
+    if (
+        not after["reports_ready"] or not after["knowledge_ready"]
+    ):
         raise SystemExit("Runtime module schema is incomplete; restore external backup")
     if after_sidecars:
         raise SystemExit("Unexpected SQLite sidecars after migration")

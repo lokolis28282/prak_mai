@@ -407,11 +407,18 @@ HTML = HTML.replace(
 # small task-oriented navigation to engineers.
 KNOWLEDGE_SECTION = r'''<section class="view panel" id="knowledge"></section>'''
 
+VACATIONS_SECTIONS = r'''
+<section class="view panel" id="vacations_calendar"></section>
+<section class="view panel" id="vacations_list"></section>
+<section class="view panel" id="vacations_employees"></section>
+<section class="view panel" id="vacations_conflicts"></section>
+'''
+
 HOME_SECTION = r'''<section class="view panel home-screen active" id="home">
 <div class="landing-head"><p class="eyebrow">Рабочее пространство</p><h2>Добро пожаловать в ODE</h2><p>Выберите направление работы.</p></div>
 <noscript><div class="noscript-notice">JavaScript отключен. Основные разделы доступны на этой странице; для операций со складом включите JavaScript.</div></noscript>
 <div class="portal-grid">
-<article class="portal-card"><div class="portal-icon">▣</div><h3>Склад</h3><p>Работа со складом</p><ul><li>Приемка и выдача</li><li>Баланс и поставки</li><li>Инвентаризация</li></ul><button onclick="openWarehouseHub()">Открыть</button></article>
+<article class="portal-card"><div class="portal-icon">▣</div><h3>Склад</h3><p>Работа со складом</p><ul><li>Приход и расход</li><li>Баланс и поставки</li><li>Инвентаризация</li></ul><button onclick="openWarehouseHub()">Открыть</button></article>
 <article class="portal-card"><div class="portal-icon">▤</div><h3>Отчеты</h3><p>Работа смены</p><ul><li>Ежедневный отчет</li><li>Еженедельный отчет</li><li>История работ</li></ul><button onclick="openTask('reports','daily')">Открыть</button></article>
 <article class="portal-card"><div class="portal-icon">⌁</div><h3>Мониторинг</h3><p>Состояние системы</p><ul><li>Проблемы</li><li>События</li><li>Мониторинг</li></ul><button onclick="openMonitoringHub()">Открыть</button></article>
 <article class="portal-card"><div class="portal-icon">▦</div><h3>База знаний</h3><p>Инструкции и документация</p><ul><li>Рабочие инструкции</li><li>Спецификации</li><li>Документы</li></ul><button onclick="openKnowledgeBase()">Открыть</button></article>
@@ -433,7 +440,8 @@ HTML = HTML.replace(
     '<header class="top"><div><h1 id="pageTitle">Главная</h1><span class="hint">Отдел дежурных инженеров · Ixcellerate</span></div><div class="profile-actions"><span id="currentUser"></span><button class="button" onclick="loadAll()">Обновить</button><button class="button" onclick="logout()">Сменить инженера / выйти</button><select id="importMode" hidden><option value="soft">Обычная</option><option value="strict">Полная</option></select></div></header>',
 ).replace(
     '</main></div><div class="status" id="status">',
-    KNOWLEDGE_SECTION + HOME_SECTION + '</main></div><div class="status" id="status">',
+    KNOWLEDGE_SECTION + VACATIONS_SECTIONS + HOME_SECTION
+    + '</main></div><div class="status" id="status">',
 )
 HTML = HTML.replace('<nav class="subnav" id="subnav"></nav>', '<nav class="subnav" id="subnav" style="display:none"></nav>', 1)
 HTML = HTML.replace(
@@ -510,9 +518,12 @@ HTML = HTML.replace(
 
 
 def _externalized_html(html: str) -> str:
-    css_link = '<link rel="stylesheet" href="/static/css/main.css">'
+    asset_version = PRODUCT_VERSION
+    css_link = (
+        f'<link rel="stylesheet" href="/static/css/main.css?v={asset_version}">'
+    )
     script_tags = "".join(
-        f'<script src="/static/js/{name}"></script>'
+        f'<script src="/static/js/{name}?v={asset_version}"></script>'
         for name in (
             "components.js", "core.js", "api.js", "router.js", "ui.js",
             "components/buttons.js", "components/cards.js", "components/tables.js",
@@ -525,6 +536,9 @@ def _externalized_html(html: str) -> str:
             "reports/index.js", "reports/work_logs.js", "reports/daily.js", "reports/weekly.js",
             "monitoring/index.js",
             "knowledge/index.js",
+            "vacations/core.js", "vacations/calendar.js", "vacations/requests.js",
+            "vacations/employee_form.js", "vacations/employees.js",
+            "vacations/conflicts.js", "vacations/index.js",
             "administration/index.js", "administration/profile.js", "administration/users.js",
             "administration/backup.js", "administration/diagnostics.js", "administration/references.js",
             "warehouse/stock_tree.js",

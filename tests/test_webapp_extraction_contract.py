@@ -5,7 +5,7 @@ import inspect
 from pathlib import Path
 import unittest
 
-from inventory import webapp
+from inventory import __version__, webapp
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +28,7 @@ class WebappExtractionContractTest(unittest.TestCase):
             "warehouse_routes",
             "monitoring_routes",
             "knowledge_routes",
+            "vacations_routes",
         ):
             with self.subTest(module=module):
                 self.assertIn(f"{module}.handle_", source)
@@ -37,6 +38,7 @@ class WebappExtractionContractTest(unittest.TestCase):
             "warehouse.py",
             "monitoring.py",
             "knowledge.py",
+            "vacations.py",
         ):
             with self.subTest(filename=filename):
                 self.assertTrue((ROOT / "inventory/routes" / filename).is_file())
@@ -48,13 +50,21 @@ class WebappExtractionContractTest(unittest.TestCase):
         self.assertIn("<!doctype html>", template_source)
         self.assertIn('id="warehouseStockTree"', webapp.HTML)
         self.assertIn('id="knowledge"', webapp.HTML)
+        self.assertIn(
+            f'href="/static/css/main.css?v={__version__}"',
+            webapp.HTML,
+        )
+        self.assertIn(
+            f'src="/static/js/product.js?v={__version__}"',
+            webapp.HTML,
+        )
         self.assertEqual(
             hashlib.sha256(webapp.LOGIN_HTML.encode("utf-8")).hexdigest(),
-            "42146d8fabf9fc66f5369c22219efc3f203ca88547a8ac992f1f86cc9d51c906",
+            "d5b644eaf2250b8889a0b2feae3bc38eda890208c3f980726ae69f1637190535",
         )
         self.assertEqual(
             hashlib.sha256(webapp.HTML.encode("utf-8")).hexdigest(),
-            "10d6d770fa3260495d8d8855e35b95b9313dca2fde7098ab978a40f2af1fd395",
+            "5e33000bc9d8c37b8945289936a7270536c4dce43dd10acf6bccca5d385a0d53",
         )
 
     def test_routes_and_templates_do_not_own_business_sql(self) -> None:

@@ -27,7 +27,7 @@ from .routes import administration as administration_routes
 from .routes import knowledge as knowledge_routes
 from .routes import monitoring as monitoring_routes
 from .routes import reports as reports_routes
-from .routes import warehouse as warehouse_routes
+from .routes import vacations as vacations_routes, warehouse as warehouse_routes
 from .routes.csv import (
     RECEIPT_HEADERS,
     REPORT_HEADERS,
@@ -54,6 +54,7 @@ from .warehouse.sites import (
     configured_solar_path,
     warehouse_runtime_config,
 )
+from .vacations.schema import prepare_vacations_database
 
 STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
 LOGGER = logging.getLogger(__name__)
@@ -174,6 +175,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                     self, route_runtime, path, query
                 ):
                     return
+                elif vacations_routes.handle_get(self, route_runtime, path, query): return
                 else:
                     selected = self._selected_warehouse_site()
                     with warehouse_sites.actor_context(
@@ -275,6 +277,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
 
         def _do_POST(self) -> None:
             parsed = urlparse(self.path)
+            if parsed.path.startswith("/api/vacations/") and vacations_routes.handle_post(self, route_runtime, parsed.path): return
             if parsed.path.startswith("/api/knowledge/"):
                 knowledge_routes.handle_post(self, route_runtime, parsed.path)
                 return
@@ -902,11 +905,11 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             return
 
     return Handler
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ODE — учет работ и склада")
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="путь к файлу SQLite")
     parser.add_argument("--solar-db", default=None, help="отдельный путь Solar DB; с --db включает Multi-Warehouse")
+    parser.add_argument("--vacations-db", default=None, help="отдельная БД отпусков")
     parser.add_argument("--host", default="127.0.0.1", help="адрес локального сервера")
     parser.add_argument("--port", type=int, default=8765, help="порт локального сервера")
     parser.add_argument("--no-browser", action="store_true", help="не открывать браузер автоматически")
@@ -922,17 +925,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="внешний application state root для FULL inventory Preview",
     )
     return parser
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not logging.getLogger().handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-        )
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
         _validate_test_mode_database(args.db)
+        vacations_path = prepare_vacations_database(args.db, args.vacations_db, args.solar_db)
         contour_policy = PostingPolicy(
             args.db,
             mode=args.warehouse_contour,
@@ -953,6 +953,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     app_context = create_application_context(
         args.db,
         service=service,
+        vacations_db_path=vacations_path,
         configuration=warehouse_runtime_config(
             service.db_path,
             contour=args.warehouse_contour,

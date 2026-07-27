@@ -15,6 +15,7 @@ from inventory.db import (
     install_knowledge_schema,
     install_reports_uvr_schema,
 )
+from inventory.vacations.schema import install_vacations_schema
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -72,14 +73,17 @@ class RuntimeModuleMigrationTest(unittest.TestCase):
                     "SELECT name FROM sqlite_master WHERE type='table'"
                 )}
             self.assertNotIn("knowledge_articles", tables)
+            self.assertNotIn("vacation_employees", tables)
 
     def test_explicit_installers_are_idempotent_and_preserve_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             database = Path(tmp) / "warehouse.db"
+            vacations = Path(tmp) / "vacations.db"
             create_promoted_fixture(database)
             for _ in range(2):
                 install_reports_uvr_schema(database)
                 install_knowledge_schema(database)
+                install_vacations_schema(vacations)
             with closing(sqlite3.connect(database)) as db:
                 columns = {str(row[1]) for row in db.execute("PRAGMA table_info(work_logs)")}
                 tables = {str(row[0]) for row in db.execute(
@@ -94,6 +98,22 @@ class RuntimeModuleMigrationTest(unittest.TestCase):
             self.assertTrue({
                 "knowledge_articles", "knowledge_attachments", "knowledge_article_tags",
             } <= tables)
+            self.assertNotIn("vacation_employees", tables)
+            with closing(sqlite3.connect(vacations)) as db:
+                vacation_tables = {
+                    str(row[0])
+                    for row in db.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                vacation_integrity = str(
+                    db.execute("PRAGMA integrity_check").fetchone()[0]
+                )
+            self.assertTrue({
+                "vacation_employees", "vacation_assignments", "vacation_requests",
+                "vacation_conflicts", "vacation_history", "vacation_audit_log",
+            } <= vacation_tables)
+            self.assertEqual(vacation_integrity, "ok")
             self.assertGreater(section_count, 20)
             self.assertEqual(integrity, "ok")
             self.assertEqual(foreign_keys, [])
@@ -120,6 +140,7 @@ class RuntimeModuleMigrationTest(unittest.TestCase):
             )
             self.assertTrue(manifest["after"]["reports_ready"])
             self.assertTrue(manifest["after"]["knowledge_ready"])
+            self.assertNotIn("vacations_ready", manifest["after"])
             self.assertEqual(manifest["after"]["integrity_check"], "ok")
             self.assertEqual(manifest["after"]["foreign_key_violations"], 0)
             byte_copy = Path(manifest["backups"]["byte_copy"])

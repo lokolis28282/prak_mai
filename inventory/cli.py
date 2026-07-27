@@ -80,7 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("--basis", default="Карточка оборудования")
     add.add_argument("--responsible", default="Кладовщик № 1")
 
-    for name, help_text in (("receipt", "оформить приход"), ("issue", "оформить выдачу")):
+    for name, help_text in (("receipt", "оформить приход"), ("issue", "оформить расход")):
         command = commands.add_parser(name, help=help_text)
         command.add_argument("equipment_id", type=int)
         command.add_argument("quantity", type=positive_int)

@@ -67,7 +67,9 @@ python scripts\migrate_runtime_modules.py --db data\warehouse.db --backup-dir C:
 The backup directory must be new and outside the repository. The command creates
 a byte-copy, a SQLite backup and a JSON manifest, verifies SHA-256, integrity,
 foreign keys and sidecars, then installs Reports UVR references/columns and
-Knowledge tables. Fresh databases already receive the complete current schema.
+Knowledge tables. Vacations is not part of this migration: ordinary web
+startup creates/opens the independent `data/vacations.db`. Neither Warehouse
+DB receives `vacation_*` tables.
 
 The Knowledge-only additive installer remains available for controlled legacy
 setups:

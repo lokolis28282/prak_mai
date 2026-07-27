@@ -650,7 +650,6 @@ UI обязан явно помечать source type. Legacy-событие н�
 - scripts/migration_reference_data.py;
 - scripts/audit_warehouse_database.py;
 - scripts/stabilize_reference_data.py;
-- scripts/remove_test_serial.py;
 - migration smoke scripts;
 - start_*migration* launchers;
 - старые candidate/pilot tests;

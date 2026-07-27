@@ -15,6 +15,7 @@ from inventory.administration.facade import AdministrationFacade
 from inventory.knowledge.facade import KnowledgeFacade
 from inventory.monitoring.facade import MonitoringFacade
 from inventory.reports.facade import ReportsFacade
+from inventory.vacations.facade import VacationFacade
 from inventory.warehouse.facade import WarehouseFacade
 from inventory.warehouse.baseline.posting_policy import PostingPolicy
 from inventory.warehouse.baseline.service import FullInventoryService
@@ -28,6 +29,7 @@ class ApplicationContext:
     monitoring: MonitoringFacade
     knowledge: KnowledgeFacade
     administration: AdministrationFacade
+    vacations: VacationFacade
     current_actor: str = ""
     feature_flags: FeatureFlags | None = None
     configuration: RuntimeConfig | None = None
@@ -60,6 +62,9 @@ class ApplicationContext:
             service.db_path,
             state_root=runtime.full_inventory_state_root,
         )
+        vacations_path = Path(
+            runtime.vacations_db_path or service.db_path.with_name("vacations.db")
+        ).expanduser().resolve()
         event_publisher = NoopEventPublisher()
         return cls(
             db_path=service.db_path,
@@ -73,6 +78,7 @@ class ApplicationContext:
             monitoring=MonitoringFacade(),
             knowledge=KnowledgeFacade(service),
             administration=AdministrationFacade(service.administration_service),
+            vacations=VacationFacade(vacations_path),
             current_actor=current_actor,
             feature_flags=flags,
             configuration=runtime,
@@ -95,20 +101,26 @@ def create_application_context(
     configuration: RuntimeConfig | None = None,
     warehouse_contour: str | None = None,
     full_inventory_state_root: str | Path | None = None,
+    vacations_db_path: str | Path | None = None,
 ) -> ApplicationContext:
     compat = service or WarehouseService(db_path)
-    if configuration is None and warehouse_contour is not None:
+    if configuration is None:
         configuration = RuntimeConfig(
             compat.db_path,
             feature_flags or FeatureFlags(),
-            warehouse_contour=warehouse_contour,
+            warehouse_contour=warehouse_contour or "unknown",
             production_db_path=DEFAULT_DB_PATH,
             full_inventory_state_root=(
                 Path(full_inventory_state_root)
                 if full_inventory_state_root is not None
                 else None
             ),
+            vacations_db_path=(
+                Path(vacations_db_path) if vacations_db_path is not None else None
+            ),
         )
+    elif vacations_db_path is not None:
+        configuration.vacations_db_path = Path(vacations_db_path)
     return ApplicationContext.from_service(
         compat,
         current_actor=current_actor,

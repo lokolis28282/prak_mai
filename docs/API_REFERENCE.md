@@ -1,8 +1,8 @@
-# ODE 0.17.0 — справочник HTTP API
+# ODE 0.18.0 — справочник HTTP API
 
 Фактическая поверхность локального HTTP API (`inventory/webapp.py` и
 `inventory/routes/`, порт по умолчанию `8765`). Составлен по коду версии
-0.17.0. API предназначен
+0.18.0. API предназначен
 для собственного браузерного UI; внешние интеграции появятся после 1.0.
 
 ## Общий контракт
@@ -23,7 +23,8 @@
   `NOT_INITIALIZED`/`DEGRADED`/чужой контур запись блокируется (HTTP 409).
 - Warehouse API работает с выбранным в HTTP-сессии site. IXcellerate и Solar
   используют разные SQLite-файлы; Reports/Monitoring/Knowledge/Admin остаются
-  в общем application contour.
+  в общем application contour. Vacations также остаётся общим и не зависит от
+  выбранного склада.
 
 ### Коды ошибок
 
@@ -65,6 +66,8 @@
 | `/api/admin` | Только admin: backup-файлы, пользователи, журнал аудита. |
 | `/api/warehouse/system-status` | Состояние складского контура (baseline/provisional, authoritative). |
 | `/api/monitoring/status` | Статус Monitoring-модуля и его capabilities. |
+| `/api/vacations/bootstrap?date_from=…&date_to=…` | Общий календарь, сотрудники, effective assignments, отпуска, pending-конфликты и справочники статусов. Доступен всем аутентифицированным пользователям. |
+| `/api/vacations/history?limit=…` | История изменений отпусков/графиков и решений, максимум 1000 строк. |
 | `/api/migration-pilot`, `/api/migration-full` | Read-only review disposable миграционных БД (только при marker-guard). |
 
 ## `POST /api/action` — единая точка мутаций
@@ -166,6 +169,20 @@ DCIM-данные (если включён collector) и подготовлен�
 вложения — отдельными подмаршрутами (upload/download с containment-проверкой
 путей). Запись — `engineer`/`admin`; удаление — soft-delete.
 
+## Отпуска (`/api/vacations/*`)
+
+Все операции доступны любому аутентифицированному пользователю; actor
+фиксируется в `vacation_history` и `vacation_audit_log` отдельной
+`data/vacations.db`. Складские БД API не читает и не изменяет.
+
+| Метод и путь | Назначение |
+|---|---|
+| `POST /api/vacations/employees` | Добавить сотрудника и начальное назначение. Payload: `first_name`, `last_name`, `site`, `schedule_type`, `shift_group`, `valid_from`, optional `note`, `is_site_senior`, `is_department_head`, `is_substitute`. |
+| `POST /api/vacations/requests` | Создать отпуск. Payload: `employee_id`, `date_from`, `date_to`, `sfera_status`, optional `sfera_reference`, `substitute_employee_id`, `comment`. Конфликтная запись возвращается с `conflict_status=PENDING`. |
+| `POST /api/vacations/requests/{id}/update` | Изменить период/статус/подменного и повторно вычислить конфликты. |
+| `POST /api/vacations/conflicts/{request_id}/resolve` | `{"decision":"APPROVED"|"REJECTED","comment":"…"}` — подтвердить исключение либо отклонить отпуск. |
+| `POST /api/vacations/employees/{employee_id}/assignment` | Effective-dated смена `site`, `schedule_type`, `shift_group`, `valid_from`, `note`. |
+
 ## Экспорт и шаблоны (GET)
 
 `/export/*.csv` — balance, stock, receipt, issue (+`*-current` — только
@@ -183,5 +200,7 @@ daily-report, delivery, inventory, inventory-numbers, equipment.
 ## Статика и страница
 
 `GET /` — SPA-страница (HTML собирается на сервере, инлайновые style/script
-вырезаются `_externalized_html()`); `GET /static/…` — CSS/JS c
-anti-traversal проверкой; `GET /favicon.ico`.
+вырезаются `_externalized_html()`); CSS/JS подключаются с
+`?v=<inventory.__version__>`, чтобы браузер не смешивал runtime разных
+релизов. `GET /static/…` — CSS/JS c anti-traversal проверкой;
+`GET /favicon.ico`.

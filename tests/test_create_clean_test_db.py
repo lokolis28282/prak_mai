@@ -110,6 +110,12 @@ class CreateCleanTestDbTest(unittest.TestCase):
         with closing(sqlite3.connect(output)) as connection:
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM stock_receipts").fetchone()[0], 0)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM work_logs").fetchone()[0], 0)
+            self.assertIsNone(
+                connection.execute(
+                    """SELECT 1 FROM sqlite_master
+                       WHERE type='table' AND name='vacation_employees'"""
+                ).fetchone()
+            )
             self.assertGreater(connection.execute("SELECT COUNT(*) FROM users").fetchone()[0], 0)
             self.assertGreater(connection.execute("SELECT COUNT(*) FROM reference_values").fetchone()[0], 0)
             self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")

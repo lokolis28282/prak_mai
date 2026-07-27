@@ -1,6 +1,6 @@
 # ODE Project Hub
 
-Дата актуализации: 2026-07-26.
+Дата актуализации: 2026-07-27.
 
 Это главная точка входа в текущее состояние проекта. Hub не копирует ADR,
 DDL или stage evidence, а связывает их и явно разделяет два параллельных
@@ -19,6 +19,8 @@ DDL или stage evidence, а связывает их и явно разделя
 9. [AGENT_HANDOFF.md](AGENT_HANDOFF.md) — минимальный handoff нового агента.
 10. [Multi-Warehouse](../MULTI_WAREHOUSE_ARCHITECTURE.md) — физическая
     изоляция IXcellerate/Solar и bootstrap Solar.
+11. [Vacations](../VACATIONS_ARCHITECTURE.md) — самостоятельный календарь,
+    графики и очередь конфликтов двух площадок.
 
 ## Иерархия источников
 

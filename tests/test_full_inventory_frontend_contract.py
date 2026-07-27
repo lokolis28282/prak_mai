@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from inventory import webapp
+from inventory import __version__, webapp
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +18,10 @@ class FullInventoryFrontendContractTest(unittest.TestCase):
         cls.css = (ROOT / "static/css/main.css").read_text(encoding="utf-8")
 
     def test_external_script_banner_and_root_are_in_final_html(self) -> None:
-        self.assertIn('<script src="/static/js/warehouse/full_inventory.js"></script>', webapp.HTML)
+        self.assertIn(
+            f'<script src="/static/js/warehouse/full_inventory.js?v={__version__}"></script>',
+            webapp.HTML,
+        )
         self.assertIn('id="warehouseSystemBanner"', webapp.HTML)
         self.assertIn('id="fullInventoryApp"', webapp.HTML)
         self.assertNotIn("<script>function createSession", webapp.HTML)

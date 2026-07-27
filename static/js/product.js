@@ -151,7 +151,7 @@
     const net=received-issued,blockers=Number(stats.data_quality_blockers||0),review=Number(stats.data_quality_review||0);
     return renderElement('div',{className:'warehouse-overview-kpis',children:[
       warehouseOverviewKpiTile('Принято сегодня',formatNumber(received),()=>openTask('warehouse','receipt'),{className:'good'}),
-      warehouseOverviewKpiTile('Выдано сегодня',formatNumber(issued),()=>openTask('warehouse','issue'),{className:'warn'}),
+      warehouseOverviewKpiTile('Списано сегодня',formatNumber(issued),()=>openTask('warehouse','issue'),{className:'warn'}),
       warehouseOverviewKpiTile('Изменение за смену',`${net>=0?'+':''}${formatNumber(net)}`,openWarehouseEvents,{valueClassName:net>=0?'good':'bad'}),
       warehouseOverviewKpiTile('Ошибки учёта',formatNumber(blockers),openWarehouseProblems,{className:blockers>0?'bad':'good'}),
       warehouseOverviewKpiTile('Данные для уточнения',formatNumber(review),openWarehouseProblems,{className:review>0?'warn':''}),
@@ -233,7 +233,7 @@
       renderElement('div',{className:'warehouse-overview-toolbar warehouse-overview-actions',children:[
         renderElement('div',{children:[
           renderButton({text:'Принять',className:'button',onClick:()=>openTask('warehouse','receipt')}),
-          renderButton({text:'Выдать',className:'button',onClick:()=>openTask('warehouse','issue')}),
+          renderButton({text:'Списать',className:'button',onClick:()=>openTask('warehouse','issue')}),
           renderButton({text:'Все типы',className:'button',onClick:()=>openWarehouseBalance()})
         ]})
       ]})
@@ -286,7 +286,7 @@
     const recent=(state.warehouse_history||[]).slice(0,8);
     const kpis=[
       ['Оборудование',stats.equipment],['Кабели',stats.cables],
-      ['Сегодня принято',stats.received_today],['Сегодня выдано',stats.issued_today],
+      ['Сегодня принято',stats.received_today],['Сегодня списано',stats.issued_today],
       ['Проблемы',stats.problems],['Поставки',stats.deliveries]
     ];
     const recentTable=renderTable({
@@ -309,7 +309,7 @@
       renderElement('h3',{className:'dashboard-section-title',text:'Быстрые действия'}),
       renderElement('div',{className:'dashboard-actions',children:[
         dashboardAction('Принять оборудование','Открыть сценарии прихода',()=>openTask('warehouse','receipt'),true),
-        dashboardAction('Выдать оборудование','Открыть сценарии расхода',()=>openTask('warehouse','issue')),
+        dashboardAction('Списать оборудование','Открыть сценарии расхода',()=>openTask('warehouse','issue')),
         dashboardAction('Открыть поставку','Найти или загрузить документ',()=>openTask('warehouse','deliveries')),
         dashboardAction('Найти оборудование','Перейти к глобальному поиску',focusGlobalSearch)
       ]}),
@@ -1012,6 +1012,8 @@
     history[replace?'replaceState':'pushState'](stateValue,'',hash);
   }
   function renderProductRoute(section,view){
+    const warehouseSwitcher=byId('warehouseSiteSwitcher');
+    if(warehouseSwitcher)warehouseSwitcher.hidden=section!=='warehouse';
     const balanceBody=byId('balanceBody');
     if(section==='warehouse'&&view==='balance')renderSimpleBalance();
     else if(balanceBody?.childElementCount)balanceBody.replaceChildren();
@@ -1073,7 +1075,10 @@
       switcher.id='warehouseSiteSwitcher';
       actions.prepend(switcher);
     }
-    if(switcher)switcher.textContent=`Склад: ${warehouseLabel}`;
+    if(switcher){
+      switcher.textContent=`Склад: ${warehouseLabel}`;
+      switcher.hidden=currentSection!=='warehouse';
+    }
   };
   // 0.12.17.1: ODE always opens the four-module launcher built by
   // warehouseLanding() (static/js/ui.js). renderDashboard() (KPI overview,

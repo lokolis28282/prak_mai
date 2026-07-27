@@ -46,7 +46,10 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         self.assertIn("Инструменты мониторинга", self.product)
         self.assertIn("window.openMonitoringManualSearch", self.product)
         self.assertIn("reports/worklogs", self.ui)
-        self.assertIn("'warehouse','works','reports','administration'", self.router)
+        self.assertIn(
+            "'warehouse','works','vacations','reports','administration'",
+            self.router,
+        )
         self.assertIn("window.loadWorkLogs = load", self.work_logs)
         self.assertNotIn("let uvrLogs", self.ui)
         self.assertNotIn("function dailyRow", self.ui)

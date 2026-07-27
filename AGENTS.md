@@ -9,6 +9,9 @@
 - Monitoring и Reports принадлежат отдельным направлениям и не связываются со
   складом. Monitoring предоставляет изолированный manual hostname/DCIM flow и
   routing по локальным ignored JSON rules; Reports — УВР и сменные отчёты.
+- Vacations — отдельный application-модуль на `data/vacations.db`. Он не
+  читает и не мигрирует `warehouse.db`/`warehouse_solar.db`; собственные
+  roster, requests, conflicts, history и audit остаются только в Vacations DB.
 - Reference Data runtime: `UI → existing API → ApplicationContext →
   WarehouseFacade → ReferenceDataService → reference_*_v2`.
 - Нельзя hardcode справочники в JS и нельзя переписывать operational raw/S/N
@@ -25,17 +28,19 @@
 0.13 architecture index — в `docs/README.md`, пользовательская инструкция —
 в `README.md`.
 
-Current source: ODE `0.17.0` с Multi-Warehouse IXcellerate/Solar, физически
-выделенными Web routes/templates, Warehouse, Reports и Administration
-boundaries. FULL Inventory Preview / resolutions и disposable baseline
-rehearsal сохранены. Последний фактический ZIP остаётся `0.12.17 RC1`; новый
-Windows artifact не собран.
+Current source: ODE `0.18.0` с Multi-Warehouse IXcellerate/Solar, отдельным
+Vacations bounded context и физически выделенными Web routes/templates,
+Warehouse, Reports и Administration boundaries. FULL Inventory Preview /
+resolutions и disposable baseline rehearsal сохранены. Последний фактический
+ZIP остаётся `0.12.17 RC1`; новый Windows artifact не собран.
 
-## Текущий локальный контур (2026-07-26)
+## Текущий локальный контур (2026-07-27)
 
 - `data/warehouse.db` — основной application/IXcellerate contour;
   `data/warehouse_solar.db` — отдельный Solar Warehouse contour. Обычный
   `python3 app.py` подключает оба без migration env/launcher.
+- `data/vacations.db` — самостоятельный общий план отпусков двух площадок;
+  создаётся отдельно и не является частью ни одного Warehouse contour.
 - Это проверенная promotion полного historical candidate: 50 000 карточек,
   50 000 receipt states, 18 798 issues и 18 798 allocations. Legacy
   `equipment/operations` не являются read-path карточек, KPI или баланса.
@@ -169,7 +174,9 @@ app.py
    inventory/db.py         схема и идемпотентные миграции
             │
             ▼
-   data/warehouse.db       рабочая SQLite-база
+   data/warehouse.db       склад IXcellerate
+   data/warehouse_solar.db склад Solar
+   data/vacations.db       самостоятельный модуль отпусков
 
 scripts/migration_reference_data.py
             │ offline only

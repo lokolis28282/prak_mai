@@ -239,7 +239,7 @@ Neither area was archived, moved, or deleted in this phase.
 | `inventory/migration/` | 14 | U | source | KEEP | Offline migration domain code; explicitly protected; has dedicated test modules that pass in full-suite discovery (392/392, verified this session) |
 | `inventory/shared/reference_normalization.py`, `inventory/warehouse/classification.py`, `migration_full*.py`, `migration_pilot*.py` | 7 | U | source | KEEP | Explicitly protected |
 | `ode/` | 17 | U | source, Platform Stage 0.13.1 foundation | KEEP | Explicitly protected; 55–60 focused tests independently run and passed twice this session |
-| `scripts/migration_*`, `scripts/smoke_migration_*`, `scripts/stabilize_reference_data.py`, `scripts/audit_warehouse_database.py`, `scripts/remove_test_serial.py` | 8 | U | source tooling | KEEP | Explicitly protected |
+| `scripts/migration_*`, `scripts/smoke_migration_*`, `scripts/stabilize_reference_data.py`, `scripts/audit_warehouse_database.py` | 7 | U | source tooling | KEEP | Explicitly protected |
 | `static/js/administration/references.js`, `static/js/warehouse/migration_pilot.js` | 2 | U | source | KEEP | Explicitly protected; frontend-contract audit passed this session |
 | `tests/ode013/` (6 files) + `tests/test_migration_*`, `test_reference_data_foundation.py`, `test_serial_preservation.py`, `test_ui_navigation_architecture.py`, `test_warehouse_classification.py`, `test_warehouse_overview_frontend.py`, `test_warehouse_stabilization.py`, `headless_migration_*_smoke.js` | 21 | U | tests | KEEP | Explicitly protected; discovered and passed as part of 392/392 this session |
 

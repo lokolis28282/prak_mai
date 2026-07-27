@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
-  <title id="title">ODE 0.17.0 — карта связей модулей</title>
+  <title id="title">ODE 0.18.0 — карта связей модулей</title>
   <desc id="desc">Тонкий Web shell с выделенными routes и templates и CLI входят в ApplicationContext. WarehouseSiteRegistry выбирает физически изолированную SQLite-базу IXcellerate или Solar, а Reports, Knowledge и Administration остаются в общем application contour. Monitoring использует только локальные правила и опциональный DCIM.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071521"/><stop offset="1" stop-color="#10152a"/></linearGradient>
@@ -12,7 +12,7 @@
   <rect width="1400" height="820" rx="24" fill="url(#bg)"/>
   <circle cx="700" cy="420" r="265" fill="none" stroke="#2dd4bf" stroke-opacity=".08" stroke-width="85"/>
   <circle cx="700" cy="420" r="330" fill="none" stroke="#8b5cf6" stroke-opacity=".06" stroke-width="2"/>
-  <text x="56" y="62" class="title">ODE 0.17.0 · архитектурный граф</text>
+  <text x="56" y="62" class="title">ODE 0.18.0 · архитектурный граф</text>
   <text x="56" y="88" class="meta">Codebase Memory snapshot · 6 949 nodes · 29 294 edges · 525 files · 35 HTTP routes</text>
 
   <path class="edge" d="M215 178C365 178 446 285 570 366"/><path class="edge" d="M215 265C365 265 460 330 570 386"/>

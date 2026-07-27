@@ -27,6 +27,7 @@ from inventory.db import (
 from inventory.core.application import create_application_context
 from inventory.core.context import RuntimeConfig
 from inventory.service import WarehouseService
+from inventory.vacations.schema import install_vacations_schema
 from inventory.webapp import make_handler
 CHROME_CANDIDATES = [
     Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
@@ -65,12 +66,14 @@ def main(argv: list[str] | None = None) -> int:
     ) as directory:
         work = Path(directory)
         database = work / "warehouse.db"
+        vacations_database = work / "vacations.db"
         shutil.copy2(source_database, database)
         # The smoke contour is disposable and must exercise the current source
         # schema even when the production copy still awaits its explicit,
         # backup-guarded module migration.
         install_reports_uvr_schema(database)
         install_knowledge_schema(database)
+        install_vacations_schema(vacations_database)
         with closing(sqlite3.connect(database)) as db, db:
             db.execute(
                 """UPDATE users
@@ -86,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
                 database,
                 warehouse_contour="demo",
                 full_inventory_state_root=work / "full_inventory_state",
+                vacations_db_path=vacations_database,
                 settings={
                     "warehouse_sites_enabled": True,
                     "solar_db_path": work / "warehouse_solar.db",

@@ -252,7 +252,6 @@ Frontend — два сосуществующих слоя, оба загружа
 | `stabilize_reference_data.py` | 389 | Идемпотентная стабилизация canonical Reference Data. |
 | `generate_hostname_rules.py` | 454 | Генерация monitoring JSON-правил из утверждённых Excel (выход в git не входит). |
 | `restore_legacy_patchcord_balance.py` | 229 | Восстановление однозначных опенинг-балансов патч-кордов из legacy. |
-| `remove_test_serial.py` | 232 | Удаление одного доказанного тестового S/N из рабочей БД (backup + proof). |
 | `migrate_runtime_modules.py` / `migrate_knowledge_base.py` | 165/47 | Аддитивная установка Reports/Knowledge схем в существующую БД. |
 | `benchmark_full_inventory.py` | 218 | Disposable benchmark Preview 1k/10k/50k. |
 | `generate_code_graph.py` | 377 | Генерация интерактивного офлайн-графа связей кодовой базы → `docs/assets/code_graph.html` (AST-импорты Python + webapp→static); `--check` ловит stale HTML. |

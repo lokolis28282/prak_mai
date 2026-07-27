@@ -3,15 +3,16 @@ const items=state.equipment.map(x=>option(x.id,`${x.inventory_number} — ${x.mo
 const refs=kind=>state.references.filter(v=>v.kind===kind&&v.is_active).map(v=>v.name);
 const balanceValues=key=>state.balance.map(v=>v[key]);
 const fill=(id,label,values)=>{const target=document.getElementById(id);if(target)target.innerHTML=option('',label)+[...new Set(values.filter(Boolean))].map(v=>option(v)).join('')};
+const fillHtml=(id,html)=>{const target=document.getElementById(id);if(target)target.innerHTML=html};
 document.querySelectorAll('.items').forEach(x=>x.innerHTML=items);
 document.querySelectorAll('.categories').forEach(x=>x.innerHTML=state.categories.map(v=>option(v.name)).join(''));
 document.querySelectorAll('.locations').forEach(x=>x.innerHTML=state.locations.map(v=>option(v.code,`${v.code} — ${v.name}`)).join(''));
 fill('balanceProject','Все проекты',balanceValues('project'));fill('balanceObject','Все объекты',balanceValues('object_name'));fill('balanceEquipmentType','Все типы оборудования',balanceValues('equipment_type'));fill('balanceComponentType','Все типы компонентов',balanceValues('component_type'));fill('balanceCableType','Все типы кабеля',balanceValues('cable_type'));fill('balanceUnit','Все единицы',balanceValues('unit'));fill('balanceDatacenter','Все ЦОД',balanceValues('datacenter'));
-document.getElementById('taskType').innerHTML=refs('task_type').map(v=>option(v)).join('');document.getElementById('workStatus').innerHTML=refs('work_log_status').map(v=>option(v)).join('');if(typeof uvrFillControls==='function')uvrFillControls();document.getElementById('issueTaskType').innerHTML=option('','Без задачи (только кабель)')+refs('task_type').map(v=>option(v)).join('');document.getElementById('bulkTaskType').innerHTML=refs('task_type').map(v=>option(v)).join('');document.getElementById('scanIssueTaskType').innerHTML=refs('task_type').map(v=>option(v)).join('');
+fillHtml('taskType',refs('task_type').map(v=>option(v)).join(''));fillHtml('workStatus',refs('work_log_status').map(v=>option(v)).join(''));if(typeof uvrFillControls==='function')uvrFillControls();fillHtml('issueTaskType',option('','Без задачи (только кабель)')+refs('task_type').map(v=>option(v)).join(''));fillHtml('bulkTaskType',refs('task_type').map(v=>option(v)).join(''));fillHtml('scanIssueTaskType',refs('task_type').map(v=>option(v)).join(''));
 document.querySelectorAll('.ref-input').forEach(x=>{const id=x.getAttribute('list');let list=document.getElementById(id);if(!list){list=document.createElement('datalist');list.id=id;document.body.appendChild(list)}list.innerHTML=refs(x.dataset.kind).map(v=>option(v)).join('')});
-const kinds=Object.entries(state.reference_kinds).map(([k,v])=>option(k,v)).join('');document.getElementById('referenceKind').innerHTML=kinds;document.getElementById('referenceFilter').innerHTML=option('','Все справочники')+kinds;const reports=state.daily_report_uploads.map(x=>option(x.id,`${x.filename} — ${x.uploaded_at} (${x.row_count})`)).join('');document.getElementById('uploadedReport').innerHTML=reports;document.getElementById('uploadedReportList').innerHTML=reports;renderReferences()}
-function renderReferences(){const body=document.getElementById('referenceBody'),view=document.getElementById('references');if(!body)return;if(view&&!view.classList.contains('active')){body.replaceChildren();return}const selected=document.getElementById('referenceFilter').value;const groups=Object.entries(state.reference_kinds).filter(([kind])=>!selected||kind===selected);body.innerHTML=groups.map(([kind,label])=>{const rows=state.references.filter(x=>x.kind===kind);return `<tr><th colspan="4">${esc(label)}</th></tr>`+rows.map(x=>`<tr><td>${esc(label)}</td><td>${esc(x.name)}</td><td>${x.is_active?'Активно':'Отключено'}</td><td>${state.current_user.role==='viewer'?'—':`<button class="button" onclick="toggleReference(${x.id},${x.is_active?0:1})">${x.is_active?'Отключить':'Включить'}</button>`}</td></tr>`).join('')}).join('')||'<tr><td class="empty" colspan="4">Нет значений</td></tr>'}
-document.getElementById('referenceFilter').oninput=renderReferences;
+const kinds=Object.entries(state.reference_kinds).map(([k,v])=>option(k,v)).join('');fillHtml('referenceKind',kinds);fillHtml('referenceFilter',option('','Все справочники')+kinds);const reports=state.daily_report_uploads.map(x=>option(x.id,`${x.filename} — ${x.uploaded_at} (${x.row_count})`)).join('');fillHtml('uploadedReport',reports);fillHtml('uploadedReportList',reports);renderReferences()}
+function renderReferences(){const body=document.getElementById('referenceBody'),view=document.getElementById('references');if(!body)return;if(view&&!view.classList.contains('active')){body.replaceChildren();return}const selected=document.getElementById('referenceFilter')?.value||'';const groups=Object.entries(state.reference_kinds).filter(([kind])=>!selected||kind===selected);body.innerHTML=groups.map(([kind,label])=>{const rows=state.references.filter(x=>x.kind===kind);return `<tr><th colspan="4">${esc(label)}</th></tr>`+rows.map(x=>`<tr><td>${esc(label)}</td><td>${esc(x.name)}</td><td>${x.is_active?'Активно':'Отключено'}</td><td>${state.current_user.role==='viewer'?'—':`<button class="button" onclick="toggleReference(${x.id},${x.is_active?0:1})">${x.is_active?'Отключить':'Включить'}</button>`}</td></tr>`).join('')}).join('')||'<tr><td class="empty" colspan="4">Нет значений</td></tr>'}
+const referenceFilter=document.getElementById('referenceFilter');if(referenceFilter)referenceFilter.oninput=renderReferences;
 const balanceFilterMap={balanceProject:'project',balanceObject:'object_name',balanceEquipmentType:'equipment_type',balanceComponentType:'component_type',balanceCableType:'cable_type',balanceUnit:'unit',balanceDatacenter:'datacenter'};
 function activeBalanceFilters(){return Object.fromEntries(Object.entries(balanceFilterMap).map(([id,key])=>[key,document.getElementById(id)?.value||'']).filter(x=>x[1]))}
 function rowMatchesQuery(x,q){return !q||['serial_number','inventory_number','item_name','model','vendor','project','object_name','shelf'].some(k=>String(x[k]||'').toLocaleLowerCase().includes(q))}
@@ -563,6 +564,7 @@ function warehouseLanding(){
   report:'M6 3h9l3 3v15H6V3zm3 5h6M9 12h6M9 16h4',
   monitor:'M3 12h4l2-5 4 10 2-5h6',
   knowledge:'M5 4h6a3 3 0 013 3v13H8a3 3 0 00-3 1V4zm14 0h-5a3 3 0 00-3 3v13h5a3 3 0 013 1V4',
+  vacation:'M7 3v3m10-3v3M4 9h16M5 5h14a1 1 0 011 1v14H4V6a1 1 0 011-1zm3 8h3m2 0h3m-8 4h3',
   works:'M5 5h14v14H5V5zm3 4h8M8 13h5',
   profile:'M12 12a4 4 0 100-8 4 4 0 000 8zm-7 9c.8-4 3.1-6 7-6s6.2 2 7 6'
  };
@@ -586,6 +588,7 @@ function warehouseLanding(){
    portalCard({module:'warehouse',route:'warehouse/overview',icon:'warehouse',title:'Склад',subtitle:'Карточки и складские операции',items:['Обзор оборудования','Приход и расход','Поставки и инвентаризация'],onOpen:()=>openWarehouseHub()}),
    portalCard({module:'monitoring',route:'monitoring/monitoring',icon:'monitor',title:'Мониторинг',subtitle:'Ручной поиск по Hostname',items:['DCIM и IP-адреса','Рекомендации и сообщения','История поиска'],onOpen:()=>openMonitoringHub()}),
    portalCard({module:'knowledge',route:'knowledge/home',icon:'knowledge',title:'База знаний',subtitle:'Инструкции и документация',items:['Рабочие инструкции','Спецификации оборудования','Прикрепленные документы'],onOpen:()=>openKnowledgeBase()}),
+   portalCard({module:'vacations',route:'vacations/calendar',icon:'vacation',title:'Отпуска',subtitle:'Общий календарь двух площадок',items:['План отпусков','Графики и площадки','Проверка конфликтов'],onOpen:()=>openVacations()}),
    portalCard({module:'profile',route:'profile/profile',icon:'profile',title:'Профиль',subtitle:'Инженер смены',items:['Личные данные','Смена пароля'],onOpen:()=>openShiftProfile()}),
    portalCard({module:'reports',route:'reports/worklogs',icon:'report',title:'Отчеты',subtitle:'УВР и отчеты смены',items:['Реестр выполненных работ','Отчет за смену','Отчет за неделю'],onOpen:()=>openReportsHub()}),
    portalCard({module:'administration',route:'administration/admin_users',icon:'works',title:'Администрирование ODE',subtitle:'Пользователи, база и справочники',items:['Права и пользователи','Backup и проверка БД','Аудит и справочники'],onOpen:()=>openTask('administration','admin_users')})
@@ -594,7 +597,7 @@ function warehouseLanding(){
  const adminCard=home.querySelector('[data-module="administration"]');
  if(adminCard){adminCard.classList.add('admin-entry');adminCard.hidden=state.current_user?.role!=='admin'}
 }
-function openWarehouseHub(){showSection('warehouse');if(!byId('overview'))return;setHtml('overview',`<div class="landing-head compact"><p class="eyebrow">Склад</p><h2>Что нужно сделать?</h2><p>Выберите одну операцию для продолжения.</p></div><div class="action-grid"><button onclick="openTask('warehouse','receipt')"><strong>Принять оборудование</strong><span>Сканирование, поставка, кабели или ручной ввод</span></button><button onclick="openTask('warehouse','issue')"><strong>Выдать оборудование</strong><span>Сканирование, баланс или списание кабелей</span></button><button onclick="openTask('warehouse','deliveries')"><strong>Поставки</strong><span>Документы снабжения и приемка</span></button><button onclick="openTask('warehouse','balance')"><strong>Баланс</strong><span>Складские позиции, поиск и фильтры</span></button><button onclick="openTask('warehouse','inventory')"><strong>Инвентаризация</strong><span>Сверка фактического наличия</span></button></div>`);showView('overview')}
+function openWarehouseHub(){showSection('warehouse');if(!byId('overview'))return;setHtml('overview',`<div class="landing-head compact"><p class="eyebrow">Склад</p><h2>Что нужно сделать?</h2><p>Выберите одну операцию для продолжения.</p></div><div class="action-grid"><button onclick="openTask('warehouse','receipt')"><strong>Принять оборудование</strong><span>Сканирование, поставка, кабели или ручной ввод</span></button><button onclick="openTask('warehouse','issue')"><strong>Списать оборудование</strong><span>Сканирование, баланс или списание кабелей</span></button><button onclick="openTask('warehouse','deliveries')"><strong>Поставки</strong><span>Документы снабжения и приемка</span></button><button onclick="openTask('warehouse','balance')"><strong>Баланс</strong><span>Складские позиции, поиск и фильтры</span></button><button onclick="openTask('warehouse','inventory')"><strong>Инвентаризация</strong><span>Сверка фактического наличия</span></button></div>`);showView('overview')}
 function openMonitoringHub(){
  openTask('monitoring','monitoring');showDevelopmentPlaceholder(byId('monitoring'),'Мониторинг — в разработке','M');
 }
@@ -657,10 +660,10 @@ function rebuildScenarioCards(){
  };
  const receipt=document.getElementById('receipt');
  appendCards(receipt.querySelector('.scenario-cards'),[
-  ['scan','Сканировать оборудование',startReceiptWizard],
-  ['edit','Ручное добавление',()=>receipt.showScenario('Ручной ввод')],
+  ['scan','Принять сканером',startReceiptWizard],
+  ['edit','Принять вручную',()=>receipt.showScenario('Ручной ввод')],
   ['cable','Принять кабели',()=>receipt.showScenario('Принять кабели')],
-  ['import','Импорт поставки',()=>openTask('warehouse','deliveries')]
+  ['import','Принять из поставки',()=>openTask('warehouse','deliveries')]
  ]);
  const issue=document.getElementById('issue');
  appendCards(issue.querySelector('.scenario-cards'),[
@@ -668,7 +671,7 @@ function rebuildScenarioCards(){
   ['search','Найти в балансе и списать',()=>issue.showScenario('Найти и списать из баланса')],
   ['cable','Списать кабели',()=>issue.showScenario('Списать кабели')],
   ['import','Импорт расхода',()=>issue.showScenario('Импорт расхода')],
-  ['edit','Ручное списание',()=>issue.showScenario('Ручной ввод')]
+  ['edit','Списать вручную',()=>issue.showScenario('Ручной ввод')]
  ]);
 }
 function modernShell(){

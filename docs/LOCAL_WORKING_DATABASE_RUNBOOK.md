@@ -8,9 +8,9 @@
 manifest, counts, HEAD, integrity/FK и проверьте обе копии read-only.
 
 Для exact test record сначала докажите отсутствие migration/source provenance и
-реальных связей. `scripts/remove_test_serial.py` намеренно привязан к reviewed
-receipt 1050001/S/N `1`, проверяет SHA и backups и отказывается работать при
-любом расхождении. Не адаптируйте его под LIKE или массовое удаление. После
+реальных связей. Одноразовый correction-скрипт с конкретными параметрами
+архивируется вместе с внешними доказательствами и не хранится в Git. Не
+адаптируйте старое доказательство под LIKE или массовое удаление. После
 correction повторите SHA/counts/distinct/leading-zero samples/integrity/FK.
 
 Диагностика global search: проверить `/api/global-search`, затем facade/service,

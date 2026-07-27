@@ -23,4 +23,5 @@ class RuntimeConfig:
     warehouse_contour: str = "unknown"
     production_db_path: Path | None = None
     full_inventory_state_root: Path | None = None
+    vacations_db_path: Path | None = None
     settings: dict[str, Any] = field(default_factory=dict)

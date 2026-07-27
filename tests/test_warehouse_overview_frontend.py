@@ -77,6 +77,31 @@ class WarehouseOverviewFrontendTest(unittest.TestCase):
         self.assertIn("['journal','Все события']", PRODUCT_JS)
         self.assertIn("(section==='warehouse'||section==='reports')&&view==='journal'", PRODUCT_JS)
 
+    def test_warehouse_switch_tolerates_removed_legacy_selects(self) -> None:
+        self.assertIn("const fillHtml=(id,html)=>", UI_JS)
+        for identifier in (
+            "referenceKind",
+            "referenceFilter",
+            "uploadedReport",
+            "uploadedReportList",
+        ):
+            self.assertIn(f"fillHtml('{identifier}'", UI_JS)
+            self.assertNotIn(
+                f"document.getElementById('{identifier}').innerHTML",
+                UI_JS,
+            )
+        self.assertIn("document.getElementById('referenceFilter')?.value||''", UI_JS)
+
+    def test_warehouse_switcher_is_scoped_to_warehouse_module(self) -> None:
+        self.assertIn(
+            "warehouseSwitcher.hidden=section!=='warehouse'",
+            PRODUCT_JS,
+        )
+        self.assertIn(
+            "switcher.hidden=currentSection!=='warehouse'",
+            PRODUCT_JS,
+        )
+
     def test_warehouse_history_has_distinct_empty_and_error_states(self) -> None:
         self.assertIn("Складские операции пока отсутствуют.", UI_JS)
         self.assertIn("Не удалось загрузить историю складских операций.", UI_JS)
@@ -87,8 +112,8 @@ class WarehouseOverviewFrontendTest(unittest.TestCase):
         self.assertIn("user.display_name", UI_JS)
         self.assertIn(".profile-actions #currentUser{max-width:320px", CSS)
         self.assertIn("overflow-wrap:anywhere", CSS)
-        self.assertNotIn("Мерненко Александр", UI_JS)
-        self.assertNotIn("Александр Мерненко", UI_JS)
+        self.assertNotIn("Фамилия Сотрудника", UI_JS)
+        self.assertNotIn("Сотрудник Фамилия", UI_JS)
 
     def test_receipt_scenario_cards_keep_only_action_titles(self) -> None:
         receipt_cards = UI_JS.split(
@@ -97,10 +122,10 @@ class WarehouseOverviewFrontendTest(unittest.TestCase):
             "const issue=document.getElementById('issue')", 1
         )[0]
         for title in (
-            "Сканировать оборудование",
-            "Ручное добавление",
+            "Принять сканером",
+            "Принять вручную",
             "Принять кабели",
-            "Импорт поставки",
+            "Принять из поставки",
         ):
             self.assertIn(title, receipt_cards)
         self.assertNotIn("<span>", receipt_cards)
@@ -109,6 +134,26 @@ class WarehouseOverviewFrontendTest(unittest.TestCase):
         self.assertIn("renderSvgIcon(icons[icon])", UI_JS)
         for emoji in ("📷", "✍", "📦", "📁", "📋", "🧵"):
             self.assertNotIn(emoji, UI_JS)
+
+    def test_warehouse_uses_receipt_and_write_off_vocabulary(self) -> None:
+        for label in (
+            "Списано сегодня",
+            "Списать оборудование",
+            "Принять сканером",
+            "Принять вручную",
+            "Списать сканером",
+            "Списать вручную",
+        ):
+            self.assertIn(label, UI_JS + PRODUCT_JS)
+        for legacy_label in (
+            "Выдано сегодня",
+            "Сегодня выдано",
+            "Выдать оборудование",
+            "Сканировать оборудование",
+            "Ручное добавление",
+            "Ручное списание",
+        ):
+            self.assertNotIn(legacy_label, UI_JS + PRODUCT_JS)
 
     def test_issue_scenarios_do_not_leak_unselected_forms(self) -> None:
         self.assertIn("title:'Импорт расхода'", UI_JS)

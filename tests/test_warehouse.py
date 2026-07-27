@@ -604,8 +604,8 @@ class WarehouseServiceTest(unittest.TestCase):
             db.row_factory = sqlite3.Row
             user = db.execute("SELECT * FROM users WHERE email = 'lokolis'").fetchone()
             self.assertIsNotNone(user)
-            self.assertEqual(user["first_name"], "Александр")
-            self.assertEqual(user["last_name"], "Мерненко")
+            self.assertEqual(user["first_name"], "Локальный")
+            self.assertEqual(user["last_name"], "Администратор")
             self.assertEqual(user["role"], "admin")
             self.assertNotEqual(user["password_hash"], "lokolis")
             self.assertTrue(verify_password("lokolis", user["password_hash"]))
@@ -664,7 +664,7 @@ class WarehouseServiceTest(unittest.TestCase):
 
     def test_profile_updates_name_and_position_but_not_email(self) -> None:
         with self.service.user_context("lokolis"):
-            updated = self.service.update_profile("Александр", "Мерненко", "Старший инженер")
+            updated = self.service.update_profile("Тестовый", "Пользователь", "Старший инженер")
         self.assertEqual(updated["position"], "Старший инженер")
         self.assertEqual(updated["email"], "lokolis")
 
