@@ -10,7 +10,7 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.18.1`.
+- Current source/runtime metadata: `0.19.0`.
 - Последний фактически собранный ZIP: `0.12.17 RC1`.
 - Рабочий runtime: `app.py` → общий application context + выбранный Warehouse
   site → `data/warehouse.db` (IXcellerate) или
@@ -90,6 +90,31 @@ Restore в 0.18.1 не реализован и не отображается к�
 и делает code graph кроссплатформенно детерминированным (`static/...` на всех
 ОС). Финальные gate/evidence зафиксированы в
 `../../RELEASE_REPORT_ODE_0_18_1.md`.
+
+### ODE 0.19.0 documentation alignment
+
+Релиз без изменений runtime-кода: единственная правка вне документации —
+`inventory.__version__`. Вся функциональность унаследована от 0.18.1, поэтому
+поверхность API, схема SQLite, ownership таблиц и топология кода
+(245 узлов / 502 связи) не менялись.
+
+Причина релиза — расхождение между кодом и корневыми документами, накопленное
+за 0.17.0–0.18.1. `CLAUDE.md` описывал контур 0.16.0 и утверждал, что
+`data/warehouse.db` — «единственный активный продуктовый контур»;
+`ARCHITECTURE.md` открывался разделом «ODE 0.14 initial-inventory boundary»;
+`ITOG.md` был озаглавлен «ODE 0.16.0». Ни один из трёх не упоминал Solar,
+Vacations и multi-DB backup. Все три приведены к фактическому контуру,
+`AGENTS.md` синхронизирован с `CLAUDE.md`, число тестов приведено к
+фактическим 628.
+
+Gate 0.19.0 выполнен на Linux (Python 3.10.12): full discover
+628 тестов `OK (skipped=8)` под `-W error::ResourceWarning`, Python compile,
+49 JavaScript-файлов, module/frontend/repository-data audits, clean-DB
+dry-run, `generate_code_graph.py --check` и `git diff --check` — PASS.
+Headless Chrome smoke в этой среде не запускался и не заявляется как
+выполненный: он остаётся частью macOS/Windows приёмки. Три рабочие БД
+остались byte-identical, `integrity_check=ok`, FK violations и sidecars
+отсутствуют. Evidence: `../../RELEASE_REPORT_ODE_0_19_0.md`.
 
 ### ODE 0.16.0 modular extraction gate
 
@@ -320,7 +345,7 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий release-кандидат ODE 0.18.0 — 620 тестов; code graph содержит
+Текущий release-кандидат ODE 0.19.0 — 628 тестов; code graph содержит
 актуальные значения из `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
 из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256
 `8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`,
@@ -330,3 +355,10 @@ module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
 руководителю, затем target Equipment Query Port и отдельный controlled cutover
 design. До него реальный initial-baseline publish запрещён. После cutover —
 correction/reversal, backup/restore drill и server-readiness.
+
+Ближайшие два кандидата уже имеют утверждённые контракты и не требуют нового
+design-этапа: полный restore-vertical по
+[`../decisions/ADR-013-multi-database-backup-restore.md`](../decisions/ADR-013-multi-database-backup-restore.md)
+(закрывает пункт W1 «backup/restore drill») и сторнирующие складские операции
+по
+[`../decisions/ADR-014-warehouse-correction-reversal.md`](../decisions/ADR-014-warehouse-correction-reversal.md).

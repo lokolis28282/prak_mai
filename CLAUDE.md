@@ -2,10 +2,20 @@
 
 ## Current Warehouse stabilization boundary
 
-- Единственный активный продуктовый контур — Warehouse на `data/warehouse.db`.
+- Активный Warehouse разделён на два физически изолированных site runtime:
+  IXcellerate на `data/warehouse.db` и Solar на `data/warehouse_solar.db`.
+  Solar при первом bootstrap пуст по operations и получает только одноразовый
+  снимок справочников IXcellerate.
 - Monitoring и Reports принадлежат отдельным направлениям и не связываются со
   складом. Monitoring предоставляет изолированный manual hostname/DCIM flow и
   routing по локальным ignored JSON rules; Reports — УВР и сменные отчёты.
+- Vacations — отдельный application-модуль на `data/vacations.db`. Он не
+  читает и не мигрирует `warehouse.db`/`warehouse_solar.db`; собственные
+  roster, requests, conflicts, history и audit остаются только в Vacations DB.
+- Administration владеет `RuntimeDatabaseRegistry` (topology-метаданные трёх
+  runtime-БД) и `MultiDatabaseBackupService`. Snapshot создаётся только через
+  SQLite Backup API во внешний каталог; restore из UI отключён до реализации
+  протокола `docs/decisions/ADR-013-multi-database-backup-restore.md`.
 - Reference Data runtime: `UI → existing API → ApplicationContext →
   WarehouseFacade → ReferenceDataService → reference_*_v2`.
 - Нельзя hardcode справочники в JS и нельзя переписывать operational raw/S/N
@@ -21,14 +31,20 @@
 подробности — в `docs/README.md` (индекс архитектурной документации) и в
 `README.md` (пользовательская инструкция).
 
-Current source/runtime metadata: ODE `0.16.0` с физически выделенными Web
-routes/templates, Warehouse, Reports и Administration boundaries; последний
-фактический ZIP остаётся `0.12.17 RC1`. Новый Windows artifact не собран.
+Current source/runtime metadata: ODE `0.19.0` с Multi-Warehouse
+IXcellerate/Solar, отдельным Vacations bounded context, multi-database backup
+профилем Administration и физически выделенными Web routes/templates,
+Warehouse, Reports и Administration boundaries. FULL Inventory Preview /
+resolutions и disposable baseline rehearsal сохранены. Последний фактический
+ZIP остаётся `0.12.17 RC1`. Новый Windows artifact не собран.
 
-## Текущий локальный контур (2026-07-14)
+## Текущий локальный контур (2026-07-27)
 
-- `data/warehouse.db` — единственная обычная локальная рабочая БД; `python3
-  app.py` обязан выбирать её без migration env/launcher.
+- `data/warehouse.db` — основной application/IXcellerate contour;
+  `data/warehouse_solar.db` — отдельный Solar Warehouse contour. Обычный
+  `python3 app.py` подключает оба без migration env/launcher.
+- `data/vacations.db` — самостоятельный общий план отпусков двух площадок;
+  создаётся отдельно и не является частью ни одного Warehouse contour.
 - Это проверенная promotion полного historical candidate: 50 000 карточек,
   50 000 receipt states, 18 798 issues и 18 798 allocations. Legacy
   `equipment/operations` не являются read-path карточек, KPI или баланса.
@@ -151,18 +167,23 @@ app.py
             │
             ▼
    inventory/core/            ApplicationContext, маршрутизация, контракт событий
+   inventory/routes/          доменные HTTP-ветви модулей
+   inventory/templates/       сборка HTML-оболочки
    inventory/warehouse/       склад: приход, расход, кабели, поставки, баланс, история
    inventory/reports/         work logs, ежедневные/недельные отчеты
-   inventory/administration/  users, роли, аудит, backup/restore, diagnostics
+   inventory/administration/  users, роли, аудит, runtime registry, backup, diagnostics
    inventory/monitoring/      manual hostname/DCIM search, изолирован от остальных
    inventory/knowledge/       статьи, теги, private attachments
+   inventory/vacations/       общий план отпусков IXcellerate/Solar
             │
             ▼
    inventory/shared/       общие адаптеры SQLite/CSV/валидации
    inventory/db.py         схема и идемпотентные миграции
             │
             ▼
-   data/warehouse.db       рабочая SQLite-база
+   data/warehouse.db       склад IXcellerate
+   data/warehouse_solar.db склад Solar
+   data/vacations.db       самостоятельный модуль отпусков
 
 scripts/migration_reference_data.py
             │ offline only
@@ -182,16 +203,19 @@ WarehouseFacade -> migration pilot UI / Equipment Card
 ```
 
 Публичные фасады: `WarehouseFacade`, `ReportsFacade`, `MonitoringFacade`,
-`AdministrationFacade`. Новый код в `web/API` обращается к модулям только через
-фасад, не через `WarehouseCore`/`WarehouseService` напрямую. Полная карта
-миграции по стадиям — `docs/MODULE_ARCHITECTURE.md`.
+`AdministrationFacade`, `KnowledgeFacade`, `VacationFacade`. Новый код в
+`web/API` обращается к модулям только через фасад, не через
+`WarehouseCore`/`WarehouseService` напрямую. Полная карта миграции по стадиям —
+`docs/MODULE_ARCHITECTURE.md`.
 
 Владение таблицами (кто пишет что) — `docs/DATABASE_OWNERSHIP.md`. Коротко:
 Warehouse владеет `stock_receipts`, `stock_issues`, `stock_issue_allocations`,
 `deliveries`, `delivery_lines`; Reports — `work_logs`,
-`daily_report_uploads`, `daily_report_rows`; Administration — `users`,
-`audit_log`, backup-файлами. Reports не пишет складские таблицы, Warehouse не
-пишет отчетные — только через `WarehouseEventReader`.
+`daily_report_uploads`, `daily_report_rows`; Knowledge — `knowledge_*` и
+private attachments; Vacations — `vacation_*` и `vacation_audit_log` в
+собственной БД; Administration — `users`, `audit_log`, verified backup-файлами
+и manifest во внешнем каталоге. Reports не пишет складские таблицы, Warehouse
+не пишет отчетные — только через `WarehouseEventReader`.
 
 Stage 0.13.3A migration package не является runtime-модулем и не владеет
 production tables — offline `migration_*` tables существуют только в
@@ -235,6 +259,14 @@ HTML-разметка в этом файле (вне `<style>`/`<script>`) — �
 - Warehouse не пишет отчетные таблицы.
 - Monitoring не импортирует Warehouse/Reports/`WarehouseService`/
   `WarehouseCore`; будущие таблицы — с префиксом `monitoring_`.
+- Vacations не читает и не пишет складские таблицы и не устанавливает свою
+  схему в Warehouse DB; `vacation_*` живут только в `data/vacations.db`.
+- `RuntimeDatabaseRegistry` — только topology-метаданные (путь, профиль,
+  обязательные таблицы). Он не читает бизнес-строки и не владеет ими.
+  `MultiDatabaseBackupService` принимает только allowlisted `database_id` и
+  никогда не принимает path от HTTP-клиента.
+- Restore обязан оставаться fail-closed до реализации ADR-013: `filename` и
+  `confirmed: true` не являются достаточным подтверждением.
 - `WarehouseCore` — compatibility core, не удалять одним изменением; новая
   логика подключается через фасады, вторая параллельная реализация экрана не
   создается.
@@ -258,13 +290,14 @@ HTML-разметка в этом файле (вне `<style>`/`<script>`) — �
 
 ## Работа с базой (обязательно)
 
-- **Запрещено** без прямого указания: очищать/перезаписывать
-  `data/warehouse.db`, сбрасывать пароль `lokolis`, гонять stress/нагрузочные
+- **Запрещено** без прямого указания: очищать/перезаписывать любую из трёх
+  runtime-БД (`data/warehouse.db`, `data/warehouse_solar.db`,
+  `data/vacations.db`), сбрасывать пароль `lokolis`, гонять stress/нагрузочные
   тесты на рабочей базе, копировать тестовую базу поверх рабочей.
 - Перед любой mutation-операцией — зафиксировать путь к БД и SHA-256, сделать
   backup. Тестовые/деструктивные операции — только на временной копии.
-- После работы сравнить SHA-256 рабочей базы до/после (должен совпасть, если
-  задача не про саму БД) и прогнать `PRAGMA integrity_check` /
+- После работы сравнить SHA-256 каждой рабочей базы до/после (должен совпасть,
+  если задача не про саму БД) и прогнать `PRAGMA integrity_check` /
   `PRAGMA foreign_key_check`.
 - Для тестового контура без риска для рабочих данных — `scripts/
   create_clean_test_db.py` (см. `docs/TEST_DATABASE_GUIDE.md`, если создан).
@@ -320,9 +353,10 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 594 tests under
-`-W error::ResourceWarning`. Never run a 51,003-row
-operational import as a performance test.
+Current full discover result is 628 tests under
+`-W error::ResourceWarning` (`skipped=8` на Linux/macOS, `skipped=15` на
+Windows — платформенные и отсутствующие ignored migration-артефакты).
+Never run a 51,003-row operational import as a performance test.
 
 ## Codebase memory (только developer tooling)
 
@@ -382,15 +416,18 @@ Stage создаётся датированный report/appendix.
 5. Актуальные release-заметки хранить в `RELEASE_REPORT_ODE_*.md`; release-
    архивы находятся в `release/` и не коммитятся.
 
-## Известные ограничения (source/runtime 0.16.0; ZIP 0.12.17 RC1)
+## Известные ограничения (source/runtime 0.19.0; ZIP 0.12.17 RC1)
 
 - SQLite не рассчитана на активную многопользовательскую запись — актуально
   для этапов «несколько инженеров» и «сервер», требует отдельного решения.
 - Нет корректирующих/сторнирующих операций для ошибочно проведенного
-  прихода/расхода.
+  прихода/расхода; целевой контракт — `ADR-014`. Исправления на экране
+  «Контроль качества данных» их не заменяют.
 - Monitoring manual UI и optional DCIM collector реализованы; email/Rooms
   transport и Kaiten отсутствуют, недельный отчёт — базовая агрегация.
-- Нет автоматического расписания/ротации backup.
+- Создание backup трёх runtime-БД доступно из UI, но restore, автоматическое
+  расписание, ротация и шифрование не реализованы; restore fail-closed до
+  ADR-013.
 - `inventory/webapp.py` уже отделён от routes/templates, но общий
   auth/session/security shell и dispatch всё ещё крупные; compatibility
   `WarehouseService`/`WarehouseCore` удаляются только постепенно.

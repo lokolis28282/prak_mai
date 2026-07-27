@@ -1,5 +1,42 @@
 # Changelog ODE
 
+## ODE 0.19.0 — documentation alignment (2026-07-27)
+
+Релиз без изменений runtime-кода. Единственная правка вне документации —
+`inventory.__version__`. Вся функциональность унаследована от 0.18.1.
+
+Причина релиза: после Multi-Warehouse (0.17.0), Vacations (0.18.0) и multi-DB
+backup (0.18.1) три корневых документа продолжали описывать более ранний
+контур и вводили в заблуждение и людей, и AI-агентов:
+
+- `CLAUDE.md` описывал контур 0.16.0 и утверждал, что `data/warehouse.db` —
+  «единственный активный продуктовый контур»: ни Solar, ни Vacations, ни
+  multi-DB backup в нём не упоминались;
+- `ARCHITECTURE.md` открывался разделом «ODE 0.14 initial-inventory boundary»
+  и описывал одну runtime-БД;
+- `ITOG.md` был озаглавлен «главная техническая документация ODE 0.16.0» и
+  приводил устаревшее число тестов.
+
+Что сделано:
+
+- `CLAUDE.md`, `ARCHITECTURE.md` и `ITOG.md` приведены к фактическому контуру:
+  три независимые runtime-БД, шесть публичных фасадов, `inventory/routes` и
+  `inventory/templates`, `RuntimeDatabaseRegistry` и
+  `MultiDatabaseBackupService`, fail-closed restore до ADR-013 и отсутствие
+  сторнирующих операций до ADR-014;
+- `AGENTS.md` дополнен разделом multi-DB backup и синхронизирован с
+  `CLAUDE.md`, чтобы два набора правил не расходились;
+- число автоматических тестов приведено к фактическим 628 везде, где оно
+  упоминалось (`594`, `598`, «619» и незаполненное значение заменены);
+- версия поднята до `0.19.0`, обновлены версионные указатели в `README.md`,
+  `docs/README.md`, `docs/API_REFERENCE.md`, `docs/CODEBASE_GRAPH.md` и
+  `docs/project/CURRENT_STATE.md`;
+- добавлен `RELEASE_REPORT_ODE_0_19_0.md`; датированные отчёты 0.18.1 и
+  раньше сохранены без изменений.
+
+Датированные исторические отчёты, ADR и manual QA предыдущих версий не
+переписывались.
+
 ## ODE 0.18.1 — stabilization and multi-DB backup slice (2026-07-27)
 
 - Administration получил `RuntimeDatabaseRegistry` для трёх независимых

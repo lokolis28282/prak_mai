@@ -1,21 +1,22 @@
-# ODE 0.18.1 — карта кода и зависимостей
+# ODE 0.19.0 — карта кода и зависимостей
 
 ![ODE 0.18 architecture graph](assets/ode-architecture-graph.svg)
 
 ## Граф файлов и импортов
 
-[![ODE 0.18.1 — граф файлов и импортов](assets/ode-code-graph-0.18.1.png)](assets/code_graph.html)
+[![ODE — граф файлов и импортов](assets/ode-code-graph-0.18.1.png)](assets/code_graph.html)
 
 - GitHub-friendly PNG:
   [`assets/ode-code-graph-0.18.1.png`](assets/ode-code-graph-0.18.1.png);
 - интерактивный self-contained HTML:
   [`assets/code_graph.html`](assets/code_graph.html).
 
-Детерминированный committed graph ODE 0.18.1 содержит 245 файлов/модулей и
-502 import/serve edges. Последний успешно зафиксированный внешний full-снимок
-Codebase Memory от 2026-07-27 (до 0.18.1) содержит 7 067 узлов, 30 991 ребро,
-550 файлов и 42 распознанных HTTP-маршрута. В текущей Windows-среде binary/MCP
-Codebase Memory не установлен, поэтому новые full-метрики не выдаются за
+Детерминированный committed graph ODE 0.19.0 содержит 245 файлов/модулей и
+502 import/serve edges. Значения совпадают с 0.18.1: релиз 0.19.0 не менял
+runtime-код, поэтому PNG-снимок 0.18.1 остаётся точным и не переснимался.
+Последний успешно зафиксированный внешний full-снимок Codebase Memory от
+2026-07-27 (до 0.18.1) содержит 7 067 узлов, 30 991 ребро, 550 файлов и 42
+распознанных HTTP-маршрута; новые full-метрики не снимались и не выдаются за
 полученные. `artifact_present=false`; `.codebase-memory` в repository нет.
 
 ## Runtime path
@@ -61,7 +62,7 @@ flowchart LR
   Events --> R
 ```
 
-Фактический web-path в 0.18.1:
+Фактический web-path в 0.19.0:
 
 `browser → webapp HTTP shell → session WarehouseSite → inventory/routes →
 selected facade → domain service/repository → selected SQLite`.
@@ -122,7 +123,9 @@ Migration packages не импортируются runtime Web/API и не пу�
   static-layout; версия читается из `inventory.__version__`.
 - PNG `assets/ode-code-graph-0.18.1.png` является GitHub-снимком
   интерактивного графа версии 0.18.1 и обновляется явно при публикации нового
-  визуального snapshot.
+  визуального snapshot. В 0.19.0 топология не менялась, поэтому снимок не
+  переснимался и имя файла сохранено; новый PNG нужен, когда изменится состав
+  узлов/связей.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если
   committed HTML устарел.
 - `python3 scripts/refresh_project_knowledge.py` обновляет HTML-граф и делает

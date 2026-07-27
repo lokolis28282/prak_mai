@@ -58,13 +58,17 @@ class WebappExtractionContractTest(unittest.TestCase):
             f'src="/static/js/product.js?v={__version__}"',
             webapp.HTML,
         )
+        # Пины включают cache-busting `?v={__version__}`, поэтому меняются при
+        # каждом bump версии. Обновлять их допустимо, только предварительно
+        # доказав, что подстановка прежней версии обратно даёт прежний хэш,
+        # то есть сама разметка не изменилась.
         self.assertEqual(
             hashlib.sha256(webapp.LOGIN_HTML.encode("utf-8")).hexdigest(),
-            "b219f37918519f68e8f5954815d0c74dc0db2d084c2149332e2e91d0728db715",
+            "ea8e294d512c32d6c1b0758bbf82235eaf1a952c79b10b834f129836bb3f5728",
         )
         self.assertEqual(
             hashlib.sha256(webapp.HTML.encode("utf-8")).hexdigest(),
-            "eb75d1e8b9836df280d6be60f85018fd68f9bf0d6a0937fe00fb3b143ceebc3a",
+            "7bc292e16de16ceb1aed08c1bda31c1bf6b374fcae9484ab976bcd48480879a7",
         )
 
     def test_routes_and_templates_do_not_own_business_sql(self) -> None:

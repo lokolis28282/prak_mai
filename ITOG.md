@@ -1,4 +1,4 @@
-# ITOG — главная техническая документация ODE 0.16.0
+# ITOG — главная техническая документация ODE 0.19.0
 
 Основной технический документ проекта. При будущих патчах начинать отсюда:
 здесь описано, как работает код, где входы и выходы, какие инварианты нельзя
@@ -7,15 +7,22 @@
 ## 1. Что это
 
 ODE («Отдел дежурных инженеров») — локальный офлайн-инструмент дежурной смены
-ЦОД: складской учёт (S/N-first), приход/расход со сканером, поставки,
-инвентаризация, контроль качества данных, УВР и отчёты, база знаний, ручной
-мониторинг. Python 3.10+ (только стандартная библиотека) + SQLite; UI в
-браузере; 594 автоматических теста.
+ЦОД: складской учёт (S/N-first) по двум площадкам, приход/расход со сканером,
+поставки, инвентаризация, контроль качества данных, УВР и отчёты, общий план
+отпусков, база знаний, ручной мониторинг. Python 3.10+ (только стандартная
+библиотека) + SQLite; UI в браузере; 628 автоматических тестов.
 
-Рабочая база — `data/warehouse.db` (50 000 карточек, 18 798 расходов;
-предварительный provisional-баланс до утверждения FULL-инвентаризации).
-**База с реальными серийниками и `data/monitoring/*.json` в git не входят**
-(защищено `.gitignore`; см. «Политика данных» в `README.md`).
+Приложение работает с тремя независимыми SQLite-файлами:
+
+- `data/warehouse.db` — Warehouse IXcellerate (50 000 карточек, 18 798
+  расходов; предварительный provisional-баланс до утверждения
+  FULL-инвентаризации);
+- `data/warehouse_solar.db` — Warehouse Solar, отдельный контур операций и
+  справочников;
+- `data/vacations.db` — общий для двух площадок модуль отпусков.
+
+**Базы с реальными серийниками, ФИО и `data/monitoring/*.json` в git не
+входят** (защищено `.gitignore`; см. «Политика данных» в `README.md`).
 
 ## 2. Вход в программу (main)
 
@@ -37,10 +44,14 @@ ODE («Отдел дежурных инженеров») — локальный 
 ```
 ApplicationContext.from_service(service)
  ├─ WarehouseFacade(service, posting_policy, full_inventory)
+ │    └─ WarehouseSiteRegistry: IXcellerate | Solar (выбор в HTTP-сессии)
  ├─ ReportsFacade (тот же instance, собранный WarehouseService)
  ├─ MonitoringFacade()          ← без service и без пути к БД
  ├─ KnowledgeFacade(service)
+ ├─ VacationFacade              ← собственная data/vacations.db
  └─ AdministrationFacade(AdministrationService)
+      ├─ RuntimeDatabaseRegistry     ← topology трёх runtime-БД
+      └─ MultiDatabaseBackupService  ← verified snapshot во внешний каталог
 ```
 
 Поток любой мутации:
@@ -63,10 +74,13 @@ ApplicationContext.from_service(service)
 | Reports | `/api/work-logs`, `/api/daily-report`, `/api/weekly-report`, actions `WORK_LOG*` | JSON/CSV | только `work_logs`, `daily_report_uploads`, `daily_report_rows`; склад видит **только** через `WarehouseEventReader` (read-only) |
 | Monitoring | `GET /api/monitoring/status`, `POST /api/monitoring/manual-search` (вне общего лока — долгий вызов) | JSON: routing + текст письма (без автоотправки) | **ничего** — фасад создаётся без БД; правила — локальные JSON, история — localStorage браузера |
 | Knowledge | `/api/knowledge/*` | JSON/файлы | `knowledge_*` |
-| Administration | `/api/admin`, admin-actions | JSON | `users`, `audit_log`, backup-файлы |
+| Vacations | `/api/vacations/*` | JSON | `vacation_*`, `vacation_audit_log` — **только** в `data/vacations.db`; складские БД не трогает |
+| Administration | `/api/admin`, admin-actions | JSON: health трёх runtime-БД, список копий, пользователи, аудит | `users`, `audit_log`; verified snapshot и manifest — во **внешнем** backup root, не в репозитории |
 | FULL Inventory | `/api/full-inventory/*` (вне общего лока) | JSON/XLSX | внешний workspace; рабочую БД читает read-only, публикация отключена |
 
 Monitoring и Reports между собой не связаны никак (ни импортов, ни таблиц).
+Vacations изолирован от обоих складов; переключатель площадки на его экранах
+отсутствует.
 
 ## 4. Инварианты (нарушение = регрессия)
 
@@ -76,7 +90,8 @@ Monitoring и Reports между собой не связаны никак (ни
    name — display. Повторный приход/расход того же S/N блокируется в
    транзакции.
 3. Reports не пишет складские таблицы; Warehouse не пишет отчётные;
-   Monitoring изолирован полностью.
+   Monitoring и Vacations изолированы полностью. IXcellerate и Solar —
+   независимые файлы: операция одного склада никогда не попадает в другой.
 4. Fill-empty-only для исправлений: заполненные поля не перезаписываются;
    дата — provenance (только пустая, с audit-пометкой manual).
 5. `inventory/migration` — offline; не импортируется runtime'ом; вывод —
@@ -88,6 +103,9 @@ Monitoring и Reports между собой не связаны никак (ни
    `<style>/<script>` до браузера не доходят (`_externalized_html()` в
    webapp shell); поведение живёт в `static/js/*`, стили — в
    `static/css/main.css`.
+9. Backup принимает только allowlisted `database_id` и пишет во внешний
+   каталог; путь от HTTP-клиента не принимается. Restore fail-closed до
+   реализации ADR-013.
 
 ## 5. Проверки перед любым патчем (gate)
 
@@ -98,7 +116,7 @@ python3 scripts/audit_module_boundaries.py
 python3 scripts/audit_frontend_contracts.py
 python3 scripts/audit_repository_data.py
 python3 scripts/generate_code_graph.py --check
-python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 594 OK
+python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 628 OK
 git diff --check
 python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 ```
@@ -120,12 +138,19 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 - **`docs/API_REFERENCE.md`** — полный справочник HTTP API (маршруты, все
   actions, payload'ы, коды ошибок, лимиты);
 - **`docs/assets/code_graph.html`** — интерактивный граф связей кодовой базы
-  (220 узлов / 448 связей: Python-импорты + webapp→static; фильтры по модулям,
+  (245 узлов / 502 связи: Python-импорты + webapp→static; фильтры по модулям,
   поиск, зум). Открывается в браузере офлайн; перегенерация после патча:
   `python3 scripts/generate_code_graph.py`; проверка актуальности без записи:
   `python3 scripts/generate_code_graph.py --check`;
 - `ARCHITECTURE.md` — целевая архитектура и фасады;
 - `docs/README.md` — индекс архитектурного трека 0.13 (DDL, ADR, диаграммы);
+- **`docs/MULTI_WAREHOUSE_ARCHITECTURE.md`** — контур IXcellerate/Solar;
+- **`docs/VACATIONS_ARCHITECTURE.md`** — модуль отпусков и правила смен;
+- **`docs/operations/backup-restore.md`** и
+  `docs/decisions/ADR-013-multi-database-backup-restore.md` — резервные копии
+  трёх runtime-БД и требуемый протокол будущего restore;
+- `docs/decisions/ADR-014-warehouse-correction-reversal.md` — целевой контракт
+  сторнирующих складских операций (не реализован);
 - `docs/DATABASE_OWNERSHIP.md` — владение таблицами;
 - `docs/DATA_QUALITY_OPERATIONS.md` — контракт операций качества данных;
 - `docs/SERIAL_NUMBER_PRESERVATION.md` — контракт сохранения S/N;
@@ -137,8 +162,8 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
   — Monitoring/Knowledge;
 - `CLAUDE.md` / `AGENTS.md` — правила работы с кодовой базой (люди и
   AI-агенты); `TECH_DEBT.md` — актуальный долг;
-- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_16_0.md` — изменения и текущий
-  релизный отчёт;
+- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_19_0.md` — изменения и текущий
+  релизный отчёт; отчёты 0.18.1 и раньше — датированные исторические снимки;
 - `docs/STAGES_HISTORY.md`, `docs/history/` — история этапов и датированные
   снимки старых отчётов;
 - `WINDOWS_RELEASE.md`, `README_WINDOWS.md`, `build_windows_package.py` —
@@ -163,10 +188,11 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 
 ## 8. Известные ограничения и долг
 
-Кратко: нет сторнирующих операций (data-quality исправления их не заменяют);
-SQLite — однопользовательская запись; webapp auth/session shell и
-compatibility-слой `WarehouseService`/`WarehouseCore` разбираются постепенно;
-Windows ZIP
+Кратко: нет сторнирующих операций (data-quality исправления их не заменяют,
+целевой контракт — ADR-014); restore резервной копии из UI отключён до
+реализации ADR-013, расписания и ротации копий нет; SQLite —
+однопользовательская запись; webapp auth/session shell и compatibility-слой
+`WarehouseService`/`WarehouseCore` разбираются постепенно; Windows ZIP
 остаётся `0.12.17 RC1`; 291 историческая карточка `item_name='#N/A'` ждёт
 отдельного data-correction этапа. Полные списки: `README.md` («Ограничения»)
 и `TECH_DEBT.md`.

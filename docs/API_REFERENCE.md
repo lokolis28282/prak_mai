@@ -1,8 +1,8 @@
-# ODE 0.18.1 — справочник HTTP API
+# ODE 0.19.0 — справочник HTTP API
 
 Фактическая поверхность локального HTTP API (`inventory/webapp.py` и
 `inventory/routes/`, порт по умолчанию `8765`). Составлен по коду версии
-0.18.1. API предназначен
+0.19.0; поверхность API не менялась с 0.18.1. API предназначен
 для собственного браузерного UI; внешние интеграции появятся после 1.0.
 
 ## Общий контракт
@@ -129,7 +129,7 @@
 | `CREATE_RUNTIME_BACKUP` | Обязателен `database_id`: `warehouse_ix`, `warehouse_solar` или `vacations`. Создаёт проверенный SQLite snapshot и manifest во внешнем storage. |
 | `CREATE_BACKUP` | Fail-closed: требуется выбрать конкретный `database_id`. |
 | `CHECK_DATABASE` | `PRAGMA integrity_check` + проверка ключевых таблиц. |
-| `RESTORE_BACKUP` | В 0.18.1 всегда отклоняется: безопасный preview-token/confirm/publish vertical ещё не реализован. |
+| `RESTORE_BACKUP` | Начиная с 0.18.1 всегда отклоняется: безопасный preview-token/confirm/publish vertical ещё не реализован. |
 | `CREATE_USER`, `UPDATE_PROFILE`, `CHANGE_PASSWORD` | Пользователи и профиль (PBKDF2-хеши). |
 
 ### Legacy (совместимость CLI-модели)
@@ -144,7 +144,7 @@
 | `POST /api/preview-csv?kind=…` | Preview CSV (приход/расход/УВР/массовое списание/инв.№): статистика, первые 100 строк, до 200 ошибок; БД не меняется. |
 | `POST /api/preview-xlsx?sheet=…` | Preview XLSX (УВР). |
 | `POST /api/import-csv?kind=…` | Прямой импорт для допустимых kind (одной транзакцией). |
-| `POST /api/upload-prod-db` | Legacy admin-only endpoint; в UI 0.18.1 отсутствует и не является multi-DB restore. Не использовать вместо ADR-013 workflow. |
+| `POST /api/upload-prod-db` | Legacy admin-only endpoint; в UI отсутствует начиная с 0.18.1 и не является multi-DB restore. Не использовать вместо ADR-013 workflow. |
 
 Лимиты: файл ≤ 50 МБ, ≤ 40 000 непустых строк; разделители `;`/`,`;
 кодировки UTF-8 BOM и Windows-1251; preview живёт в памяти до 1 часа.

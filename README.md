@@ -8,8 +8,8 @@
 Работает полностью офлайн: Python (только стандартная библиотека) + SQLite,
 интерфейс открывается в браузере на локальном компьютере.
 
-> **Версия 0.18.1** · Python 3.10+ · Windows /
-> macOS / Linux · внешние зависимости не требуются
+> **Версия 0.19.0** · Python 3.10+ · Windows /
+> macOS / Linux · внешние зависимости не требуются · 628 автоматических тестов
 
 ## Возможности
 
@@ -181,10 +181,12 @@ Rooms/email-текст, но не отправляет письмо автома
 
 ### Граф файлов и импортов
 
-[![ODE 0.18.1 — граф файлов и импортов](docs/assets/ode-code-graph-0.18.1.png)](docs/assets/code_graph.html)
+[![ODE — граф файлов и импортов](docs/assets/ode-code-graph-0.18.1.png)](docs/assets/code_graph.html)
 
 Статичный PNG отображается прямо на GitHub:
 [`docs/assets/ode-code-graph-0.18.1.png`](docs/assets/ode-code-graph-0.18.1.png).
+Визуальный снимок сделан на 0.18.1 и остаётся актуальным для 0.19.0: топология
+кода не менялась, обе версии дают одинаковые 245 узлов и 502 связи.
 Интерактивная версия с поиском, фильтрами, панорамой и масштабированием:
 [`docs/assets/code_graph.html`](docs/assets/code_graph.html).
 
@@ -392,7 +394,8 @@ status и последняя копия. Кнопка конкретной ба�
 - сохраняет manifest с database id, размером и SHA-256;
 - пишет событие `RUNTIME_DATABASE_BACKUP_CREATE` без содержимого БД.
 
-Восстановление из UI в 0.18.1 намеренно отключено. Частично безопасной кнопки
+Восстановление из UI в 0.19.0 по-прежнему намеренно отключено. Частично
+безопасной кнопки
 нет: следующий этап должен реализовать read-only preview, одноразовый token,
 защиту от cross-database restore, safety backup и атомарный `os.replace` по
 [ADR multi-DB restore](docs/decisions/ADR-013-multi-database-backup-restore.md).
@@ -503,7 +506,7 @@ ODE при импорте принимает оба разделителя: `,` 
 python3 -m unittest discover -s tests -v
 ```
 
-Текущий discover-набор версии 0.18.1 содержит автоматические тесты
+Текущий discover-набор версии 0.19.0 содержит 628 автоматических тестов
 Warehouse, Vacations, Monitoring, Knowledge, УВР и CLI-контура. Исторические
 составы gate по отдельным Stage сохранены в датированных CHANGELOG/manual QA и
 не используются как текущий счётчик. Набор включает CSV и шаблоны,
@@ -620,8 +623,10 @@ git diff --check
 [docs/STAGES_HISTORY.md](docs/STAGES_HISTORY.md), детальный список изменений —
 в [CHANGELOG.md](CHANGELOG.md). Старые QA/review/release-файлы являются
 датированными историческими снимками своих версий и не переписываются.
-Текущий release gate 0.18.1 и ограничения зафиксированы в
-[RELEASE_REPORT_ODE_0_18_1.md](RELEASE_REPORT_ODE_0_18_1.md); отчёт
+Текущий release gate 0.19.0 и ограничения зафиксированы в
+[RELEASE_REPORT_ODE_0_19_0.md](RELEASE_REPORT_ODE_0_19_0.md); отчёт
+multi-DB backup 0.18.1 сохранён в
+[RELEASE_REPORT_ODE_0_18_1.md](RELEASE_REPORT_ODE_0_18_1.md), отчёт
 Vacations/UX 0.18.0 сохранён в
 [RELEASE_REPORT_ODE_0_18_0.md](RELEASE_REPORT_ODE_0_18_0.md), отчёт
 Multi-Warehouse 0.17.0 сохранён в

@@ -1,5 +1,43 @@
 # Архитектура ODE
 
+Дата проверки: 2026-07-27. Текущий source/runtime: `0.19.0`.
+
+## ODE 0.19.0 runtime boundary
+
+Приложение обслуживает три физически независимых SQLite-файла:
+
+| Runtime DB | Контур | Владелец |
+|---|---|---|
+| `data/warehouse.db` | Warehouse IXcellerate | `WarehouseFacade` |
+| `data/warehouse_solar.db` | Warehouse Solar | `WarehouseFacade` (site-scoped) |
+| `data/vacations.db` | Отпуска двух площадок | `VacationFacade` |
+
+Выбор склада живёт в HTTP-сессии и переключает только Warehouse-фасад.
+Авторизация, Reports, Monitoring, Knowledge и Vacations остаются общими и не
+зависят от выбранной площадки. Solar при первом bootstrap пуст по operations и
+получает только одноразовый снимок справочников IXcellerate; дальше справочники
+и операции двух складов независимы.
+
+Vacations — самостоятельный bounded context. Он не читает и не мигрирует
+Warehouse DB; `vacation_*` и `vacation_audit_log` существуют только в
+`data/vacations.db`.
+
+Administration описывает эти три файла через `RuntimeDatabaseRegistry`
+(путь, профиль схемы, обязательные таблицы) и создаёт проверенные snapshot'ы
+через `MultiDatabaseBackupService`: SQLite Backup API под общим write-lock,
+внешний backup root, проверка integrity/FK/профиля таблиц, SHA-256 manifest,
+атомарная публикация и audit-событие без содержимого БД. Registry не владеет
+бизнес-таблицами и не читает их строки.
+
+Restore из UI намеренно отключён. Частично безопасной кнопки нет: полный
+протокол preview-token, cross-database guard, safety backup и атомарной
+публикации зафиксирован в
+[ADR-013](docs/decisions/ADR-013-multi-database-backup-restore.md).
+Компенсирующие складские операции (сторно ошибочного прихода/расхода) описаны
+отдельно в
+[ADR-014](docs/decisions/ADR-014-warehouse-correction-reversal.md) и в
+0.19.0 не реализованы.
+
 ## ODE 0.14 initial-inventory boundary
 
 `data/warehouse.db` остаётся legacy historical read model и не получает FULL
@@ -37,14 +75,13 @@ Global search выполняет exact S/N/Inventory Number индексные �
 Card дополняет operational позицию canonical/source/Part Number, но техническая
 migration confidence/provenance остаётся в `Администрирование ODE → Миграция`.
 
-Дата проверки: 2026-07-16. Текущий source/runtime: `0.14.0`. Последний фактически
-собранный Windows ZIP содержит `ODE 0.12.17 RC1`; ZIP RC2/Stage
-0.13.2/Stage 0.13.3A/Stage 0.13.3A.5 не
-создавался.
+Раздел выше описывал состояние на 2026-07-16 (`0.14.0`) и сохранён как
+исторический контекст. Последний фактически собранный Windows ZIP содержит
+`ODE 0.12.17 RC1`; новый artifact не создавался.
 
 ## Текущий локальный runtime contour
 
-`data/warehouse.db` — единственный normal-start target. Проверенный full
+`data/warehouse.db` — normal-start target основного склада. Проверенный full
 historical candidate был опубликован в этот путь через sibling
 `data/warehouse.db.next` и атомарный `os.replace`; исходный candidate не
 изменялся. При `python3 app.py` не требуется migration mode, UI открывается на
@@ -93,17 +130,22 @@ app.py
              ▼
  inventory/
  ├─ core/                      ApplicationContext, feature flags, event contracts
+ ├─ routes/                    per-module HTTP branches
+ ├─ templates/                 HTML shell assembly
  ├─ warehouse/                 receipts, issues, cables, deliveries, balance/history
  ├─ reports/                   work logs, daily/weekly reports
- ├─ administration/            users, audit read, backup/restore, diagnostics
+ ├─ administration/            users, audit read, runtime registry, backup, diagnostics
  ├─ monitoring/                hostname routing, manual search, optional DCIM
  ├─ knowledge/                 articles, tags and private attachments
+ ├─ vacations/                 shared IXcellerate/Solar vacation planning
  ├─ shared/                    SQLite/CSV/audit/validation adapters
  ├─ migration/                 offline source/reference/staging bounded context
  └─ db.py                      schema and idempotent migrations
              │
              ▼
- data/warehouse.db             working SQLite database
+ data/warehouse.db             Warehouse IXcellerate
+ data/warehouse_solar.db       Warehouse Solar
+ data/vacations.db             Vacations module
 ```
 
 `inventory/migration/` не является пятым runtime-модулем ODE. Это
@@ -117,10 +159,10 @@ writer при сборке, а browser читает только allowlisted pil
 `WarehouseFacade`. Output живёт только в ignored `migration_inputs/`.
 
 `ApplicationContext` является composition root. Web/API обращается к публичным
-`WarehouseFacade`, `ReportsFacade`, `AdministrationFacade` и
-`MonitoringFacade`. `WarehouseCore`/`WarehouseService` сохраняются как
-compatibility layer для ещё не мигрированных сценариев, но новая доменная
-логика не должна вызываться из webapp напрямую через core.
+`WarehouseFacade`, `ReportsFacade`, `AdministrationFacade`, `MonitoringFacade`,
+`KnowledgeFacade` и `VacationFacade`. `WarehouseCore`/`WarehouseService`
+сохраняются как compatibility layer для ещё не мигрированных сценариев, но
+новая доменная логика не должна вызываться из webapp напрямую через core.
 
 Модульные границы контролирует `scripts/audit_module_boundaries.py`. Владение
 таблицами описано в [docs/DATABASE_OWNERSHIP.md](docs/DATABASE_OWNERSHIP.md),
@@ -162,8 +204,10 @@ JSON values, использовать текущий actor context и не ра�
 
 - Warehouse: `stock_receipts`, `stock_issues`,
   `stock_issue_allocations`, `deliveries`, `delivery_lines`, legacy
-  `equipment`/`operations`;
+  `equipment`/`operations` — независимо в каждой из двух Warehouse DB;
 - Reports: `work_logs`, `daily_report_uploads`, `daily_report_rows`;
+- Knowledge: `knowledge_*` и private attachments;
+- Vacations: `vacation_*` и `vacation_audit_log` только в `data/vacations.db`;
 - Administration/shared infrastructure: `users`, `audit_log`,
   `reference_values` до дальнейшего разделения.
 
