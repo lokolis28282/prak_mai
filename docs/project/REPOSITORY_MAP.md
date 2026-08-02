@@ -1,80 +1,56 @@
-# Repository Map
+# Repository Map — ODE 0.20.0
 
-## ODE 0.14 additions
+Authoritative checkout: `/Users/lokolis/Documents/prak_mai`. Другие копии не
+являются источником истины и используются только read-only после явного
+сравнения.
 
-- `inventory/warehouse/baseline/` — status/posting policy, external FULL
-  Inventory workspace, strict XLSX Preview and resolutions;
-- `baseline_rehearsal/` — restricted bridge that creates only disposable ODE
-  target-schema candidate DBs;
-- `scripts/benchmark_full_inventory.py` — temporary 1k/10k/50k benchmark;
-- `data/warehouse.db` — installation-owned runtime data, ignored and never a
-  source/release payload.
+## Runtime code
 
-## Authoritative repository
+- `app.py` — обычный entry point для трёх runtime-БД;
+- `inventory/webapp.py` — HTTP/session/security shell и dispatch;
+- `inventory/routes/` — domain HTTP handlers без business SQL;
+- `inventory/templates/` — сборка итогового HTML;
+- `static/css`, `static/js` — реально загружаемый frontend;
+- `inventory/core/` — `ApplicationContext`, routing и contracts;
+- `inventory/warehouse/` — Warehouse facade/services, включая
+  `equipment_composition.py`;
+- `inventory/reports/`, `monitoring/`, `knowledge/`, `vacations/`,
+  `administration/` — отдельные bounded contexts с публичными facade;
+- `inventory/shared/` — общие SQLite/CSV/validation adapters;
+- `inventory/db.py` — legacy-compatible schema bootstrap/migrations.
 
-`~/Documents/prak_mai` — единственная рабочая копия.
+## Installation-owned runtime data
 
-`~/Documents/ODE v0.1/prak_mai-main` — не authoritative; возможный источник
-изменений коллеги по Monitoring. Только read-only inventory/hash/diff и
-утверждённый integration plan.
+- `data/warehouse.db` — IXcellerate плюс primary Administration/Reports/
+  Monitoring/Knowledge contour;
+- `data/warehouse_solar.db` — физически отдельный Solar Warehouse;
+- `data/vacations.db` — отдельный общий календарь двух площадок;
+- `data/README.md` — clone/setup/data separation policy.
 
-## Runtime Warehouse
+Все DB ignored. В Git после clone находится только документация. Backup
+создаётся во внешнем системном каталоге или `ODE_BACKUP_DIR`; restore UI
+отключён.
 
-- `app.py` — entry point.
-- `inventory/webapp.py` — тонкий HTTP shell, auth/session/security и dispatch.
-- `inventory/routes/` — физически выделенные domain HTTP/API handlers:
-  Administration, Reports, Warehouse, Monitoring, Knowledge и CSV/runtime
-  adapters; они не владеют business SQL.
-- `inventory/templates/` — детерминированная сборка HTML-каркаса; фактические
-  CSS/JS по-прежнему externalized.
-- `static/` — реально загружаемые CSS/JS.
-- `inventory/core/` — ApplicationContext и общие contracts.
-- `inventory/warehouse/` — Warehouse domain/services/repositories.
-- `inventory/administration/` — users/audit/backup/diagnostics.
-- `inventory/reports/` — отдельный Reports context.
-- `inventory/monitoring/` — isolated hostname routing and manual DCIM search.
-- `inventory/knowledge/` — searchable articles and private attachments.
-- `scripts/migrate_runtime_modules.py` — backup-guarded additive installation
-  of Reports/Knowledge schema into an existing runtime DB.
-- `inventory/shared/` — SQLite/CSV/validation adapters.
-- `inventory/db.py` — действующая legacy-compatible schema initialization.
-- `data/README.md` — clone/setup policy для installation-owned runtime data.
-- `data/warehouse.db` — локальная рабочая DB IXcellerate и общих модулей;
-- `data/warehouse_solar.db` — независимая локальная Warehouse DB Solar,
-  создаваемая пустой по operations с одноразовым reference snapshot;
-- обе DB ignored и никогда не являются содержимым Git, clone или code release.
+## Offline migration и target track
 
-`data/` после clone содержит только документацию. Новая установка явно выбирает
-и создаёт собственный DB path. `.gitignore` — canonical repository policy;
-`.git/info/exclude` не переносится между clone и используется только как
-локальная дополнительная защита. Backup хранится вне repository.
+- `inventory/migration/`, `scripts/migration_*` — offline tooling, не runtime;
+- `migration_inputs/raw` — immutable source; `normalized/reports/workspace` —
+  generated ignored review artifacts;
+- `inventory/warehouse/baseline/`, `baseline_rehearsal/` — FULL Inventory
+  Preview/resolution и disposable candidate rehearsal;
+- `ode/`, `docs/architecture/ddl`, `tests/ode013` — side-by-side target Platform
+  track; DDL не применяется напрямую к runtime Warehouse DB.
 
-## Target ODE platform
+## Проверки и артефакты
 
-- `ode/` — side-by-side platform foundation.
-- `docs/decisions/` — approved ADR.
-- `docs/architecture/ddl/` — approved target DDL and immutable review evidence.
-- `tests/ode013/` — focused platform tests.
-
-Target DDL не применяется к `data/warehouse.db`.
-
-## Migration artifacts
-
-- `inventory/migration/` и `scripts/migration_*` — offline tooling.
-- `migration_inputs/raw/` — immutable sources.
-- `migration_inputs/normalized/`, `reports/`, `workspace/` — generated/review
-  artifacts, не runtime и не commit content.
-- `.stabilization/` — local evidence; не production source of truth.
-
-## Tests and releases
-
-- `tests/` — unit/contract/API/browser contracts.
-- `scripts/create_clean_test_db.py` — disposable Warehouse DB builder.
-- `scripts/smoke_ui.py` — browser smoke на временной копии.
-- `scripts/generate_code_graph.py` — детерминированный committed HTML-граф.
-- `scripts/refresh_project_knowledge.py` — обновляет HTML-граф и внешний
-  Codebase Memory index с `persistence=false`; выполняется после существенных
-  изменений кода/топологии.
-- `release/` — generated artifacts, не source; ZIP не коммитятся. Code release
-  не должен содержать локальную runtime DB. До исправления package builder
-  создание нового release заблокировано.
+- `tests/` — unit, architecture, API, contracts и headless сценарий;
+- `scripts/audit_*.py` — boundaries, frontend controls, documentation и data
+  separation;
+- `scripts/create_clean_test_db.py` и
+  `scripts/create_clean_vacations_test_db.py` — disposable test contour;
+- `scripts/smoke_ui.py`, `tests/headless_smoke.js` — Chrome E2E;
+- `scripts/generate_code_graph.py` — committed deterministic graph;
+- `scripts/refresh_project_knowledge.py` — graph + non-persistent external
+  index after topology changes;
+- `release/`, exports, screenshots, backups and candidate/test DB — generated,
+  ignored и никогда не commit content.

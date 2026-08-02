@@ -1,4 +1,4 @@
-# Security Boundaries
+# Security Boundaries — ODE 0.20.0
 
 ## FULL Inventory 0.14
 
@@ -33,8 +33,8 @@ Production correction exact S/N требует validated external backups, immut
 evidence manifest, exact predicate, transaction, post-commit integrity/FK и
 append-only correction audit. Массовое изменение S/N запрещено.
 
-Документ фиксирует минимальные границы безопасности переходного состояния ODE,
-актуальные для source Stage 0.13.3A.5.
+Документ фиксирует минимальные границы безопасности текущего ODE 0.20.0 и
+сохраняет scoped-контракты прежних Stage ниже как provenance решений.
 
 **CURRENT LOCAL FACT:** builder/reference/staging logic remains offline, while
 the validated full historical operational copy is now the ordinary local
@@ -85,7 +85,8 @@ Admin-only:
 - legacy production DB upload API (не отображается в UI и не является
   multi-DB restore).
 
-Restore через Administration UI/`RESTORE_BACKUP` в ODE 0.18.1 отключён.
+Restore через Administration UI/`RESTORE_BACKUP` отключён с ODE 0.18.1 и
+остаётся fail-closed в ODE 0.20.0.
 
 Доступны текущему пользователю:
 
@@ -216,13 +217,18 @@ actor.
 
 ## Current Limitations
 
-Authentication, session storage, Administration writes, backup/restore and
-Monitoring UI remain compatibility/in-memory boundaries. Monitoring hostname
-routing читает только локальные ignored JSON rules, не отправляет email и не
-обращается к Warehouse/Reports. Inventory Number preview
-ownership is author-bound rather than session-bound and preview state does not
-survive process restart. Server/multi-process deployment therefore requires a
-separate persistent job/ownership design.
+Authentication/session остаются локальными process-memory границами; server/
+multi-process deployment требует persistent session/job ownership design.
+Administration writes проходят через facade/service; multi-database backup
+реализован, restore нет. Monitoring manual UI/routing работает, но читает
+только локальные ignored JSON rules, не отправляет email и не обращается к
+Warehouse/Reports. Inventory Number preview author-bound и не переживает
+restart процесса.
+
+Equipment Composition является read-only Warehouse projection. Клиент не
+принимает произвольный DB path/SQL; lookup проходит по S/N/hostname через facade.
+Ответ обязан явно возвращать `current_state_confirmed=false` и
+`placement_known=false`, пока нет отдельного подтверждающего workflow.
 
 ## Offline Migration Boundary — Stage 0.13.3A
 

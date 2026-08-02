@@ -1,13 +1,16 @@
 # FRONTEND_CONTRACTS
 
+Текущий runtime: ODE 0.20.0.
+
 ## Warehouse stabilization contract
 
 - постоянной строки глобальных модулей нет; ODE возвращает на module cards;
 - вход в Warehouse показывает выбор IXcellerate/Solar; активный site явно
   виден в шапке и переключается только через серверную session selection;
 - Warehouse subnav содержит ровно семь складских разделов;
-- Monitoring и Reports UI показывают только «В разработке»; готовый Monitoring
-  hostname-routing backend не включается скрыто без отдельного UI/API slice;
+- Monitoring имеет рабочий ручной hostname/DCIM flow и локальный routing;
+  Reports имеет рабочие УВР, сменные и недельные отчёты. Оба модуля изолированы
+  от Warehouse и не читают его таблицы напрямую;
 - `Администрирование ODE` видит только session user с backend permission;
 - role может быть скрыта из UX, но frontend не заменяет backend check;
 - reference dropdown использует `state.references`, active canonical значения
@@ -36,8 +39,12 @@
   `.portal-grid` (рядом с `Мониторинг`); top bar `.profile-actions` не
   дублирует вход в профиль или смену пароля отдельными кнопками;
   `openShiftProfile()` остается единственной, role-aware точкой входа.
+- Equipment Card по целевому S/N/hostname показывает агрегированный состав и
+  операции списания через `/api/equipment-composition`. Передняя/задняя схема
+  обзорная: UI не назначает неизвестные физические слоты и явно отделяет
+  подтверждённый факт операции от предположения о размещении.
 
-Дата актуализации: 2026-07-26
+Дата актуализации: 2026-08-02
 
 ## Зачем нужен контракт
 

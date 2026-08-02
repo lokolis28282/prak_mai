@@ -1,5 +1,10 @@
 # Administration API Migration ODE 0.12.9
 
+Статус: историческая карта извлечения Stage 0.12.9. Текущий ODE 0.20.0 уже
+использует `AdministrationFacade`, `RuntimeDatabaseRegistry` и
+`MultiDatabaseBackupService`; живой контракт —
+[backup/restore](operations/backup-restore.md).
+
 Stage 0.12.9 переводит только read-only административные маршруты на `AdministrationFacade`.
 URL, JSON, роли, авторизация, БД и пользовательское поведение не меняются.
 
@@ -8,7 +13,7 @@ URL, JSON, роли, авторизация, БД и пользовательс�
 | URL | Method | Текущий legacy-метод | Целевой метод `AdministrationFacade` | Роль | Читает | Формат ответа | Экран | Риск |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `/api/data` | GET | `service.current_user()` через compatibility service | `get_current_user()` / `get_profile()` | Любой вошедший пользователь | `users` только текущая запись | Общий JSON приложения, ключ `current_user` | Все экраны, профиль | Средний: нельзя раскрыть `password_hash`, нельзя сломать engineer-session override |
-| `/api/admin` | GET | `service.list_backups()`, `service.audit_entries()`, `service.users()` | `get_administration_overview()` | `admin` | `users`, `audit_log`, `data/backups/*.db` | `{backups,audit,users}` | Администрирование | Средний: role check и сортировка должны сохраниться |
+| `/api/admin` | GET | `service.list_backups()`, `service.audit_entries()`, `service.users()` | `get_administration_overview()` | `admin` | `users`, `audit_log`, внешний backup root | `{backups,audit,users}` | Администрирование | Средний: role check и сортировка должны сохраниться |
 | `/export/audit.csv` | GET | `service.audit_entries(limit=5000)` | `list_audit_entries(limit=5000)` | `admin` | `audit_log` | CSV `action_log.csv`, UTF-8 BOM | Журнал действий | Низкий: сохранить заголовки и порядок строк |
 
 ## Не мигрируется в этом этапе
@@ -58,3 +63,7 @@ URL, JSON, роли, авторизация, БД и пользовательс�
 - backup/create/restore;
 - integrity check action;
 - production DB upload.
+
+Эта таблица фиксирует состояние именно 0.12.9. В текущем runtime legacy upload
+не отображается в UI, restore заблокирован, а создание snapshot принимает
+только allowlisted `database_id` одной из трёх runtime-БД.

@@ -1,77 +1,46 @@
-# Roadmap
+# Roadmap после ODE 0.20.0
 
-Roadmap разделён по продуктовым направлениям. Номера исторических Stage не
-переиспользуются как общий порядок работ.
+## Что уже в рабочем runtime
 
-## Lane W — рабочий Warehouse
+- S/N-first Warehouse с transaction-safe приходом/расходом, scanner/CSV,
+  балансом, поставками, инвентаризацией и справочниками;
+- физически отдельные IXcellerate и Solar Warehouse;
+- Reports, ручной Monitoring/DCIM routing, Knowledge и отдельный Vacations
+  bounded context;
+- topology/health трёх runtime-БД и проверенный внешний backup;
+- поиск целевой железки и Equipment Composition по доказанным issue-history
+  операциям без выдумывания слотов/заводской комплектации;
+- FULL Inventory Preview/resolution и disposable migration rehearsal/pilot.
 
-### W0. Stabilization gate — завершён 2026-07-15
+Исторические Stage и их исходные test counts сохранены в датированных release-
+отчётах. Они не являются текущим roadmap status.
 
-- warning-clean unit/contract/API suite;
-- module/frontend audits;
-- browser smoke на временной byte-copy рабочей БД;
-- проверка login, search, card, receipt, issue, balance, deliveries,
-  inventory-number Preview/Confirm и references;
-- неизменность production SHA при тестах;
-- актуальный runbook и manual QA.
+## Ближайший эксплуатационный цикл
 
-Результат: browser E2E и 394-test full suite PASS; рабочая БД не изменена.
-Evidence: `reviews/2026-07-15_WAREHOUSE_OPERATIONAL_ACCEPTANCE.md`.
+1. Провести owner walkthrough по матрице функций на рабочем ноутбуке.
+2. Накопить реальные примеры `компонент → целевой S/N/hostname` и уточнить
+   группировку типов без изменения raw history.
+3. Спроектировать обратную/подтверждающую операцию установки/снятия, если
+   бизнесу нужен именно current-state состава, а не история списаний.
+4. Реализовать warehouse correction/reversal только по ADR-014.
+5. Реализовать restore protocol только полностью по ADR-013, затем отдельный
+   disaster-recovery drill на копиях.
 
-### W1. Operational acceptance — safety workflow реализован
+## Server readiness
 
-- выполнить финальный owner walkthrough по
-  `MANUAL_TESTING_WAREHOUSE_STABILIZATION.md` на рабочем ноутбуке;
-- закрыть подтверждённые defects без cosmetic redesign;
-- определить безопасные correction/reversal workflows;
-- проверить backup/restore drill на копиях;
-- зафиксировать release candidate и data-separation gate.
+- process owner и single-writer/concurrency policy;
+- service account, filesystem permissions, secrets/bootstrap/reset;
+- backup retention, rotation, encryption и restore acceptance;
+- maintenance/migration и network/filesystem preflight;
+- deployment runbook без runtime/test/candidate DB в code release.
 
-Scanner Operations 0.13.4 реализован как проверяемый compatibility slice:
-строгий массовый расход и пары `компонент → сервер`. До baseline текущие
-receipts/issues образуют рабочий provisional-баланс, поэтому обычные и scanner
-mutations разрешены в production contour. Права, S/N-first проверки и
-транзакционные ограничения не снимаются.
+## Отдельные направления
 
-ODE 0.14 добавил следующую цепочку без изменения рабочей БД:
-`PROVISIONAL_HISTORICAL → FULL session → XLSX → Preview → resolutions → revalidation
-→ READY_FOR_APPROVAL → disposable target-schema candidate`. Candidate создаёт
-initial snapshot и projection и проходит target domain invariants. Реальный
-approval/publish/cutover остаётся отдельным controlled change с backup,
-остановкой writers и atomic replace.
-
-### W2. Server-readiness design
-
-- process owner и single-writer policy;
-- server paths, service account и filesystem permissions;
-- secrets/bootstrap/password reset;
-- backup retention и restore acceptance;
-- maintenance/migration procedure;
-- concurrency and network/filesystem preflight;
-- deployment runbook без включения локальной/test DB в code release.
-
-## Lane T — Target ODE 0.13 platform
-
-1. Получить independent post-fix PASS Platform Stage 0.13.1.
-2. Утвердить Argon2id library/profile и bootstrap policy.
-3. Реализовать security/audit/references вертикальными slices.
-4. Реализовать equipment identity, Preview, FULL baseline, ledger и projection.
-5. Выполнить отдельный rehearsal/cutover. V001..V008 не применять напрямую к
-   текущей Warehouse DB.
-
-Этот lane не должен ломать рабочий Warehouse до утверждённого cutover.
-
-## Lane M — Monitoring
-
-Manual hostname/DCIM search, local routing и message preview интегрированы.
-Далее: acceptance на рабочем DCIM-сеансе, bounded background execution для
-server deployment и только затем отдельное решение об отправке сообщений.
-Связь со складом отсутствует; будущая связь допустима лишь через Equipment
-query port.
-
-## Lane R/Wiki — Reports и знания
-
-Reports интегрирован через WarehouseEventReader/application queries: УВР,
-сменный и недельный отчёты работают. Knowledge Base интегрирована отдельным
-facade и владеет только `knowledge_*`/attachment data. Далее нужны retention,
-backup drill и acceptance содержимого; оба направления не блокируют W1.
+- Monitoring: acceptance с реальным DCIM-сеансом, bounded background execution,
+  затем отдельное решение о message transports;
+- Reports/Knowledge/Vacations: retention, backup drill и operator acceptance
+  внутри собственных boundaries;
+- Windows: отдельный package bump/build/sign-off; последний фактический ZIP
+  пока 0.12.17 RC1;
+- target Platform/DDL: продолжать side-by-side и публиковать только после
+  отдельного rehearsal/cutover решения, не поверх рабочего Warehouse.

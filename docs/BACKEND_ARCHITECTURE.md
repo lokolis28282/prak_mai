@@ -1,4 +1,4 @@
-# BACKEND_ARCHITECTURE
+# BACKEND_ARCHITECTURE — ODE 0.20.0
 
 ## FULL Inventory 0.14
 
@@ -10,7 +10,8 @@ SQLite workspace; operational DB открывается только read-only. 
 append-only и применяются при новом deterministic Preview run. Admin-only
 rehearsal создаёт отдельную target DB; реального publish endpoint нет.
 
-Дата актуализации: 2026-07-16. Current source/runtime: `0.14.0`.
+Раздел выше фиксирует origin FULL Inventory slice 0.14. Текущий source/runtime:
+`0.20.0`, дата общей актуализации — 2026-08-02.
 
 ## Цель refactoring
 
@@ -35,6 +36,7 @@ inventory/
     delivery_*.py                 # Import/read/acceptance/repositories
     balance.py                    # WarehouseBalanceService
     history.py                    # WarehouseHistoryService
+    equipment_composition.py      # Issue-history projection целевой железки
     inventory.py                  # LegacyInventoryService
     monitoring.py                 # WarehouseMonitoringService
     reference_service.py          # WarehouseReferenceService
@@ -110,7 +112,7 @@ Administration write, authentication, actor context и backup/restore с ODE
 С ODE 0.16.0 Stage 4 доменные HTTP-ветви находятся в
 `inventory/routes/`, а не в `inventory/webapp.py`. `webapp.py` остаётся общей
 оболочкой и передаёт неизменённые URL в `administration`, `reports`,
-`warehouse`, `monitoring` и `knowledge` route-модули через единый
+`warehouse`, `monitoring`, `knowledge` и `vacations` route-модули через единый
 `RouteRuntime`. Route-модули вызывают только `ApplicationContext`/facades и не
 владеют SQL.
 

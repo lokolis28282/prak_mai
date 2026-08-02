@@ -1,21 +1,34 @@
-# Agent Handoff
+# Agent Handoff — ODE 0.20.0
 
-Перед любым изменением:
+Минимальный безопасный вход в задачу:
 
-1. Прочитать repository `AGENTS.md`.
-2. Прочитать `docs/project/CURRENT_STATE.md` и relevant roadmap lane.
-3. Через `codebase-memory-mcp` найти symbols/call paths и проверить свежесть
-   индекса.
-4. Подтвердить критические связи через `rg` и чтение файлов.
-5. Проверить `git status`; не трогать неизвестный dirty scope.
-6. Для DB-related задачи записать path/SHA/sidecars и использовать temp copy.
-7. Прочитать relevant Warehouse contract либо target ADR/DDL — не оба трека
-   как будто это один runtime.
-8. Сформулировать scope, invariants и tests до edit.
+1. Прочитать root `AGENTS.md`, `CURRENT_STATE.md` и
+   `SYSTEM_FUNCTION_MATRIX.md`.
+2. Проверить `git status`, branch/upstream и не смешивать неизвестный dirty
+   scope со своей задачей.
+3. Найти реальный call path через `rg` и исходники. Важные связи из внешнего
+   индекса всегда перепроверять локально.
+4. Определить владельца данных и идти `UI/API → ApplicationContext → facade`;
+   не создавать прямой SQL из route/template.
+5. Перед DB-related проверкой записать пути, SHA-256, sidecars,
+   integrity/FK. Mutation/smoke — только на временной byte-copy.
+6. Для frontend помнить: итоговый inline `<style>/<script>` удаляется;
+   runtime-код живёт в `static/`, итог проверяется через `webapp.HTML`.
+7. До edit сформулировать scope, invariants, permissions и executable tests.
 
-Текущий продуктовый приоритет: Warehouse stabilization. Monitoring/Reports не
-расширять. Target Platform Stage 0.13.2 не начинать без post-fix Stage 0.13.1
-review и отдельного approval.
+Текущий приоритет — эксплуатационная устойчивость ODE 0.20.0: поиск по
+целевой железке, Equipment Composition как evidence issue-history,
+Multi-Warehouse, Vacations, multi-database backup и согласованность living-
+документации. Monitoring/Reports/Knowledge развиваются только внутри своих
+facade/storage boundaries.
 
-Нельзя commit/push, reset/clean, production DB mutation или перенос из второй
-копии без явного разрешения и соответствующего gate.
+Restore остаётся fail-closed до ADR-013; складские correction/reversal — до
+ADR-014. Нельзя угадывать слоты компонентов, подменять runtime-БД candidate/
+test файлом или включать данные в code release.
+
+Базовый gate: compile, JS syntax, module/frontend/documentation/repository
+audits, code graph, full warning-clean unittest, clean DB dry-run, Chrome E2E,
+`git diff --check` и повторная SHA/integrity/FK проверка трёх рабочих БД.
+
+Commit/push, production mutation, release artifact и перенос из другой копии
+требуют явного scope/разрешения владельца и соответствующего gate.

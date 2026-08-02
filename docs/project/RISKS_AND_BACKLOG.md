@@ -1,64 +1,51 @@
-# Risks and Backlog
+# Risks and Backlog — ODE 0.20.0
 
-## P0 — всегда блокирует
+Актуализировано: 2026-08-02.
 
-- mutation/replace `data/warehouse.db` без утверждённой backup/publish procedure;
-- потеря S/N raw value, leading zeros или provenance;
-- нарушение receipt/issue/allocation balance;
-- authorization bypass или раскрытие password hashes;
-- прямое применение target V001..V008 к working Warehouse DB;
-- смешивание candidate/test DB с production code release.
-- повторное добавление installation-owned `data/warehouse.db` в Git, source
-  archive или release;
-- включение runtime `data/warehouse.db` в Windows/source artifact. Закрыто в
-  0.14: builder включает только `data/README.md`, regression запрещает DB в ZIP.
+## P0 — всегда блокирует выпуск
 
-## P1 — текущая стабилизация
+- mutation/replace любой runtime-БД без утверждённой backup/publish procedure;
+- потеря raw S/N, leading zeros, provenance или text round-trip;
+- нарушение receipt/issue/allocation balance либо частичный Confirm;
+- authorization bypass, grant по ФИО или раскрытие password hash/secret/path;
+- прямой business SQL из routes/templates или чтение чужих таблиц модулем;
+- применение target DDL/candidate/test DB к рабочему runtime;
+- runtime DB, backup, raw, exports, secrets или ZIP в Git/code release;
+- включённый частичный restore либо correction без полного контракта.
 
-- Большой dirty worktree не воспроизводится из HEAD.
-- Platform Stage и Warehouse source используют одинаковые номера Stage.
-- Формальный post-fix PASS Platform Stage 0.13.1 отсутствует.
-- Автоматизированная операторская Warehouse acceptance пройдена; остаётся
-  финальный owner walkthrough на рабочем ноутбуке.
-- Legacy clean-DB bootstrap создаёт default admin; для будущего сервера нужен
-  explicit personal bootstrap/recovery contract без default credentials.
-- Correction/reversal для ошибочных posted operations ограничен и требует
-  отдельного бизнес-контракта.
-- Initial-baseline candidate rehearsal реализован, но реальный publish
-  отключён до отдельного cutover approval, backup и writer-stop gate.
-- До publish обзор показывает рабочий `PROVISIONAL_HISTORICAL` balance. FULL
-  Inventory activation обязана заменить точку отсчёта, а не прибавить counted
-  rows к legacy movements; отсутствие compatibility activation остаётся P1.
-- `LINK_EXISTING_EQUIPMENT` не применяется до target Equipment Query Port;
-  автоматическое Vendor/Model matching запрещено.
+## P1 — текущая эксплуатация
 
-Закрыто 2026-07-15: тестовые raw `sqlite3.Connection` handles теперь явно
-закрываются; full suite 392/392 проходит без ResourceWarning.
+- owner walkthrough всех функций на рабочем Windows-ноутбуке ещё требуется;
+- issue-history composition нельзя интерпретировать как подтверждённый
+  current-state или точный slot map;
+- correction/reversal требует ADR-014;
+- restore и disaster-recovery drill требуют ADR-013;
+- default/bootstrap credentials неприемлемы для будущего сервера;
+- FULL baseline publish отключён до отдельного cutover approval;
+- `LINK_EXISTING_EQUIPMENT` нельзя автоматически применять без доказанного
+  Equipment Query Port; Vendor/Model matching не заменяет S/N identity;
+- 291 `#N/A` names требуют отдельной доказательной data-correction процедуры.
 
-Закрыто 2026-07-15: permission-gated и scenario elements больше не протекают
-визуально из-за CSS `display`; placeholder values не дублируются; списание с
-нулевого остатка недоступно в UI. Backend validation оставлена как второй слой
-защиты. Full suite после изменений: 394 tests, `OK (skipped=8)`.
+## P2 — server/release readiness
 
-## P2 — server readiness
-
-- process-owner/single-writer lifecycle;
+- process owner, single-writer/concurrency lifecycle;
 - service account, secrets и filesystem permissions;
-- backup rotation/retention и restore drills;
-- deployment/update/rollback runbook;
-- Windows/server validation;
-- network filesystem rejection;
+- backup schedule/rotation/retention/encryption и restore acceptance;
+- deployment/update/rollback и network filesystem rejection;
 - concurrent operator acceptance;
-- release metadata/ZIP synchronization.
-- explicit empty-install bootstrap and schema-migration gate without shipping
-  a runtime/production DB in the code release;
-- optional coordinated Git history cleanup: old small DB blobs remain in main
-  history, а локальные Codex capture refs могут удерживать большой runtime blob;
-  не удалять refs и не переписывать историю без maintenance window.
+- Windows package metadata/build/sign-off;
+- explicit empty-install bootstrap без runtime DB в code release;
+- optional coordinated Git history cleanup старых data blobs — только в
+  maintenance window, без force rewrite в обычной разработке.
 
 ## Отдельные направления
 
-- Monitoring colleague-code inventory and integration plan.
-- Reports application contracts.
-- Wiki branch integration policy.
-- DCIM/ITSM/Zabbix integration после стабильных Equipment query ports.
+- Monitoring: реальный DCIM acceptance и будущие transports;
+- Reports/Knowledge/Vacations: retention, content acceptance и backup drill;
+- target Platform: independent gates и отдельный rehearsal/cutover;
+- точный installed-component current-state — отдельное бизнес-решение, не
+  косметическое расширение текущей схемы карточки.
+
+Закрытые исторические дефекты и их прежние test counts находятся в датированных
+reviews/release reports; этот файл содержит только открытый риск текущего
+runtime.

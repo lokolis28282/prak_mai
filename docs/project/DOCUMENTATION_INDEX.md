@@ -1,116 +1,99 @@
-# Documentation Index
+# Индекс документации ODE 0.20.0
 
-## Current
+Актуализировано: 2026-08-02.
 
-- `docs/project/CURRENT_STATE.md` — единый status snapshot.
-- root `README.md` — пользовательская инструкция текущего Warehouse.
-- root `CHANGELOG.md` — living change history.
-- `AGENTS.md` — обязательные repository guardrails.
-- `docs/LOCAL_WORKING_DATABASE_RUNBOOK.md` — operational DB procedure.
-- Warehouse living architecture contracts из `DECISIONS_INDEX.md`.
-- `docs/MANUAL_TESTING_0_14_FULL_INVENTORY.md` — операторская приёмка 0.14.
-- `RELEASE_REPORT_ODE_0_14_0.md` — readiness evidence и ограничения.
-- `docs/MONITORING_HOSTNAME_ROUTING.md` — реализованный изолированный routing
-  contract и правила локальных данных.
-- `docs/CODEBASE_GRAPH.md` — GitHub-rendered карта поддерживаемых зависимостей.
-- `docs/assets/code_graph.html` — интерактивный офлайн-граф текущего кода;
-  `scripts/generate_code_graph.py --check` проверяет его актуальность.
-- `scripts/refresh_project_knowledge.py` — единое обновление committed
-  HTML-графа и внешнего Codebase Memory index без repository artifact.
-- `docs/MONITORING_KNOWLEDGE_GUIDE.md` — настройка Monitoring/Knowledge и
-  backup-guarded runtime module migration.
-- `docs/VACATIONS_ARCHITECTURE.md` — общий календарь двух площадок, графики,
-  конфликты, API, ownership, миграция и manual QA.
-- `RELEASE_REPORT_ODE_0_14_INTEGRATION.md` — integration/release evidence от
-  2026-07-18.
-- `RELEASE_REPORT_ODE_0_15_0.md` — исторический gate версии 0.15.0.
-- `RELEASE_REPORT_ODE_0_16_0.md` — исторический аудит modular extraction.
-- `RELEASE_REPORT_ODE_0_18_0.md` — исторический Vacations/UX stabilization release
-  gate, сохранность трёх рабочих БД и ограничения.
-- `RELEASE_REPORT_ODE_0_18_1.md` — текущий stabilization/multi-DB backup
-  release gate.
-- `docs/decisions/ADR-013-multi-database-backup-restore.md` — implemented
-  status/create-backup slice и обязательный restore design.
-- `docs/decisions/ADR-014-warehouse-correction-reversal.md` — отдельный
-  контракт будущих компенсирующих складских операций.
-- `docs/MANUAL_TESTING_0_18_1.md` — ручная приёмка Administration backup и
-  regression общих модулей.
-- `RELEASE_REPORT_ODE_0_17_0.md` — исторический Multi-Warehouse release gate.
-- `docs/project/reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md` —
-  post-release UX-аудит, полный regression gate и доказательство неизменности
-  рабочих IXcellerate/Solar DB.
-- `docs/project/reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md` — правила,
-  браузерная приёмка и полный gate общего модуля отпусков.
-- `docs/project/reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md` —
-  датированный review status/create-backup slice и его fail-closed границ.
+Документы разделены по статусу. Только раздел «Текущий продукт» описывает
+поведение установленного source/runtime ODE 0.20.0 целиком. Версионные release-
+отчёты и датированные reviews остаются неизменяемыми доказательствами своего
+этапа и не должны восприниматься как текущая инструкция.
 
-## Normative target
+## Текущий продукт
 
-- `docs/decisions/ADR-*`.
-- `docs/architecture/*.md` со статусом APPROVED.
-- `docs/architecture/ddl/V001..V008` и DDL review results.
-- `docs/development/implementation-order.md` — только Platform delivery track.
-
-`docs/README.md` остаётся индексом target ODE architecture, а не единственным
-current-state документом всего repository.
-
-## Immutable/datestamped evidence
-
-- `docs/development/STAGE_0_13_1_*REVIEW*.md`;
-- `docs/architecture/ddl/*REVIEW*.md`;
-- migration review reports;
-- root release/QA/security/UX reports;
-- `.stabilization/` local evidence.
-
-Evidence не переписывается задним числом. Новый verdict получает новый
-датированный файл.
-
-Актуальная цепочка независимой проверки и cleanup:
-
-- `docs/project/reviews/2026-07-15_WAREHOUSE_STABILIZATION_REVIEW.md`;
-- `docs/project/reviews/2026-07-15_REPOSITORY_CLEANUP_AUDIT.md`;
-- `docs/project/reviews/2026-07-15_REPOSITORY_CLEANUP_EXECUTION.md`.
-- `docs/project/reviews/2026-07-15_WAREHOUSE_OPERATIONAL_ACCEPTANCE.md`.
-- `docs/project/reviews/2026-07-15_SCANNER_OPERATIONS_0_13_4.md`.
-- `docs/project/reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md`.
-- `docs/project/reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md`.
-- `docs/project/reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md`.
-
-## Historical or scoped
-
-- старые `MANUAL_TESTING_*`, release reports и migration plans действуют только
-  в указанном scope;
-- старый Monitoring integration review анализирует исторический placeholder;
-  текущий hostname-routing slice описан отдельным living contract выше.
-
-Root-level evidence сохранён как датированные снимки и не переписывается
-задним числом:
-
-| Документ | Scope |
+| Что нужно узнать | Основной документ |
 |---|---|
-| [`ACCEPTANCE_ODE_0_12.md`](../history/ACCEPTANCE_ODE_0_12.md) | Общая приёмка ODE 0.12 |
-| [`ACCEPTANCE_DELIVERIES_0_12_16.md`](../history/ACCEPTANCE_DELIVERIES_0_12_16.md) | Приёмка поставок 0.12.16 |
-| [`ARCHITECT_REVIEW.md`](../history/ARCHITECT_REVIEW.md) | Исторический architecture review |
-| [`CODE_REVIEW.md`](../history/CODE_REVIEW.md) | Исторический code review |
-| [`PRODUCT_REVIEW.md`](../history/PRODUCT_REVIEW.md) | Исторический product review |
-| [`PERFORMANCE_REVIEW.md`](../history/PERFORMANCE_REVIEW.md) | Исторический performance review |
-| [`SECURITY_REVIEW.md`](../history/SECURITY_REVIEW.md) | Исторический security review |
-| [`UX_REVIEW.md`](../history/UX_REVIEW.md) | Исторический UX review |
-| [`BUG_REPORT.md`](../history/BUG_REPORT.md) | Ранний общий bug report |
-| [`BUGS_0_12.md`](../history/BUGS_0_12.md) | Known bugs ODE 0.12 |
-| [`BUGS_DELIVERIES_0_12_16.md`](../history/BUGS_DELIVERIES_0_12_16.md) | Bugs поставок 0.12.16 |
-| [`BUGS_STAGE_0_12_17.md`](../history/BUGS_STAGE_0_12_17.md) | Bugs Stage 0.12.17 |
-| [`QA_REPORT.md`](../history/QA_REPORT.md) | Ранний общий QA snapshot |
-| [`QA_STAGE_0_12_17.md`](../history/QA_STAGE_0_12_17.md) | QA Stage 0.12.17 |
-| [`RELEASE_REPORT.md`](../history/RELEASE_REPORT.md) | Ранний release snapshot |
-| [`RELEASE_REPORT_ODE_0_12_16_RC1.md`](../history/RELEASE_REPORT_ODE_0_12_16_RC1.md) | Release 0.12.16 RC1 |
-| [`RELEASE_REPORT_ODE_0_12_17_RC1.md`](../history/RELEASE_REPORT_ODE_0_12_17_RC1.md) | Release 0.12.17 RC1 |
-| [`RELEASE_REPORT_ODE_0_13_2.md`](../history/RELEASE_REPORT_ODE_0_13_2.md) | Warehouse Stage 0.13.2, не Platform Stage 0.13.2 |
-| [`RELEASE_REPORT_ODE_0_14_0.md`](../history/RELEASE_REPORT_ODE_0_14_0.md) | FULL Inventory safety workflow и candidate rehearsal |
-| [`CHECKPOINT_ODE.md`](../history/CHECKPOINT_ODE.md) | Маленькая DB до full promotion; не current DB status |
-| [`WINDOWS_RELEASE.md`](../../WINDOWS_RELEASE.md) | Текущая release-инструкция Windows, не фактический новый ZIP |
+| Установка, запуск, функции пользователя | [`README.md`](../../README.md) |
+| Текущий status snapshot | [`CURRENT_STATE.md`](CURRENT_STATE.md) |
+| Архитектура и границы модулей | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) |
+| API и permissions | [`API_REFERENCE.md`](../API_REFERENCE.md) |
+| Полная матрица экранов, функций и проверок | [`SYSTEM_FUNCTION_MATRIX.md`](SYSTEM_FUNCTION_MATRIX.md) |
+| Frontend/кнопочные контракты | [`FRONTEND_CONTRACTS.md`](../FRONTEND_CONTRACTS.md) |
+| Рабочие IXcellerate/Solar/Vacations DB | [`LOCAL_WORKING_DATABASE_RUNBOOK.md`](../LOCAL_WORKING_DATABASE_RUNBOOK.md) |
+| Windows source/runtime | [`README_WINDOWS.md`](../../README_WINDOWS.md) |
+| Windows release procedure | [`WINDOWS_RELEASE.md`](../../WINDOWS_RELEASE.md) |
+| Риски и открытый технический долг | [`RISKS_AND_BACKLOG.md`](RISKS_AND_BACKLOG.md), [`TECH_DEBT.md`](../../TECH_DEBT.md) |
 
-## Prompts
+Дополнительные living-контракты:
 
-Prompts не являются архитектурным решением или evidence реализации. Они
-хранятся только с датой, scope и статусом `ACTIVE`/`SUPERSEDED`.
+- [`DATABASE_OWNERSHIP.md`](../DATABASE_OWNERSHIP.md) — владельцы таблиц и
+  допустимые направления зависимостей;
+- [`MODULE_ARCHITECTURE.md`](../MODULE_ARCHITECTURE.md) — фасады и постепенное
+  извлечение из compatibility core;
+- [`SECURITY_BOUNDARIES.md`](../SECURITY_BOUNDARIES.md) — session/role,
+  permissions и fail-closed границы;
+- [`VACATIONS_ARCHITECTURE.md`](../VACATIONS_ARCHITECTURE.md) — отдельная
+  Vacations DB;
+- [`MONITORING_HOSTNAME_ROUTING.md`](../MONITORING_HOSTNAME_ROUTING.md) и
+  [`MONITORING_KNOWLEDGE_GUIDE.md`](../MONITORING_KNOWLEDGE_GUIDE.md) —
+  Monitoring/Knowledge;
+- [`operations/backup-restore.md`](../operations/backup-restore.md) —
+  реализованный multi-database backup и отключённый restore;
+- [`CODEBASE_GRAPH.md`](../CODEBASE_GRAPH.md) и
+  [`assets/code_graph.html`](../assets/code_graph.html) — текущая карта кода.
+
+Текущий release evidence:
+
+- [`RELEASE_REPORT_ODE_0_20_0.md`](../../RELEASE_REPORT_ODE_0_20_0.md) —
+  выпуск поиска по целевой железке и состава оборудования;
+- [`2026-08-02_ODE_0_20_0_FULL_SYSTEM_AUDIT.md`](reviews/2026-08-02_ODE_0_20_0_FULL_SYSTEM_AUDIT.md)
+  — полный Documentation/System/UI gate этой ревизии.
+
+## Нормативная целевая архитектура
+
+Эти документы определяют утверждённое будущее направление, но сами по себе не
+доказывают наличие функции в runtime:
+
+- [`decisions/`](../decisions/) — ADR, включая restore ADR-013 и складские
+  коррекции ADR-014;
+- [`architecture/`](../architecture/) — документы со статусом `APPROVED` и DDL
+  V001..V008;
+- [`development/implementation-order.md`](../development/implementation-order.md)
+  — Platform delivery track.
+
+[`docs/README.md`](../README.md) индексирует этот target track. Для ответа на
+вопрос «что работает сейчас» сначала используйте `CURRENT_STATE.md` и матрицу
+функций.
+
+## Исторические и scoped-документы
+
+Следующие материалы остаются в Git намеренно: они сохраняют ход решений,
+миграций и независимой приёмки. Они не являются старой копией текущей
+инструкции и не переписываются задним числом.
+
+- `RELEASE_REPORT_ODE_0_12_*` … `RELEASE_REPORT_ODE_0_19_1.md` — evidence
+  соответствующих версий;
+- `docs/MANUAL_TESTING_*` — чек-лист конкретной версии, а не текущий общий
+  runbook;
+- `docs/development/STAGE_*`, migration plans/reports и DDL review — scoped
+  implementation evidence;
+- `docs/history/` — перенесённые ранние QA, product, security, performance и
+  architecture snapshots;
+- `.stabilization/` — локальные, некоммитируемые доказательства, если каталог
+  присутствует.
+
+Ключевая цепочка датированных reviews:
+
+- [`2026-07-15_WAREHOUSE_STABILIZATION_REVIEW.md`](reviews/2026-07-15_WAREHOUSE_STABILIZATION_REVIEW.md);
+- [`2026-07-26_FULL_PROJECT_UX_REGRESSION.md`](reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md);
+- [`2026-07-27_VACATIONS_MODULE_REVIEW.md`](reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md);
+- [`2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md`](reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md).
+
+## Правило актуальности
+
+1. Новое поведение сначала обновляет living-документы, API/ownership/security
+   контракты и тесты.
+2. Release получает новый датированный report; старый report не редактируется.
+3. `python3 scripts/audit_documentation.py` проверяет локальные ссылки,
+   обязательную версию 0.20.0 в текущих документах, текущий release report и
+   запрет устаревших Windows backup/restore инструкций.
+4. Prompts не являются архитектурным решением или evidence реализации; у них
+   должен быть явный статус `ACTIVE` либо `SUPERSEDED`.

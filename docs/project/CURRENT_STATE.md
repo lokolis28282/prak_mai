@@ -125,9 +125,19 @@ Headless Chrome smoke в этой среде не запускался и не �
 hostname, задачу/ИЗМ и первичные реквизиты компонента. Заводской состав,
 фактическое наличие и физические слоты явно остаются неподтверждёнными.
 
-Текущий gate: 639 тестов (`skipped=8` на macOS/Linux), включая отдельные
+Текущий release gate: 639 тестов (`skipped=8` на macOS/Linux), включая отдельные
 backend/API/UI contracts и headless Chrome сценарий карточки. Evidence:
 `../../RELEASE_REPORT_ODE_0_20_0.md`.
+
+### ODE 0.20.0 full documentation/system audit
+
+Поверх release gate добавлены исполняемые living-doc и static-control
+контракты. `scripts/audit_documentation.py` проверяет 201 Markdown-файл,
+локальные ссылки, текущую версию и опасные Windows backup/restore утверждения;
+frontend audit подтверждает 162 static ID, 317 JS references и 53 именованные
+кнопки с обработчиками/формами. Полный warning-clean discover содержит 641
+тест (`skipped=8`). Датированный итог:
+`reviews/2026-08-02_ODE_0_20_0_FULL_SYSTEM_AUDIT.md`.
 
 ### ODE 0.19.1 local runtime stabilization
 
@@ -378,8 +388,9 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий release-кандидат ODE 0.20.0 — 639 тестов; code graph содержит
-актуальные значения из `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
+Текущий проверенный ODE 0.20.0 — 641 тест; code graph содержит 248 узлов /
+506 связей. Актуальные значения и интерактивная карта находятся в
+`docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
 из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256
 `8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`,
 `integrity_check=ok`, FK violations и SQLite sidecars отсутствуют.

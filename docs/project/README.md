@@ -1,6 +1,6 @@
 # ODE Project Hub
 
-Дата актуализации: 2026-07-27.
+Дата актуализации: 2026-08-02. Текущий source/runtime: ODE 0.20.0.
 
 Это главная точка входа в текущее состояние проекта. Hub не копирует ADR,
 DDL или stage evidence, а связывает их и явно разделяет два параллельных
@@ -10,18 +10,20 @@ DDL или stage evidence, а связывает их и явно разделя
 
 1. [CURRENT_STATE.md](CURRENT_STATE.md) — что реально работает сейчас.
 2. [MASTER_CONTEXT.md](MASTER_CONTEXT.md) — продуктовая цель и границы.
-3. [ROADMAP.md](ROADMAP.md) — последовательность дальнейшей работы.
-4. [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) — безопасный цикл изменений.
-5. [REPOSITORY_MAP.md](REPOSITORY_MAP.md) — код, данные и артефакты.
-6. [DECISIONS_INDEX.md](DECISIONS_INDEX.md) — нормативные ADR/DDL и контракты.
-7. [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) — статус документации.
-8. [RISKS_AND_BACKLOG.md](RISKS_AND_BACKLOG.md) — риски и отложенная работа.
-9. [AGENT_HANDOFF.md](AGENT_HANDOFF.md) — минимальный handoff нового агента.
-10. [Multi-Warehouse](../MULTI_WAREHOUSE_ARCHITECTURE.md) — физическая
+3. [SYSTEM_FUNCTION_MATRIX.md](SYSTEM_FUNCTION_MATRIX.md) — полный список
+   функций, storage boundaries и проверок.
+4. [ROADMAP.md](ROADMAP.md) — последовательность дальнейшей работы.
+5. [ENGINEERING_WORKFLOW.md](ENGINEERING_WORKFLOW.md) — безопасный цикл изменений.
+6. [REPOSITORY_MAP.md](REPOSITORY_MAP.md) — код, данные и артефакты.
+7. [DECISIONS_INDEX.md](DECISIONS_INDEX.md) — нормативные ADR/DDL и контракты.
+8. [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) — статус документации.
+9. [RISKS_AND_BACKLOG.md](RISKS_AND_BACKLOG.md) — риски и отложенная работа.
+10. [AGENT_HANDOFF.md](AGENT_HANDOFF.md) — минимальный handoff нового агента.
+11. [Multi-Warehouse](../MULTI_WAREHOUSE_ARCHITECTURE.md) — физическая
     изоляция IXcellerate/Solar и bootstrap Solar.
-11. [Vacations](../VACATIONS_ARCHITECTURE.md) — самостоятельный календарь,
+12. [Vacations](../VACATIONS_ARCHITECTURE.md) — самостоятельный календарь,
     графики и очередь конфликтов двух площадок.
-12. [Multi-DB backup/restore](../decisions/ADR-013-multi-database-backup-restore.md)
+13. [Multi-DB backup/restore](../decisions/ADR-013-multi-database-backup-restore.md)
     — реализованный status/create-backup slice и обязательный контракт будущего
     restore.
 

@@ -1,96 +1,58 @@
-# TECH_DEBT
+# Технический долг ODE 0.20.0
 
-## ODE 0.15 follow-up
+Актуализировано: 2026-08-02. Закрытые пункты не выдаются за текущие дефекты;
+история их реализации остаётся в release reports.
 
-- сторнирующие операции прихода/расхода по-прежнему отсутствуют; экран
-  «Контроль качества данных» (0.15.0) закрывает только точечные исправления:
-  заполнение пустых полей/даты, исправление и удаление дублей S/N;
-- категории «Не сопоставлено» и «Отрицательные остатки» остаются read-only до
-  появления сторнирующих операций;
-- два намеренных `except Exception: pass` в
-  `inventory/monitoring/manual_search.py` (cleanup Selenium-драйвера) — при
-  доработке Monitoring заменить на логирование.
+## P1 — бизнес-целостность и восстановление
 
-## ODE 0.14 follow-up
+1. Нет компенсирующих correction/reversal для ошибочно проведённого прихода
+   или расхода. Data Quality исправляет ограниченный набор полей и не заменяет
+   бухгалтерски понятное сторно. Нормативный контракт — ADR-014.
+2. Restore трёх runtime-БД не реализован. Status/create/verification работают,
+   но UI/API restore fail-closed до полного ADR-013 protocol и drill.
+3. Equipment Composition строится по issue-history. Он не подтверждает текущее
+   физическое наличие, снятие, заводскую комплектацию и точный слот. Для
+   current-state нужна отдельная модель подтверждения установки/снятия.
+4. Реальный FULL baseline publish/cutover остаётся controlled change с внешним
+   backup, остановкой writers, sibling candidate, atomic publish и rollback;
+   review candidate/pilot не являются production.
 
-- target Equipment Query Port и безопасный link-existing workflow;
-- grouped Catalog resolution UI для production-scale (50k) inventory;
-- controlled approval/cutover с external backup, writer stop, sibling candidate,
-  atomic publish и rollback drill;
-- отдельный 1m-row acceptance benchmark; 50k Preview уже потоковый и занимает
-  около 69 MiB peak RSS;
-- correction/reversal operations после active baseline.
+## P2 — архитектура и эксплуатация
 
-Дата проверки: 2026-07-10
+1. `inventory/templates/webapp.py` всё ещё собирает большой compatibility HTML
+   цепочками `.replace(...)`. Фактические CSS/JS уже externalized, routes и
+   domain facades выделены, но текстовые замены остаются риском разметки.
+   Контроль: HTML hash, frontend/static-control audit и Chrome smoke.
+2. Compatibility `WarehouseService`/`WarehouseCore` удаляются только
+   постепенно. Новый code path обязан идти через `ApplicationContext → facade`
+   и не создавать параллельный SQL/runtime.
+3. SQLite/local-process контур не готов к активной многопользовательской
+   серверной записи. Нужны owner/single-writer policy, locks, filesystem
+   preflight, deployment, secrets и concurrent acceptance.
+4. Backup пока без автоматического расписания, ротации, шифрования и измеренного
+   disaster-recovery RTO/RPO.
+5. Новый Windows ZIP 0.20.0 не собран; последний фактический package — 0.12.17
+   RC1. Builder/metadata/sign-off требуют отдельного release.
+6. FULL Inventory Preview не имеет cooperative cancel/resume; для будущего
+   1m-row контура нужны progress/checkpoint и ограниченное время остановки.
+7. Delivery inspect/batch/conflict flows имеют backend и основное browser
+   покрытие, но перед крупным UI rewrite нужен более глубокий accessibility и
+   file-dialog E2E на Windows.
 
-## Долг
+## Data-quality backlog
 
-1. ~~Монолитный `inventory/webapp.py`.~~
+- 291 из 50 000 promoted карточек имеют `item_name = '#N/A'` из исторического
+  Excel-источника. S/N сохранены, но имя нельзя угадывать. Исправление требует
+  отдельного backup/provenance/transaction/audit/integrity/FK change.
+- Monitoring cleanup Selenium-driver содержит намеренно подавленные ошибки;
+  при развитии collector их нужно переводить в безопасное диагностическое
+  логирование без утечки секретов.
 
-   Закрыто в ODE 0.16.0 Stage 4: доменные HTTP-handler ветви вынесены в
-   `inventory/routes/`, HTML-сборка — в `inventory/templates/`, CSV
-   presentation contracts — в `inventory/routes/csv.py`. В `webapp.py`
-   остаются общая HTTP-оболочка, auth/session, security и сериализация.
+## Обязательные защитные проверки
 
-2. Сборка UI через `.replace(...)`.
-
-   Несколько слоев замен зависят от точного текста старой разметки. Это главный риск битых id, обработчиков и секций.
-
-3. Нет отдельного dev/test requirements.
-
-   `pytest` не установлен в текущем окружении, хотя команда естественна для QA.
-
-4. UI smoke покрывает ключевой happy path, но не все формы ввода файлов.
-
-   Для полноценного release-gate стоит расширить E2E: CSV preview/import, delivery upload, inventory upload, work logs upload, uploaded reports.
-
-5. FULL Inventory Preview пока не имеет cooperative cancel/resume.
-
-   Отмена во время активного Preview безопасно блокируется, но для будущего
-   1m-row контура нужны checkpoint/progress и остановка не позднее 5 секунд.
-
-6. Administration diagnostics пока легковесная.
-
-   Stage 0.12.9 не запускает `integrity_check` в read API, чтобы не утяжелять `/api/data` и admin overview. Нужен отдельный будущий diagnostics endpoint с явным запуском и отдельными contract tests.
-
-7. ~~Administration write/actions остаются compatibility-layer.~~
-
-   Закрыто в ODE 0.16.0 Stage 1: login/authentication, actor context,
-   `CREATE_USER`, `CHANGE_PASSWORD`, `UPDATE_PROFILE`, `CREATE_BACKUP`,
-   `RESTORE_BACKUP`, `CHECK_DATABASE` и upload prod DB идут через
-   `AdministrationFacade -> AdministrationService`. Logout остаётся локальной
-   очисткой HTTP session; старые service/core методы — deprecated delegates.
-
-8. Delivery acceptance UI/E2E coverage is still light.
-
-   Stage 0.12.16 migrated backend acceptance paths. The current delivery UI is
-   assembled in `inventory/templates/webapp.py`; deeper browser coverage for inspect cards,
-   batch acceptance and conflict presentation should be added before a major UI
-   rewrite.
-
-9. Delivery close/admin correction remains compatibility-layer.
-
-   Stage 0.12.16 migrated physical acceptance, but `close_delivery` and any
-   destructive override/admin correction remain legacy or future work.
-
-10. 291 карточки (0.58% из 50000 промоутнутых) имеют `item_name = '#N/A'`.
-
-    Excel-артефакт из исходника исторической миграции (S/N и другие поля у
-    этих карточек валидны, но наименование не восстановить без исходника).
-    Найдено при финальной стабилизации 2026-07-14. Правка production data
-    требует отдельного data-correction этапа: внешний byte-copy + SQLite
-    `.backup`, доказательства provenance, транзакция, audit,
-    post-check integrity/FK — не одноразовая правка внутри code review.
-
-## Рекомендации после стабилизации
-
-1. Зафиксировать `scripts/smoke_ui.py` как обязательный release-gate.
-
-2. ~~Разделить `webapp.py` минимум на `routes`, `templates`, `static_js`, `static_css`.~~
-
-   Выполнено в ODE 0.16.0 Stage 4; существующие `static/js/` и
-   `static/css/main.css` сохранены без переписывания.
-
-3. Добавить browser-test для admin, CSV upload и delivery flow в репозиторий.
-
-4. Ввести отдельную тестовую БД/fixture с известным admin-паролем.
+- `scripts/smoke_ui.py` остаётся release gate;
+- `scripts/audit_module_boundaries.py` запрещает пересечение bounded contexts;
+- `scripts/audit_frontend_contracts.py` проверяет ID и статические кнопки;
+- `scripts/audit_documentation.py` проверяет living docs и локальные ссылки;
+- mutation/file upload tests выполняются только на disposable DB;
+- SHA-256/integrity/FK трёх рабочих DB сравниваются до/после read-only gate.
