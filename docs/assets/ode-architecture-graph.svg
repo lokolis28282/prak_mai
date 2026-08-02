@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
-  <title id="title">ODE 0.18.1 — карта связей модулей</title>
+  <title id="title">ODE 0.20.0 — карта связей модулей</title>
   <desc id="desc">Тонкий Web shell с routes/templates входит в ApplicationContext. WarehouseSiteRegistry выбирает изолированный IXcellerate/Solar, Vacations использует третью БД, а Administration создаёт проверенные snapshots трёх runtime-БД во внешнем backup root.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071521"/><stop offset="1" stop-color="#10152a"/></linearGradient>
@@ -12,8 +12,8 @@
   <rect width="1400" height="820" rx="24" fill="url(#bg)"/>
   <circle cx="700" cy="420" r="265" fill="none" stroke="#2dd4bf" stroke-opacity=".08" stroke-width="85"/>
   <circle cx="700" cy="420" r="330" fill="none" stroke="#8b5cf6" stroke-opacity=".06" stroke-width="2"/>
-  <text x="56" y="62" class="title">ODE 0.18.1 · архитектурный граф</text>
-  <text x="56" y="88" class="meta">Committed code graph · 245 files/modules · 502 import/serve edges</text>
+  <text x="56" y="62" class="title">ODE 0.20.0 · архитектурный граф</text>
+  <text x="56" y="88" class="meta">Committed code graph · 248 files/modules · 506 import/serve edges</text>
 
   <path class="edge" d="M215 178C365 178 446 285 570 366"/><path class="edge" d="M215 265C365 265 460 330 570 386"/>
   <path class="edge" d="M830 385C936 310 1004 206 1110 188"/><path class="edge" d="M830 405C970 365 1040 322 1110 315"/>
@@ -32,9 +32,9 @@
 
   <g filter="url(#glow)" transform="translate(570 350)"><rect class="node" width="260" height="150" rx="26" fill="#112d33" stroke="#55e4d2" stroke-width="2"/><text x="36" y="52" class="label">ApplicationContext</text><text x="36" y="79" class="sub">composition root · actor · config</text><rect x="36" y="101" width="80" height="25" rx="12" fill="#174c50"/><text x="53" y="118" class="chip">facades</text><rect x="126" y="101" width="98" height="25" rx="12" fill="#263c5f"/><text x="144" y="118" class="chip">boundaries</text></g>
 
-  <g transform="translate(1110 142)"><rect class="node" width="230" height="92" rx="18" fill="#123b37" stroke="#42d3b7"/><text x="24" y="35" class="label">Warehouse</text><text x="24" y="58" class="sub">S/N · операции · FULL Inventory</text><text x="24" y="78" class="count">630 graph nodes</text></g>
+  <g transform="translate(1110 142)"><rect class="node" width="230" height="92" rx="18" fill="#123b37" stroke="#42d3b7"/><text x="24" y="35" class="label">Warehouse</text><text x="24" y="58" class="sub">S/N · операции · FULL Inventory</text><text x="24" y="78" class="count">equipment composition</text></g>
   <g transform="translate(1110 270)"><rect class="node" width="230" height="92" rx="18" fill="#2c2244" stroke="#a78bfa"/><text x="24" y="35" class="label">Monitoring</text><text x="24" y="58" class="sub">Hostname · DCIM · message preview</text><text x="24" y="78" class="count">isolated boundary</text></g>
-  <g transform="translate(1110 402)"><rect class="node" width="230" height="92" rx="18" fill="#1d3048" stroke="#60a5fa"/><text x="24" y="35" class="label">Reports</text><text x="24" y="58" class="sub">УВР · смена · неделя · export</text><text x="24" y="78" class="count">105 graph nodes</text></g>
+  <g transform="translate(1110 402)"><rect class="node" width="230" height="92" rx="18" fill="#1d3048" stroke="#60a5fa"/><text x="24" y="35" class="label">Reports</text><text x="24" y="58" class="sub">УВР · смена · неделя · export</text><text x="24" y="78" class="count">isolated boundary</text></g>
   <g transform="translate(1110 530)"><rect class="node" width="230" height="92" rx="18" fill="#3b2d1c" stroke="#f6b94c"/><text x="24" y="35" class="label">Knowledge</text><text x="24" y="58" class="sub">articles · tags · attachments</text><text x="24" y="78" class="count">role protected</text></g>
 
   <g transform="translate(565 672)"><rect class="node" width="270" height="92" rx="46" fill="#232640" stroke="#9893ff"/><text x="90" y="32" class="label">SQLite sites</text><text x="38" y="56" class="sub">warehouse.db · IXcellerate</text><text x="38" y="77" class="count">warehouse_solar.db · Solar</text></g>

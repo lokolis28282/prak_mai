@@ -46,6 +46,8 @@
   выпуск поиска по целевой железке и состава оборудования;
 - [`2026-08-02_ODE_0_20_0_FULL_SYSTEM_AUDIT.md`](reviews/2026-08-02_ODE_0_20_0_FULL_SYSTEM_AUDIT.md)
   — полный Documentation/System/UI gate этой ревизии.
+- [`2026-08-02_ODE_0_20_0_CURRENT_VISUALS_FIX.md`](reviews/2026-08-02_ODE_0_20_0_CURRENT_VISUALS_FIX.md)
+  — исправление GitHub-visible PNG/SVG и защита от показа старого графа.
 
 ## Нормативная целевая архитектура
 

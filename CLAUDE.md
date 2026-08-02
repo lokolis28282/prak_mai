@@ -357,7 +357,7 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 641 tests under
+Current full discover result is 642 tests under
 `-W error::ResourceWarning` (`skipped=8` на Linux/macOS, `skipped=15` на
 Windows — платформенные и отсутствующие ignored migration-артефакты).
 Never run a 51,003-row operational import as a performance test.

@@ -79,6 +79,11 @@ def product_version() -> str:
     raise RuntimeError("inventory.__version__ is missing or is not a string literal")
 
 
+def snapshot_output(version: str | None = None) -> Path:
+    """Return the GitHub-visible PNG required for the current source version."""
+    return ROOT / "docs" / "assets" / f"ode-code-graph-{version or product_version()}.png"
+
+
 def collect_python() -> list[Path]:
     files: list[Path] = []
     for root in PY_ROOTS:
@@ -383,6 +388,10 @@ def main() -> int:
     if args.check:
         if not OUTPUT.is_file() or OUTPUT.read_text(encoding="utf-8") != html:
             print(f"graph: stale -> {OUTPUT.relative_to(ROOT)}")
+            return 1
+        png = snapshot_output(model["version"])
+        if not png.is_file() or png.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
+            print(f"graph: current PNG missing or invalid -> {png.relative_to(ROOT)}")
             return 1
         print(f"graph: current ({model['counts']['nodes']} nodes, "
               f"{model['counts']['edges']} edges)")

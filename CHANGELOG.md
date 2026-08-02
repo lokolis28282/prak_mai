@@ -16,8 +16,15 @@
 - read-path реализован через `WarehouseFacade → WarehouseDomainService →
   EquipmentCompositionService`; новые таблицы, зависимости и изменения
   production SQLite не требуются;
-- добавлены backend/API/UI и headless Chrome regression-проверки. Текущий
-  полный набор — 639 тестов (`skipped=8` на macOS/Linux).
+- добавлены backend/API/UI и headless Chrome regression-проверки. Релизный
+  набор composition slice — 639 тестов (`skipped=8` на macOS/Linux);
+- post-release documentation audit актуализировал living-документы и добавил
+  исполняемые проверки Markdown/frontend controls;
+- GitHub-visible PNG, интерактивный code graph и architecture SVG приведены к
+  ODE 0.20.0 (248 узлов / 506 связей). Старый versioned PNG больше нельзя
+  вывести как current: это проверяют graph/documentation contract tests;
+- текущий полный набор после documentation/visual follow-up — 642 теста
+  (`skipped=8` на macOS/Linux).
 
 ## ODE 0.19.1 — local runtime stabilization (2026-08-02)
 

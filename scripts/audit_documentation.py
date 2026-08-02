@@ -125,6 +125,18 @@ def audit_current_contracts(root: Path = ROOT) -> list[str]:
             "docs/project/DOCUMENTATION_INDEX.md: current release report is absent"
         )
 
+    expected_graph = f"ode-code-graph-{version}.png"
+    for relative in ("README.md", "docs/CODEBASE_GRAPH.md"):
+        text = (root / relative).read_text("utf-8")
+        graph_versions = re.findall(r"ode-code-graph-([0-9.]+)\.png", text)
+        if expected_graph not in text:
+            violations.append(f"{relative}: current graph {expected_graph} is absent")
+        for graph_version in graph_versions:
+            if graph_version != version:
+                violations.append(
+                    f"{relative}: old graph {graph_version} is presented as current"
+                )
+
     windows_text = "\n".join(
         (root / relative).read_text("utf-8")
         for relative in ("README_WINDOWS.md", "WINDOWS_RELEASE.md")

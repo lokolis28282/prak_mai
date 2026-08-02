@@ -1,22 +1,21 @@
 # ODE 0.20.0 — карта кода и зависимостей
 
-![ODE 0.18 architecture graph](assets/ode-architecture-graph.svg)
+![ODE 0.20.0 architecture graph](assets/ode-architecture-graph.svg)
 
 ## Граф файлов и импортов
 
-[![ODE — граф файлов и импортов](assets/ode-code-graph-0.18.1.png)](assets/code_graph.html)
+[![ODE 0.20.0 — граф файлов и импортов](assets/ode-code-graph-0.20.0.png)](assets/code_graph.html)
 
 - GitHub-friendly PNG:
-  [`assets/ode-code-graph-0.18.1.png`](assets/ode-code-graph-0.18.1.png);
+  [`assets/ode-code-graph-0.20.0.png`](assets/ode-code-graph-0.20.0.png);
 - интерактивный self-contained HTML:
   [`assets/code_graph.html`](assets/code_graph.html).
 
-Детерминированный committed graph ODE 0.20.0 после equipment composition slice
-содержит 247 файлов/модулей и 506 import/serve edges. PNG остаётся
-историческим снимком 0.18.1 (245/502), а актуальная интерактивная карта
-перегенерирована для текущего дерева.
+Детерминированный committed graph ODE 0.20.0 после полного system audit
+содержит 248 файлов/модулей и 506 import/serve edges. Статический PNG и
+интерактивная карта построены из текущего `code_graph.html`.
 Последний успешно зафиксированный внешний full-снимок Codebase Memory от
-2026-08-02 содержит 7 368 узлов и 31 382 ребра (`skipped_count=0`). Он создан
+2026-08-02 содержит 7 416 узлов и 31 569 рёбер (`skipped_count=0`). Он создан
 для текущего дерева с `persistence=false`; `artifact_present=false` и
 `.codebase-memory` в repository нет.
 
@@ -122,13 +121,11 @@ Migration packages не импортируются runtime Web/API и не пу�
 - `python3 scripts/generate_code_graph.py` обновляет
   [`assets/code_graph.html`](assets/code_graph.html) из Python AST и
   static-layout; версия читается из `inventory.__version__`.
-- PNG `assets/ode-code-graph-0.18.1.png` является GitHub-снимком
-  интерактивного графа версии 0.18.1 и обновляется явно при публикации нового
-  визуального snapshot. В 0.20.0 состав изменился до 247/506; PNG пока
-  сохраняется как явно подписанный исторический снимок, а authoritative
-  current graph — self-contained HTML выше.
+- PNG `assets/ode-code-graph-0.20.0.png` является GitHub-снимком текущего
+  интерактивного графа. При каждом version bump он создаётся заново после
+  стабилизации layout; старый versioned PNG запрещено показывать как current.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если
-  committed HTML устарел.
+  committed HTML устарел или текущий versioned PNG отсутствует.
 - `python3 scripts/refresh_project_knowledge.py` обновляет HTML-граф и делает
   внешний full Codebase Memory reindex с `persistence=false`.
 - После каждого существенного изменения кода/топологии refresh обязателен;
