@@ -1,8 +1,8 @@
 # Архитектура ODE
 
-Дата проверки: 2026-07-27. Текущий source/runtime: `0.19.0`.
+Дата проверки: 2026-08-02. Текущий source/runtime: `0.20.0`.
 
-## ODE 0.19.0 runtime boundary
+## ODE 0.20.0 runtime boundary
 
 Приложение обслуживает три физически независимых SQLite-файла:
 
@@ -36,7 +36,21 @@ Restore из UI намеренно отключён. Частично безоп
 Компенсирующие складские операции (сторно ошибочного прихода/расхода) описаны
 отдельно в
 [ADR-014](docs/decisions/ADR-014-warehouse-correction-reversal.md) и в
-0.19.0 не реализованы.
+0.20.0 не реализованы.
+
+Карточка серийного оборудования получает связанную комплектацию только как
+read-only evidence projection:
+
+```
+UI → /api/position-card → WarehouseFacade → WarehouseDomainService
+   → EquipmentCompositionService → stock_issues + stock_issue_allocations
+```
+
+Проекция не пишет в БД и не вводит отдельную модель истины. Она группирует
+компоненты, ранее списанные на target S/N, и сохраняет первичные реквизиты
+операции. Пока отсутствуют INSTALL/REMOVE/REPLACE и подтверждённый slot,
+`current_state_confirmed=false` и `placement_known=false` являются
+обязательными полями API; UI не изображает переднюю/заднюю панель со слотами.
 
 ## ODE 0.14 initial-inventory boundary
 

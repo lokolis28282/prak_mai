@@ -5,12 +5,14 @@
 Скрипт создаёт DB/XLSX во временном каталоге, проверяет byte-identical fixture
 DB и не принимает путь к `data/warehouse.db`.
 
-Как получить и использовать одноразовую тестовую копию БД ODE, не трогая
-рабочую `data/warehouse.db`.
+Как получить и использовать одноразовый тестовый контур ODE, не трогая три
+рабочие БД: `data/warehouse.db`, `data/warehouse_solar.db` и
+`data/vacations.db`.
 
 **FACT (source Stage 0.13.3A; runtime metadata `0.12.17.1 RC2`):** этот UI test
-contour и migration candidate — разные артефакты. Команды ниже продолжают
-создавать `data/warehouse_test_clean.db`; они не строят reference staging.
+contour и migration candidate — разные артефакты. Команды Warehouse ниже
+создают `data/warehouse_test_clean.db` / `data/warehouse_solar_test_clean.db`;
+они не строят reference staging. Vacations получает отдельную пустую БД.
 
 ## Скрипт
 
@@ -18,6 +20,11 @@ contour и migration candidate — разные артефакты. Команд
 python3 scripts/create_clean_test_db.py --dry-run
 python3 scripts/create_clean_test_db.py --profile empty
 python3 scripts/create_clean_test_db.py --profile demo --overwrite
+python3 scripts/create_clean_test_db.py \
+  --source data/warehouse_solar.db \
+  --output data/warehouse_solar_test_clean.db \
+  --profile empty --overwrite
+python3 scripts/create_clean_vacations_test_db.py --overwrite
 ```
 
 Аргументы:
@@ -36,6 +43,12 @@ python3 scripts/create_clean_test_db.py --profile demo --overwrite
 - `--dry-run` — ничего не создавать и не изменять, только показать, что было
   бы сделано (количество строк по таблицам, путь вывода).
 - `--overwrite` — обязателен, если `--output` уже существует.
+
+`create_clean_vacations_test_db.py` не копирует персональные данные из
+рабочей Vacations DB. Он устанавливает актуальную пустую Vacations-схему в
+`data/vacations_test_clean.db`, проверяет integrity/FK и публикует файл
+атомарно. Рабочий путь, symbolic/hardlink рабочей БД и target с SQLite
+sidecar-файлами отклоняются fail-closed.
 
 Гарантии:
 
@@ -60,7 +73,11 @@ python3 scripts/create_clean_test_db.py --profile demo --overwrite
 
 ## Что очищается (операционные данные)
 
-`stock_receipts`, `stock_issues`, `stock_issue_allocations`, `deliveries`,
+Candidate-only migration staging/provenance (`migration_*`) удаляется первым:
+его FK указывают на promoted receipts/issues, а пустой marker в чистом
+demo-контуре ошибочно выглядел бы как повреждённый full-migration candidate.
+Затем очищаются `stock_receipts`,
+`stock_issues`, `stock_issue_allocations`, `deliveries`,
 `delivery_lines`, `work_logs`, `daily_report_uploads`, `daily_report_rows`,
 `audit_log`, legacy `equipment`, legacy `operations`.
 
@@ -76,16 +93,23 @@ python3 scripts/create_clean_test_db.py --profile demo --overwrite
 start_test_windows.bat          # Windows
 ```
 
-Оба launcher'а перед запуском пересобирают `data/warehouse_test_clean.db`
-командой `create_clean_test_db.py --profile demo --overwrite`, затем
-запускают `app.py web --db data/warehouse_test_clean.db` с переменной
-окружения `ODE_TEST_MODE=1`. При этом флаге сервер добавляет в HTML баннер
+Оба launcher'а перед запуском пересобирают три disposable target:
+
+- `data/warehouse_test_clean.db` — IXcellerate с demo-операциями;
+- `data/warehouse_solar_test_clean.db` — Solar без operational rows;
+- `data/vacations_test_clean.db` — пустая актуальная Vacations-схема.
+
+Затем launcher явно передаёт все три пути в `app.py web` вместе с
+`--warehouse-contour demo` и переменной окружения `ODE_TEST_MODE=1`. При этом
+флаге сервер добавляет в HTML баннер
 «ТЕСТОВЫЙ КОНТУР — изменения не влияют на рабочую базу» (виден на экране
 входа и во всем интерфейсе). Обычные `start_macos.command` /
 `start_windows.bat` эту переменную не устанавливают и всегда открывают
 `data/warehouse.db`. Флаг изолирован внутри процесса launcher'а (`setlocal`
 на Windows, inline environment на macOS), а сервер fail-fast отказывается
 стартовать, если `ODE_TEST_MODE=1` совмещён с рабочей БД или её hardlink.
+Solar наследует `demo` posting policy основного runtime, поэтому после
+переключения площадки остаются видны и общий тестовый, и `DEMO`-баннеры.
 
 Кнопки полной очистки рабочей БД в обычном интерфейсе нет и не планируется —
 только этот отдельный CLI-скрипт и его launcher'ы.

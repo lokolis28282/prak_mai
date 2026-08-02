@@ -1,6 +1,6 @@
 # Current State
 
-Дата проверки: 2026-07-27. Authoritative repository:
+Дата проверки: 2026-08-02. Authoritative repository:
 `~/Documents/prak_mai`.
 
 ## Два разных Stage-трека
@@ -10,7 +10,7 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.19.0`.
+- Current source/runtime metadata: `0.20.0`.
 - Последний фактически собранный ZIP: `0.12.17 RC1`.
 - Рабочий runtime: `app.py` → общий application context + выбранный Warehouse
   site → `data/warehouse.db` (IXcellerate) или
@@ -115,6 +115,39 @@ Headless Chrome smoke в этой среде не запускался и не �
 выполненный: он остаётся частью macOS/Windows приёмки. Три рабочие БД
 остались byte-identical, `integrity_check=ok`, FK violations и sidecars
 отсутствуют. Evidence: `../../RELEASE_REPORT_ODE_0_19_0.md`.
+
+### ODE 0.20.0 equipment composition projection
+
+Карточка серийного оборудования показывает evidence-only проекцию компонентов,
+списанных на его target S/N. `EquipmentCompositionService` читает существующие
+`stock_issues` и `stock_issue_allocations` через Warehouse domain composition;
+новых таблиц и production-миграции нет. Оператор видит группы, полный журнал,
+hostname, задачу/ИЗМ и первичные реквизиты компонента. Заводской состав,
+фактическое наличие и физические слоты явно остаются неподтверждёнными.
+
+Текущий gate: 639 тестов (`skipped=8` на macOS/Linux), включая отдельные
+backend/API/UI contracts и headless Chrome сценарий карточки. Evidence:
+`../../RELEASE_REPORT_ODE_0_20_0.md`.
+
+### ODE 0.19.1 local runtime stabilization
+
+После операторской проверки 2026-08-02 устранены четыре runtime-регрессии:
+fresh-process circular import в `app.py seed`, потеря остатка при переходе из
+карточки оборудования в расход, незакрывающаяся мышью карточка и неверный
+production contour Solar внутри demo runtime. Test launchers macOS/Windows
+теперь создают и явно подключают отдельные IXcellerate, Solar и Vacations DB;
+рабочая Vacations DB больше не может быть неявным target тестового запуска.
+
+Повторный gate на macOS: 635 тестов `OK (skipped=8)` под
+`-W error::ResourceWarning`, Python/JavaScript syntax,
+module/frontend/repository-data audits, graph check, clean-DB builders и
+headless Chrome — PASS. Исторический release gate выше сохранён без
+ретроспективного изменения.
+
+Точная default-команда `python3 app.py` проверена на трёх реальных runtime-БД:
+IXcellerate overview/search/card, mouse close, переход в расход без Confirm,
+Solar isolation и Vacations calendar — PASS. Production DB SHA совпали
+до/после; детали — `../../RELEASE_REPORT_ODE_0_19_1.md`.
 
 ### ODE 0.16.0 modular extraction gate
 
@@ -345,7 +378,7 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий release-кандидат ODE 0.19.0 — 628 тестов; code graph содержит
+Текущий release-кандидат ODE 0.20.0 — 639 тестов; code graph содержит
 актуальные значения из `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
 из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256
 `8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`,

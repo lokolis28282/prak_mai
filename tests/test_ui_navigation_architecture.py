@@ -80,6 +80,9 @@ class UiNavigationArchitectureTest(unittest.TestCase):
             "Документы",
             "Гарантия",
             "Комплектующие",
+            "Связанные компоненты по данным списаний",
+            "Фактическое наличие, заводская комплектация и физические слоты не подтверждены",
+            "Задача / ИЗМ",
         ):
             self.assertIn(label, self.product)
         self.assertIn("if(response.migration&&technicalContext)", self.product)
@@ -87,6 +90,17 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         self.assertIn("Категория карточки изменена", self.product)
         self.assertIn("isMigrationAdministrationContext", self.product)
         self.assertIn("userFacingHistoryText", self.product)
+        self.assertIn("equipmentCompositionSection(response.composition,card)", self.product)
+        self.assertIn("dataset:{compositionGroup:group.key}", self.product)
+        self.assertIn("composition-group-card.active", self.css)
+
+    def test_equipment_card_close_and_issue_prefill_are_defensive(self) -> None:
+        self.assertIn("x.balance??x.current_balance??x.available??0", self.ui)
+        self.assertIn("balance:card.current_balance", self.product)
+        self.assertIn("modalCloseButton.removeAttribute('onclick')", self.product)
+        self.assertIn("#positionModal > .modal-card > .modal-head button", self.product)
+        self.assertIn("},true);", self.product)
+        self.assertIn("history.replaceState(routeState,'',location.hash)", self.product)
 
     def test_migration_review_is_lazy_and_administrator_only(self) -> None:
         self.assertIn("state.current_user?.role!=='admin'", self.review)

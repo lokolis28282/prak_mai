@@ -64,11 +64,11 @@ class WebappExtractionContractTest(unittest.TestCase):
         # то есть сама разметка не изменилась.
         self.assertEqual(
             hashlib.sha256(webapp.LOGIN_HTML.encode("utf-8")).hexdigest(),
-            "ea8e294d512c32d6c1b0758bbf82235eaf1a952c79b10b834f129836bb3f5728",
+            "e44ffeacb564d8a1607ec3d5af6b36d5cbfd1d55272c4bc42ae493c233d98826",
         )
         self.assertEqual(
             hashlib.sha256(webapp.HTML.encode("utf-8")).hexdigest(),
-            "7bc292e16de16ceb1aed08c1bda31c1bf6b374fcae9484ab976bcd48480879a7",
+            "17537a71177cce5525c837793b1a5e1297bf7b73e8becdf410abb28a4750d9e8",
         )
 
     def test_routes_and_templates_do_not_own_business_sql(self) -> None:

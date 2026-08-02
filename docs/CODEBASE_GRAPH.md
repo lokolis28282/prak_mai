@@ -1,4 +1,4 @@
-# ODE 0.19.0 — карта кода и зависимостей
+# ODE 0.20.0 — карта кода и зависимостей
 
 ![ODE 0.18 architecture graph](assets/ode-architecture-graph.svg)
 
@@ -11,13 +11,14 @@
 - интерактивный self-contained HTML:
   [`assets/code_graph.html`](assets/code_graph.html).
 
-Детерминированный committed graph ODE 0.19.0 содержит 245 файлов/модулей и
-502 import/serve edges. Значения совпадают с 0.18.1: релиз 0.19.0 не менял
-runtime-код, поэтому PNG-снимок 0.18.1 остаётся точным и не переснимался.
+Детерминированный committed graph ODE 0.20.0 после equipment composition slice
+содержит 247 файлов/модулей и 506 import/serve edges. PNG остаётся
+историческим снимком 0.18.1 (245/502), а актуальная интерактивная карта
+перегенерирована для текущего дерева.
 Последний успешно зафиксированный внешний full-снимок Codebase Memory от
-2026-07-27 (до 0.18.1) содержит 7 067 узлов, 30 991 ребро, 550 файлов и 42
-распознанных HTTP-маршрута; новые full-метрики не снимались и не выдаются за
-полученные. `artifact_present=false`; `.codebase-memory` в repository нет.
+2026-08-02 содержит 7 368 узлов и 31 382 ребра (`skipped_count=0`). Он создан
+для текущего дерева с `persistence=false`; `artifact_present=false` и
+`.codebase-memory` в repository нет.
 
 ## Runtime path
 
@@ -62,7 +63,7 @@ flowchart LR
   Events --> R
 ```
 
-Фактический web-path в 0.19.0:
+Фактический web-path в 0.19.1:
 
 `browser → webapp HTTP shell → session WarehouseSite → inventory/routes →
 selected facade → domain service/repository → selected SQLite`.
@@ -123,9 +124,9 @@ Migration packages не импортируются runtime Web/API и не пу�
   static-layout; версия читается из `inventory.__version__`.
 - PNG `assets/ode-code-graph-0.18.1.png` является GitHub-снимком
   интерактивного графа версии 0.18.1 и обновляется явно при публикации нового
-  визуального snapshot. В 0.19.0 топология не менялась, поэтому снимок не
-  переснимался и имя файла сохранено; новый PNG нужен, когда изменится состав
-  узлов/связей.
+  визуального snapshot. В 0.20.0 состав изменился до 247/506; PNG пока
+  сохраняется как явно подписанный исторический снимок, а authoritative
+  current graph — self-contained HTML выше.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если
   committed HTML устарел.
 - `python3 scripts/refresh_project_knowledge.py` обновляет HTML-граф и делает

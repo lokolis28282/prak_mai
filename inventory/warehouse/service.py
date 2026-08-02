@@ -11,6 +11,7 @@ from ..administration.service import AdministrationService
 from ..db import DEFAULT_DB_PATH, initialize
 from ..shared.helpers import STRICT_REFERENCES
 from .balance import WarehouseBalanceService
+from .equipment_composition import EquipmentCompositionService
 from .history import WarehouseHistoryService
 from .inventory import LegacyInventoryService
 from .monitoring import WarehouseMonitoringService
@@ -161,12 +162,14 @@ class WarehouseDomainService:
         self._history = WarehouseHistoryService(self)
         self._inventory = LegacyInventoryService(self)
         self._balance = WarehouseBalanceService(self)
+        self.equipment_composition = EquipmentCompositionService(self)
         self._monitoring = WarehouseMonitoringService(self)
         self._references = WarehouseReferenceService(self)
         self._components = (
             self._history,
             self._inventory,
             self._balance,
+            self.equipment_composition,
             self._monitoring,
             self._references,
         )

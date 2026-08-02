@@ -47,9 +47,29 @@ from inventory.db import DEFAULT_DB_PATH  # noqa: E402
 
 DEFAULT_OUTPUT_PATH = ROOT / "data" / "warehouse_test_clean.db"
 
+# Миграционный provenance связан FK с promoted receipts/issues. В чистом
+# контуре он не может пережить удаление operational rows и сам не должен
+# выглядеть как доступный full-migration review. Порядок важен: сначала дети.
+MIGRATION_TABLES_IN_DROP_ORDER = [
+    "migration_full_warnings",
+    "migration_full_quarantine",
+    "migration_full_relationships",
+    "migration_full_reconciliation",
+    "migration_full_identities",
+    "migration_serial_cells",
+    "migration_staging_rows",
+    "migration_validation_results",
+    "migration_source_files",
+    "migration_batches",
+    "migration_full_cleanliness",
+    "migration_full_performance",
+    "migration_full_marker",
+]
+
 # Складские и отчетные таблицы: операционные данные, которые очищаются.
 # Порядок важен — сначала таблицы, ссылающиеся на другие (FK потомки).
 OPERATIONAL_TABLES_IN_DELETE_ORDER = [
+    *MIGRATION_TABLES_IN_DROP_ORDER,
     "knowledge_article_tags",
     "knowledge_attachments",
     "knowledge_articles",
@@ -157,6 +177,16 @@ def clear_operational_data(connection: sqlite3.Connection) -> None:
             "SELECT name FROM sqlite_master WHERE type = 'table'"
         )
     }
+    # These tables belong to the offline/full-migration candidate. Leaving an
+    # empty marker table would make ordinary runtime fail closed as a corrupt
+    # candidate, so a disposable clean contour removes the candidate surface
+    # completely instead of preserving empty shells.
+    for table in MIGRATION_TABLES_IN_DROP_ORDER:
+        if table not in existing:
+            continue
+        connection.execute(f'DROP TABLE "{table}"')
+        connection.execute("DELETE FROM sqlite_sequence WHERE name = ?", (table,))
+        existing.remove(table)
     for table in OPERATIONAL_TABLES_IN_DELETE_ORDER:
         if table not in existing:
             continue

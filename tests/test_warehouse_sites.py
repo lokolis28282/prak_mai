@@ -77,6 +77,28 @@ class SolarBootstrapTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "разные БД"):
             bootstrap_solar_database(self.source, self.source)
 
+    def test_solar_inherits_demo_contour_from_primary_runtime(self) -> None:
+        demo_primary = Path(self.tmp.name) / "warehouse_demo.db"
+        demo_solar = Path(self.tmp.name) / "warehouse_solar_demo.db"
+        production = Path(self.tmp.name) / "production.db"
+        service = WarehouseService(demo_primary)
+        context = create_application_context(
+            demo_primary,
+            service=service,
+            configuration=RuntimeConfig(
+                demo_primary,
+                warehouse_contour="demo",
+                production_db_path=production,
+                full_inventory_state_root=Path(self.tmp.name) / "inventory_state",
+            ),
+        )
+        registry = WarehouseSiteRegistry(
+            context, solar_db_path=demo_solar, enable_solar=True
+        )
+        solar_status = registry.get("solar").runtime.app_context.warehouse.get_system_status()
+        self.assertTrue(solar_status["contour"]["demo"])
+        self.assertTrue(solar_status["posting_allowed"])
+
 
 class WarehouseSiteApiTest(unittest.TestCase):
     def setUp(self) -> None:

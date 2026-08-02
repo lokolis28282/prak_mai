@@ -121,18 +121,15 @@ backup, ZIP, caches/pyc, screenshots/exports/logs, node_modules/venv,
 secrets/credentials и session-data. SQLite-файлы дополнительно hard-skipped
 самим indexer. `.cbmignore` сейчас не используется.
 
-Последний подтверждённый проект в cache назывался
-`Users-lokolis-Documents-prak_mai`. Full reindex ODE 0.18.0 с общим модулем
-отпусков от 2026-07-27: 7 067 узлов, 30 991 ребро, 550 файлов и 42
-распознанных HTTP routes; `artifact_present=false`, DB-файлов в `File` nodes
-нет.
+Последний подтверждённый проект в cache называется
+`Users-lokolis-Documents-prak_mai`. Full reindex ODE 0.20.0 после equipment
+composition slice от 2026-08-02: 7 368 узлов, 31 382 ребра;
+`artifact_present=false`, `skipped_count=0`. Индексация выполнена с
+`persistence=false`; repository artifact не создан.
 
-Для ODE 0.18.1 команда full reindex была запущена 2026-07-27 после обновления
-committed graph (245 nodes/files, 502 edges), но текущая Windows-среда не
-содержит `codebase-memory-mcp` binary и не предоставляет его MCP tools.
-Известные PATH/`.local/bin`/AppData/Codex paths проверены. Поэтому метрики
-0.18.0 не переименованы в 0.18.1, а reindex не объявлен выполненным.
-Repository artifact по-прежнему отсутствует: `artifact_present=false`.
+Предыдущая Windows-проверка ODE 0.18.1 не могла обновить индекс из-за
+отсутствующего binary; это остаётся историческим ограничением той среды, но
+не относится к подтверждённому macOS reindex 2026-08-02.
 
 После существенного изменения кода или topology используется единая команда:
 

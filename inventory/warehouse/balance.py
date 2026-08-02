@@ -673,13 +673,6 @@ class WarehouseBalanceService(WarehouseComponent):
                     ORDER BY l.updated_at, l.id""",
                 receipt_ids,
             ).fetchall()
-            target_events = db.execute(
-                """SELECT * FROM stock_issues
-                   WHERE trim(target_serial_number) <> ''
-                     AND target_serial_number = ? COLLATE NOCASE
-                   ORDER BY issue_date, id""",
-                (exact_serial_number,),
-            ).fetchall() if exact_serial_number else []
             issue_ids = sorted({int(row["id"]) for row in issues})
             audit_terms = [
                 "(entity_type = 'stock_receipt' AND entity_id IN ("
@@ -746,8 +739,11 @@ class WarehouseBalanceService(WarehouseComponent):
             card["order_number"] = card["order_number"] or delivery.get("order_number", "")
             card["request_number"] = card["request_number"] or delivery.get("request_number", "")
             card["comment"] = delivery.get("error_text", "")
-        if target_events:
-            card["hostname"] = target_events[-1]["target_hostname"]
+        composition = self.actor_provider.equipment_composition.for_target(
+            exact_serial_number
+        )
+        if composition["operations"]:
+            card["hostname"] = composition["operations"][0]["target_hostname"]
         history: list[dict[str, Any]] = []
         for row in receipts:
             opening_state = bool(int(row["is_opening_balance"] or 0))
@@ -773,19 +769,17 @@ class WarehouseBalanceService(WarehouseComponent):
                 "responsible": row["responsible"], "comment": row["comment"],
                 "sort_id": 1_000_000 + int(row["id"]),
             })
-        for row in target_events:
+        for row in reversed(composition["operations"]):
             history.append({
-                "date": row["issue_date"], "event_type": "Установлен компонент",
+                "date": row["issue_date"], "event_type": "Компонент списан на оборудование",
                 "quantity": float(row["quantity"]),
-                "task": (
-                    f"{row['task_type']}-{row['task_number']}" if row["task_type"] else ""
-                ),
+                "task": row["task_reference"],
                 "responsible": row["responsible"],
                 "comment": " ".join(filter(None, (
-                    str(row["source_serial_number"] or row["source_item_name"]),
+                    str(row["source_serial_number"] or row["item_name"]),
                     str(row["comment"] or ""),
                 ))),
-                "sort_id": 1_250_000 + int(row["id"]),
+                "sort_id": 1_250_000 + int(row["issue_id"]),
             })
         for row in delivery_rows:
             history.append({
@@ -806,7 +800,7 @@ class WarehouseBalanceService(WarehouseComponent):
         history.sort(key=lambda row: (str(row["date"]), int(row["sort_id"])))
         for row in history:
             row.pop("sort_id", None)
-        return {"position": card, "history": history}
+        return {"position": card, "history": history, "composition": composition}
 
     def update_position_card(
         self, serial_number: str, fields: dict[str, Any]

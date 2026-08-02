@@ -284,13 +284,28 @@ class WarehouseSiteRegistry:
             if primary_context.full_inventory is None:
                 raise RuntimeError("Primary Full Inventory context не настроен")
             primary_inventory_root = primary_context.full_inventory.paths.root
+            primary_configuration = primary_context.configuration
+            solar_contour = (
+                primary_configuration.warehouse_contour
+                if primary_configuration is not None
+                else "unknown"
+            )
+            solar_production_path = (
+                solar_service.db_path
+                if solar_contour == "production"
+                else (
+                    primary_configuration.production_db_path
+                    if primary_configuration is not None
+                    else DEFAULT_DB_PATH
+                )
+            )
             solar_context = ApplicationContext.from_service(
                 solar_service,
                 configuration=RuntimeConfig(
                     solar_service.db_path,
                     primary_context.feature_flags,
-                    warehouse_contour="production",
-                    production_db_path=solar_service.db_path,
+                    warehouse_contour=solar_contour,
+                    production_db_path=solar_production_path,
                     full_inventory_state_root=primary_inventory_root / "solar",
                 ),
             )

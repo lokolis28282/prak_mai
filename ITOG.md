@@ -1,4 +1,4 @@
-# ITOG — главная техническая документация ODE 0.19.0
+# ITOG — главная техническая документация ODE 0.20.0
 
 Основной технический документ проекта. При будущих патчах начинать отсюда:
 здесь описано, как работает код, где входы и выходы, какие инварианты нельзя
@@ -10,7 +10,7 @@ ODE («Отдел дежурных инженеров») — локальный 
 ЦОД: складской учёт (S/N-first) по двум площадкам, приход/расход со сканером,
 поставки, инвентаризация, контроль качества данных, УВР и отчёты, общий план
 отпусков, база знаний, ручной мониторинг. Python 3.10+ (только стандартная
-библиотека) + SQLite; UI в браузере; 628 автоматических тестов.
+библиотека) + SQLite; UI в браузере; 639 автоматических тестов.
 
 Приложение работает с тремя независимыми SQLite-файлами:
 
@@ -44,7 +44,8 @@ ODE («Отдел дежурных инженеров») — локальный 
 ```
 ApplicationContext.from_service(service)
  ├─ WarehouseFacade(service, posting_policy, full_inventory)
- │    └─ WarehouseSiteRegistry: IXcellerate | Solar (выбор в HTTP-сессии)
+ │    ├─ WarehouseSiteRegistry: IXcellerate | Solar (выбор в HTTP-сессии)
+ │    └─ EquipmentCompositionService: списания на target S/N (read-only)
  ├─ ReportsFacade (тот же instance, собранный WarehouseService)
  ├─ MonitoringFacade()          ← без service и без пути к БД
  ├─ KnowledgeFacade(service)
@@ -70,7 +71,7 @@ ApplicationContext.from_service(service)
 
 | Модуль | Вход (HTTP) | Выход | Пишет в БД |
 |---|---|---|---|
-| Warehouse | `/api/action` (STOCK_*, CONFIRM_*, ASSIGN_*, FILL_*, CORRECT_*, DELETE_DUPLICATE_RECEIPT, поставки), `/api/balance`, `/api/position-card`, `/export/*` | JSON/CSV | `stock_receipts`, `stock_issues`, `stock_issue_allocations`, `deliveries`, `delivery_lines`, `reference_*_v2` |
+| Warehouse | `/api/action` (STOCK_*, CONFIRM_*, ASSIGN_*, FILL_*, CORRECT_*, DELETE_DUPLICATE_RECEIPT, поставки), `/api/balance`, `/api/position-card`, `/export/*` | JSON/CSV; карточка включает evidence-only `composition` по target S/N | `stock_receipts`, `stock_issues`, `stock_issue_allocations`, `deliveries`, `delivery_lines`, `reference_*_v2` |
 | Reports | `/api/work-logs`, `/api/daily-report`, `/api/weekly-report`, actions `WORK_LOG*` | JSON/CSV | только `work_logs`, `daily_report_uploads`, `daily_report_rows`; склад видит **только** через `WarehouseEventReader` (read-only) |
 | Monitoring | `GET /api/monitoring/status`, `POST /api/monitoring/manual-search` (вне общего лока — долгий вызов) | JSON: routing + текст письма (без автоотправки) | **ничего** — фасад создаётся без БД; правила — локальные JSON, история — localStorage браузера |
 | Knowledge | `/api/knowledge/*` | JSON/файлы | `knowledge_*` |
@@ -116,7 +117,7 @@ python3 scripts/audit_module_boundaries.py
 python3 scripts/audit_frontend_contracts.py
 python3 scripts/audit_repository_data.py
 python3 scripts/generate_code_graph.py --check
-python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 628 OK
+python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 635 OK
 git diff --check
 python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 ```
@@ -138,7 +139,7 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 - **`docs/API_REFERENCE.md`** — полный справочник HTTP API (маршруты, все
   actions, payload'ы, коды ошибок, лимиты);
 - **`docs/assets/code_graph.html`** — интерактивный граф связей кодовой базы
-  (245 узлов / 502 связи: Python-импорты + webapp→static; фильтры по модулям,
+  (246 узлов / 503 связи: Python-импорты + webapp→static; фильтры по модулям,
   поиск, зум). Открывается в браузере офлайн; перегенерация после патча:
   `python3 scripts/generate_code_graph.py`; проверка актуальности без записи:
   `python3 scripts/generate_code_graph.py --check`;

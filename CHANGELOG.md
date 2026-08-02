@@ -1,5 +1,46 @@
 # Changelog ODE
 
+## ODE 0.20.0 — equipment composition projection (2026-08-02)
+
+- карточка сервера, коммутатора и другого серийного оборудования показывает
+  компоненты, ранее списанные на его S/N: тип, модель, исходный S/N,
+  количество, hostname, дату, задачу/ИЗМ, инженера и комментарий;
+- добавлена визуальная группировка по трансиверам, дискам, памяти,
+  адаптерам/контроллерам, вычислительным модулям, питанию/охлаждению и прочим
+  компонентам; наведение показывает краткую историю, клик фильтрует полный
+  журнал операций;
+- проекция намеренно не выдаётся за инвентаризацию: UI и API явно сообщают,
+  что заводская комплектация, фактическое текущее наличие и физические слоты
+  не подтверждены. Timeline использует доказуемое событие «Компонент списан
+  на оборудование» вместо неточного «Установлен компонент»;
+- read-path реализован через `WarehouseFacade → WarehouseDomainService →
+  EquipmentCompositionService`; новые таблицы, зависимости и изменения
+  production SQLite не требуются;
+- добавлены backend/API/UI и headless Chrome regression-проверки. Текущий
+  полный набор — 639 тестов (`skipped=8` на macOS/Linux).
+
+## ODE 0.19.1 — local runtime stabilization (2026-08-02)
+
+- устранён fresh-process circular import в `app.py seed`: публичные symbols
+  `inventory.core.ApplicationContext` и `create_application_context`
+  загружаются лениво, а CLI seed снова стартует в чистом Python-процессе;
+- карточка оборудования передаёт в форму расхода фактический остаток и единицу
+  измерения; значение `не число undefined` больше не отображается;
+- кнопка закрытия карточки оборудования закрывает modal мышью и очищает
+  `history.state.card`, поэтому Back/Forward не восстанавливает уже закрытую
+  карточку;
+- Solar наследует `demo`-контур основного Warehouse runtime: тестовый launcher
+  показывает оба защитных баннера и не принимает demo за production;
+- macOS/Windows test launchers теперь создают и явно подключают три
+  изолированные БД: demo IXcellerate, пустой Solar и пустой Vacations. Добавлен
+  fail-closed builder `scripts/create_clean_vacations_test_db.py`;
+- clean Warehouse builder удаляет candidate-only migration tables в корректном
+  FK-порядке до promoted receipts/issues и поэтому работает на полном
+  историческом контуре, не оставляя пустой marker повреждённого candidate;
+- добавлены fresh-process CLI, Vacations builder, launcher/site/UI regression
+  tests и расширен headless Chrome сценарий. Текущий полный набор — 635 тестов
+  (`skipped=8`), headless Chrome smoke — PASS на macOS.
+
 ## ODE 0.19.0 — documentation alignment (2026-07-27)
 
 Релиз без изменений runtime-кода. Единственная правка вне документации —

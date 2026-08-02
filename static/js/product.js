@@ -870,6 +870,92 @@
     ]});
   }
 
+  function equipmentCompositionSection(composition,card){
+    const operations=Array.isArray(composition?.operations)?composition.operations:[];
+    const equipmentType=String(card.equipment_type||'').trim();
+    if(!equipmentType&&!operations.length)return null;
+    const quantity=value=>Number(value||0).toLocaleString('ru-RU');
+    const operationTitle=row=>[
+      row.issue_date,row.item_name,row.model,row.source_serial_number,
+      row.task_reference,row.comment
+    ].filter(Boolean).join(' · ');
+    const rowRenderer=row=>renderElement('tr',{dataset:{compositionGroup:row.group_key},children:[
+      renderElement('td',{text:row.issue_date||''}),
+      renderElement('td',{children:[
+        renderElement('strong',{text:row.item_type||row.item_name||'Компонент'}),
+        renderElement('small',{className:'composition-item-name',text:row.item_name||''})
+      ]}),
+      renderElement('td',{text:[row.vendor,row.model].filter(Boolean).join(' · ')}),
+      renderElement('td',{children:[renderElement('code',{text:row.source_serial_number||'—'})]}),
+      renderElement('td',{text:`${quantity(row.quantity)} ${row.unit||'шт'}`}),
+      renderElement('td',{text:row.target_hostname||''}),
+      renderElement('td',{text:row.task_reference||''}),
+      renderElement('td',{text:userFacingHistoryText(row.responsible||'')}),
+      renderElement('td',{text:userFacingHistoryText(row.comment||'')})
+    ]});
+    const tableWrap=renderElement('div',{className:'table-wrap composition-operations'});
+    const filterLabel=renderElement('span',{className:'composition-filter-label',text:'Все операции'});
+    const buttons=[];
+    const renderOperations=(groupKey='',label='Все операции')=>{
+      const visible=groupKey?operations.filter(row=>row.group_key===groupKey):operations;
+      tableWrap.replaceChildren(renderTable({
+        headers:['Дата','Тип / наименование','Модель','S/N','Кол-во','Hostname','Задача / ИЗМ','Инженер','Комментарий'],
+        rows:visible,empty:'Связанных списаний нет',rowRenderer
+      }));
+      filterLabel.textContent=`${label}: ${visible.length}`;
+      for(const button of buttons){
+        const active=button.dataset.compositionGroup===groupKey;
+        button.classList.toggle('active',active);
+        button.setAttribute('aria-pressed',String(active));
+      }
+    };
+    const allButton=renderButton({
+      text:`Все · ${operations.length}`,className:'composition-group-card',
+      dataset:{compositionGroup:''},onClick:()=>renderOperations()
+    });
+    allButton.title='Показать весь подтверждённый журнал списаний на это оборудование';
+    buttons.push(allButton);
+    for(const group of composition?.groups||[]){
+      const recent=operations.filter(row=>row.group_key===group.key).slice(0,3);
+      const button=renderButton({
+        className:`composition-group-card composition-group-${group.key}`,
+        dataset:{compositionGroup:group.key},
+        children:[
+          renderElement('span',{className:'composition-group-label',text:group.label}),
+          renderElement('strong',{text:quantity(group.quantity)}),
+          renderElement('small',{text:`операций: ${group.operations_count}`})
+        ],
+        onClick:()=>renderOperations(group.key,group.label)
+      });
+      button.title=recent.map(operationTitle).join('\n')||group.label;
+      buttons.push(button);
+    }
+    const equipmentSymbol=renderElement('div',{className:'composition-equipment-symbol',attrs:{'aria-hidden':'true'},children:[
+      renderElement('span'),renderElement('span'),renderElement('span'),renderElement('span')
+    ]});
+    const visual=renderElement('div',{className:'composition-visual',children:[
+      renderElement('div',{className:'composition-target',children:[
+        equipmentSymbol,
+        renderElement('strong',{text:card.model||card.item_name||equipmentType||'Оборудование'}),
+        renderElement('code',{text:card.serial_number||'S/N не указан'}),
+        renderElement('small',{text:`Связанных операций: ${operations.length}`})
+      ]}),
+      renderElement('div',{className:'composition-groups',children:buttons})
+    ]});
+    const section=renderElement('section',{className:'equipment-composition',attrs:{id:'equipmentComposition','aria-labelledby':'equipmentCompositionTitle'},children:[
+      renderElement('div',{className:'composition-heading',children:[
+        renderElement('div',{children:[
+          renderElement('h3',{attrs:{id:'equipmentCompositionTitle'},text:composition?.title||'Связанные компоненты по данным списаний'}),
+          renderElement('p',{text:'Наведите на группу для краткой истории; нажмите, чтобы отфильтровать операции.'})
+        ]}),filterLabel
+      ]}),
+      renderElement('p',{className:'composition-warning',text:'Показано по операциям расхода. Фактическое наличие, заводская комплектация и физические слоты не подтверждены.'}),
+      visual,tableWrap
+    ]});
+    renderOperations();
+    return section;
+  }
+
   openPositionCard=async function(key){
     const position=findPosition(key);
     if(!position)return;
@@ -878,6 +964,11 @@
       const query=await positionCardQuery(position);
       const response=await request('/api/position-card?'+query);
       const card=response.position,migration=response.migration||{},technicalContext=isMigrationAdministrationContext(position);
+      Object.assign(position,{
+        balance:card.current_balance,current_balance:card.current_balance,
+        unit:card.unit||position.unit||'шт',item_name:card.item_name||position.item_name||'',
+        cable_type:card.cable_type||position.cable_type||''
+      });
       const publicText=value=>technicalContext?value:userFacingHistoryText(value);
       const location=[card.datacenter,card.object_name,card.shelf,card.rack_row,card.rack_unit].filter(Boolean).join(' · ');
       const details=[
@@ -904,6 +995,8 @@
       const detailChildren=[detailList],assignment=inventoryNumberAssignment(card,key),editor=positionCardEditor(card,key);
       if(assignment)detailChildren.push(assignment);
       if(editor)detailChildren.push(editor);
+      const compositionSection=equipmentCompositionSection(response.composition,card);
+      if(compositionSection)detailChildren.push(compositionSection);
       const receipts=currentPositionHistory.filter(row=>/приход|поступ|восстановлен/i.test(row.event_type||''));
       const issues=currentPositionHistory.filter(row=>/расход|выдан|списан/i.test(row.event_type||''));
       detailChildren.push(renderElement('section',{className:'equipment-history-summaries',children:[
@@ -1085,8 +1178,22 @@
   // defined above) is intentionally not called here anymore so it no longer
   // overwrites that screen; kept in case a future "Обзор" tab wants it.
   initGlobalSearch();
+  const baseClosePositionCard=closePositionCard;
+  closePositionCard=function(){
+    baseClosePositionCard();
+    if(!applyingHistory&&history.state?.card){
+      const {card,...routeState}=history.state;
+      history.replaceState(routeState,'',location.hash);
+    }
+  };
   const modal=byId('positionModal'),status=byId('status');
   if(modal){modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','Карточка оборудования')}
+  const modalCloseButton=modal?.querySelector('.modal-head button');
+  if(modalCloseButton){modalCloseButton.type='button';modalCloseButton.removeAttribute('onclick')}
+  document.addEventListener('click',event=>{
+    if(!event.target.closest?.('#positionModal > .modal-card > .modal-head button'))return;
+    event.preventDefault();event.stopPropagation();closePositionCard();
+  },true);
   if(status){status.setAttribute('role','status');status.setAttribute('aria-live','polite')}
   loadAll().catch(error=>console.error('Product dashboard loading failed',error));
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&byId('positionModal')?.classList.contains('show'))closePositionCard()});

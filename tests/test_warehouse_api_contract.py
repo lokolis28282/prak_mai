@@ -329,6 +329,7 @@ class WarehouseReadApiContractTest(unittest.TestCase):
         self.assertIn("error", payload)
 
     def test_position_search_and_card_contract(self) -> None:
+        self._add_targeted_issue()
         status, payload, _ = self._call_get("/api/position-search?query=API-CONTRACT-1")
         self.assertEqual(status, 200)
         self.assertIn("rows", payload)
@@ -337,7 +338,14 @@ class WarehouseReadApiContractTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn("position", card)
         self.assertIn("history", card)
+        self.assertIn("composition", card)
         self.assertEqual(card["position"]["serial_number"], "API-CONTRACT-1")
+        self.assertEqual(card["composition"]["basis"], "ISSUE_HISTORY")
+        self.assertEqual(card["composition"]["groups"][0]["key"], "transceivers")
+        self.assertEqual(
+            card["composition"]["operations"][0]["task_reference"],
+            "ПНР-API-TARGET",
+        )
 
     def test_legacy_serial_outer_whitespace_is_searchable_without_mutation(self) -> None:
         with closing(sqlite3.connect(self.db_path)) as db, db:

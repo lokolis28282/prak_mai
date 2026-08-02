@@ -18,6 +18,10 @@
   протокола `docs/decisions/ADR-013-multi-database-backup-restore.md`.
 - Reference Data runtime: `UI → existing API → ApplicationContext →
   WarehouseFacade → ReferenceDataService → reference_*_v2`.
+- Equipment composition runtime: `UI → /api/position-card → WarehouseFacade →
+  EquipmentCompositionService → stock_issues/allocations`. Это evidence-only
+  история списаний: без INSTALL/REMOVE/REPLACE и slot нельзя утверждать
+  фактическое наличие, заводскую комплектацию или физическое размещение.
 - Нельзя hardcode справочники в JS и нельзя переписывать operational raw/S/N
   при rename/deactivate/merge canonical значения.
 - Админские права определяются session user/role, не ФИО. UI не имеет
@@ -31,7 +35,7 @@
 подробности — в `docs/README.md` (индекс архитектурной документации) и в
 `README.md` (пользовательская инструкция).
 
-Current source/runtime metadata: ODE `0.19.0` с Multi-Warehouse
+Current source/runtime metadata: ODE `0.20.0` с Multi-Warehouse
 IXcellerate/Solar, отдельным Vacations bounded context, multi-database backup
 профилем Administration и физически выделенными Web routes/templates,
 Warehouse, Reports и Administration boundaries. FULL Inventory Preview /
@@ -353,7 +357,7 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 628 tests under
+Current full discover result is 639 tests under
 `-W error::ResourceWarning` (`skipped=8` на Linux/macOS, `skipped=15` на
 Windows — платформенные и отсутствующие ignored migration-артефакты).
 Never run a 51,003-row operational import as a performance test.
@@ -416,7 +420,7 @@ Stage создаётся датированный report/appendix.
 5. Актуальные release-заметки хранить в `RELEASE_REPORT_ODE_*.md`; release-
    архивы находятся в `release/` и не коммитятся.
 
-## Известные ограничения (source/runtime 0.19.0; ZIP 0.12.17 RC1)
+## Известные ограничения (source/runtime 0.20.0; ZIP 0.12.17 RC1)
 
 - SQLite не рассчитана на активную многопользовательскую запись — актуально
   для этапов «несколько инженеров» и «сервер», требует отдельного решения.

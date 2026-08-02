@@ -53,6 +53,58 @@ def build_source(path: Path) -> None:
         connection.commit()
 
 
+def add_promoted_migration_provenance(path: Path) -> None:
+    """Model the FK chain present in the promoted historical working DB."""
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        receipt_id = int(
+            connection.execute(
+                "SELECT id FROM stock_receipts WHERE serial_number='SRC-SN-0001'"
+            ).fetchone()[0]
+        )
+        connection.executescript(
+            """
+            CREATE TABLE migration_batches(id INTEGER PRIMARY KEY);
+            CREATE TABLE migration_source_files(
+                id INTEGER PRIMARY KEY,
+                batch_id INTEGER REFERENCES migration_batches(id)
+            );
+            CREATE TABLE migration_staging_rows(
+                id INTEGER PRIMARY KEY,
+                source_file_id INTEGER REFERENCES migration_source_files(id)
+            );
+            CREATE TABLE migration_full_identities(
+                id INTEGER PRIMARY KEY,
+                primary_staging_row_id INTEGER REFERENCES migration_staging_rows(id),
+                target_receipt_id INTEGER REFERENCES stock_receipts(id)
+            );
+            CREATE TABLE migration_full_reconciliation(
+                id INTEGER PRIMARY KEY,
+                staging_row_id INTEGER REFERENCES migration_staging_rows(id),
+                target_identity_id INTEGER REFERENCES migration_full_identities(id),
+                target_receipt_id INTEGER REFERENCES stock_receipts(id),
+                target_issue_id INTEGER REFERENCES stock_issues(id)
+            );
+            CREATE TABLE migration_full_warnings(
+                id INTEGER PRIMARY KEY,
+                reconciliation_id INTEGER REFERENCES migration_full_reconciliation(id),
+                identity_id INTEGER REFERENCES migration_full_identities(id)
+            );
+            INSERT INTO migration_batches VALUES (1);
+            INSERT INTO migration_source_files VALUES (1, 1);
+            INSERT INTO migration_staging_rows VALUES (1, 1);
+            """
+        )
+        connection.execute(
+            "INSERT INTO migration_full_identities VALUES (1, 1, ?)", (receipt_id,)
+        )
+        connection.execute(
+            "INSERT INTO migration_full_reconciliation VALUES (1, 1, 1, ?, NULL)",
+            (receipt_id,),
+        )
+        connection.execute("INSERT INTO migration_full_warnings VALUES (1, 1, 1)")
+
+
 def preserved_rows(path: Path) -> dict[str, list[tuple[object, ...]]]:
     with closing(sqlite3.connect(path)) as connection:
         return {
@@ -152,6 +204,27 @@ class CreateCleanTestDbTest(unittest.TestCase):
             ).fetchone()[0]
             self.assertEqual(leftover, 0)
             self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertSourceUnchanged()
+
+    def test_promoted_migration_provenance_is_cleared_before_receipts(self) -> None:
+        add_promoted_migration_provenance(self.source)
+        self.source_sha_initial = file_sha256(self.source)
+        output = self.tmp_path / "clean_promoted.db"
+
+        result = run_script(
+            "--source", str(self.source), "--output", str(output), "--profile", "demo"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        with closing(sqlite3.connect(output)) as connection:
+            for table in create_clean_test_db.MIGRATION_TABLES_IN_DROP_ORDER:
+                self.assertIsNone(
+                    connection.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+                    ).fetchone(),
+                    table,
+                )
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
         self.assertSourceUnchanged()
 
@@ -266,13 +339,19 @@ class CreateCleanTestDbTest(unittest.TestCase):
         macos = (ROOT / "start_test_macos.command").read_text(encoding="utf-8")
         windows = (ROOT / "start_test_windows.bat").read_text(encoding="utf-8")
         self.assertIn(
-            "ODE_TEST_MODE=1 python3 app.py web --db data/warehouse_test_clean.db --warehouse-contour demo",
+            "python3 scripts/create_clean_test_db.py --source data/warehouse_solar.db --output data/warehouse_solar_test_clean.db --profile empty --overwrite",
             macos,
         )
+        self.assertIn("python3 scripts/create_clean_vacations_test_db.py --overwrite", macos)
+        self.assertIn("--solar-db data/warehouse_solar_test_clean.db", macos)
+        self.assertIn("--vacations-db data/vacations_test_clean.db", macos)
         self.assertNotIn("export ODE_TEST_MODE", macos)
         self.assertIn("setlocal", windows.casefold())
         self.assertIn("set ODE_TEST_MODE=1", windows)
         self.assertIn("--db data\\warehouse_test_clean.db", windows)
+        self.assertIn("--solar-db data\\warehouse_solar_test_clean.db", windows)
+        self.assertIn("--vacations-db data\\vacations_test_clean.db", windows)
+        self.assertIn("create_clean_vacations_test_db.py --overwrite", windows)
         self.assertIn("endlocal", windows.casefold())
 
     def test_test_mode_rejects_the_working_database(self) -> None:

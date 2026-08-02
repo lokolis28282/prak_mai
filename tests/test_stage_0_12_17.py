@@ -120,7 +120,12 @@ class Stage01217Test(unittest.TestCase):
         ):
             self.assertIn(key, card["position"])
         self.assertEqual(card["position"]["hostname"], "ode-prod-17")
-        self.assertTrue(any(row["event_type"] == "Установлен компонент" for row in card["history"]))
+        self.assertTrue(any(
+            row["event_type"] == "Компонент списан на оборудование"
+            for row in card["history"]
+        ))
+        self.assertEqual(card["composition"]["groups"][0]["key"], "memory")
+        self.assertFalse(card["composition"]["current_state_confirmed"])
 
     def test_exact_serial_search_uses_an_identifier_index(self) -> None:
         self.service.add_stock_receipt(**self.receipt())
