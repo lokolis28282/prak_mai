@@ -36,7 +36,7 @@
     ['inventory','Инвентаризация'],['deliveries','Поставки'],
     ['references','Справочники'],['journal','Все события']
   ];
-  sections.reports=[['worklogs','УВР'],['daily','Отчет за смену'],['weekly','Отчет за неделю'],['journal','Складские операции']];
+  sections.reports=[['daily','Отчет за смену'],['handover','Передача по смене'],['weekly','Отчет за неделю'],['journal','Складские операции']];
   sections.administration=[
     ['admin_users','Пользователи'],['admin_permissions','Права'],
     ['admin_backups','Резервные копии'],['admin_database','Проверка базы'],
@@ -382,7 +382,16 @@
       const response=await request('/api/global-search?'+new URLSearchParams({query:normalized,limit:'30'}),{signal:searchController.signal});
       if(sequence!==searchSequence)return;
       const results=response.results||[];
-      panel.replaceChildren(...(results.length?results.map(result=>{
+      // R10: a pinned shortcut to search the work registry (УВР). Reports tables
+      // are not part of warehouse global search (module boundary), so this jumps
+      // to the registry with the query pre-filled instead of mixing results.
+      const worksShortcut=renderButton({className:'global-search-result',onClick:()=>{closeGlobalSearch();openWorkRegistrySearch(normalized)},children:[
+        renderElement('strong',{text:'Искать в работах (УВР)'}),
+        renderElement('span',{text:`«${normalized}» в реестре выполненных работ`}),
+        renderElement('small',{text:'Работы'})
+      ]});
+      worksShortcut.setAttribute('role','option');
+      const items=results.map(result=>{
         const button=renderButton({className:'global-search-result',onClick:()=>openSearchResult(result),children:[
           renderElement('strong',{text:resultTitle(result)}),
           renderElement('span',{text:resultSubtitle(result)}),
@@ -390,7 +399,8 @@
         ]});
         button.setAttribute('role','option');
         return button;
-      }):[renderElement('div',{className:'global-search-state',text:'Ничего не найдено'})]));
+      });
+      panel.replaceChildren(worksShortcut, ...(items.length?items:[renderElement('div',{className:'global-search-state',text:'В складе ничего не найдено'})]));
       byId('globalSearch')?.setAttribute('aria-expanded','true');
     }catch(error){
       if(error?.name==='AbortError')return;
@@ -399,6 +409,14 @@
   }
   function focusGlobalSearch(){openGlobalSearchModal()}
   window.focusGlobalSearch=focusGlobalSearch;
+
+  // Open the work registry (Отчёты → Отчёт за смену → Все работы) with a search.
+  window.openWorkRegistrySearch=function(query){
+    openTask('reports','daily');
+    window.reportsMode?.('all');
+    const input=byId('uvrSearch');
+    if(input){input.value=query;input.dispatchEvent(new Event('input',{bubbles:true}))}
+  };
 
   // Compact header per 0.12.17.1: a magnifying-glass button opens a modal
   // dialog with the search field and results, instead of a permanent input

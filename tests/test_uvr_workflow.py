@@ -78,10 +78,13 @@ class UvrWorkflowTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def row(self, number: str = "9001", **overrides) -> dict[str, str]:
+        # DCIM is a plain source; PNR has dedicated checklist behaviour tested
+        # separately, so the generic fixture avoids it.
         base = {
-            "work_date": self.today, "task_source": "PNR", "task_type": "ПНР",
+            "work_date": self.today, "task_source": "DCIM", "task_type": "Работа",
             "task_number": number, "description": "Настройка сервера",
-            "status": "Выполнено", "section": "Linux", "comment": "",
+            "status": "Выполнено", "section": "Linux", "due_date": self.today,
+            "comment": "",
         }
         base.update(overrides)
         return base
@@ -259,7 +262,8 @@ class UvrWorkflowTest(unittest.TestCase):
             rows = self.reports.export_work_logs_rows({
                 "date_from": self.today, "date_to": self.today
             })
-        self.assertEqual(rows[0]["full_task_name"], "ПНР-9001")
+        # full_task_name is derived from source-number now that «Тип» is gone.
+        self.assertEqual(rows[0]["full_task_name"], "DCIM-9001")
         self.assertEqual(rows[0]["section"], "Linux")
 
     def test_section_reference_is_exposed_to_frontend(self) -> None:

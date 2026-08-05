@@ -230,7 +230,7 @@ a:focus-visible,button:focus-visible,.section-button:focus-visible,.subtab:focus
 .uvr-table th.sortable{cursor:pointer;user-select:none}
 .uvr-table th.sortable:hover{color:var(--blue)}
 .uvr-table td{white-space:normal;max-width:340px}
-.uvr-actions{white-space:nowrap}
+.uvr-actions{display:flex;justify-content:flex-end;gap:6px;white-space:nowrap}
 .button.small{padding:5px 9px;font-size:12px}
 .badge.warn{background:#fffbeb;color:#92400e}
 .uvr-table tr.row-review{background:#fffdf5}
@@ -338,6 +338,51 @@ tr.problem-group-start td{border-top:2px solid #cbd5e1}
 .database-path{max-width:420px;white-space:normal;overflow-wrap:anywhere;color:var(--muted)}
 @media(max-width:950px){#admin .split{grid-template-columns:minmax(0,1fr)}#admin .runtime-database-box{grid-row:auto}}
 @media(max-width:720px){.warehouse-site-grid{grid-template-columns:1fr}.warehouse-site-switcher{display:none}}
+/* Связь вкладок отчётов и PNR-контролы */
+.uvr-tab-links{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+/* Внутренний переключатель «За смену / Все работы» */
+.report-tabs{display:flex;gap:4px;margin:14px 0;padding:5px;background:#fff;border:1px solid var(--line);border-radius:10px;width:fit-content}
+.report-tab{padding:8px 18px;border:0;border-radius:7px;background:transparent;color:var(--muted);font-weight:650;cursor:pointer}
+.report-tab.active{background:#eaf1ff;color:#1d4ed8}
+.uvr-desc-cell{grid-column:span 2}
+.uvr-check-col{width:34px;text-align:center}
+.uvr-review-toggle{display:flex;align-items:center;gap:6px;white-space:nowrap;color:var(--muted)}
+.uvr-registry-info{margin:2px 0 8px}
+.uvr-bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:10px 12px;border:1px solid var(--blue);border-radius:8px;background:#eff6ff}
+/* Keep the last «Действия» column fully visible: never cap or wrap it, and give
+   it a min-width so the row scrolls horizontally instead of clipping buttons. */
+.uvr-table td:last-child{max-width:none;white-space:nowrap;min-width:150px}
+.uvr-pager{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0 4px}
+.uvr-pager .uvr-pager-gap{padding:0 4px;color:var(--muted)}
+.uvr-table tr.row-overdue{background:#fff5f5}
+.uvr-table td.cell-overdue{color:#b91c1c;font-weight:650}
+.uvr-view{display:grid;gap:6px;margin:10px 0}
+.uvr-view-row{display:grid;grid-template-columns:150px 1fr;gap:12px;padding:6px 0;border-bottom:1px solid #edf1f6}
+.uvr-view-row span{color:var(--muted)}
+.uvr-view-pnr{margin:6px 0 0;padding-left:18px;list-style:none}
+.uvr-view-pnr li{padding:3px 0;color:var(--muted)}
+.uvr-view-pnr li.done{color:var(--text)}
+.tab-badge{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:#ef4444;color:#fff;font-size:11px;font-weight:700;text-align:center}
+/* PNR чек-лист выполненных работ (вкладки Отчётов) */
+.uvr-pnr-field{margin-top:10px}
+.uvr-pnr-checklist{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:6px 16px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.uvr-pnr-item,.uvr-pnr-all{display:flex;align-items:center;gap:8px;cursor:pointer}
+.uvr-pnr-all{grid-column:1/-1;padding-bottom:6px;margin-bottom:2px;border-bottom:1px dashed var(--line);font-weight:650}
+.uvr-pnr-item input,.uvr-pnr-all input{width:16px;height:16px}
+.uvr-pnr-item.is-locked{color:var(--muted)}
+.uvr-pnr-reason{font-size:12px;color:var(--muted);font-style:italic}
+.uvr-pnr-progress{grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.uvr-pnr-bar{flex:1;height:8px;border-radius:6px;background:#eef2f7;overflow:hidden}
+.uvr-pnr-bar span{display:block;height:100%;background:var(--blue);width:0;transition:width .15s}
+.uvr-pnr-percent{font-weight:650;min-width:44px;text-align:right}
+/* Styled confirm dialog (replaces window.confirm). Compact centred card. */
+.confirm-modal{display:grid;place-items:center;padding:5vh 5vw}
+.confirm-card{max-width:420px;width:100%;padding:22px 24px}
+.confirm-card .modal-head h3{margin:0;font-size:18px}
+.confirm-message{margin:12px 0 20px;color:var(--muted);line-height:1.5;white-space:pre-line}
+.confirm-actions{display:flex;justify-content:flex-end;gap:10px}
+.button.danger.primary{border-color:#dc2626;background:#dc2626;color:#fff}
+.button.danger.primary:hover{background:#b91c1c;border-color:#b91c1c}
 
 /* Lazy warehouse balance tree. Kept inside its own root to protect the page above it. */
 #balance .warehouse-stock-tree{max-height:66vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff;overscroll-behavior:contain}

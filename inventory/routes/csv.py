@@ -10,7 +10,7 @@ from typing import Any
 WORK_LOG_HEADERS = {
     "work_date": "Дата", "full_task_name": "Имя задачи",
     "description": "Описание работ", "status": "Статус",
-    "section": "Раздел", "task_type": "Тип", "comment": "Комментарий",
+    "section": "Раздел", "due_date": "Срок", "comment": "Комментарий",
 }
 REPORT_HEADERS = {
     "date": "Дата", "report_block": "Блок отчета", "task_number": "Номер задачи",

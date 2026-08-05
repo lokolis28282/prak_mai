@@ -74,6 +74,7 @@ class ReportsWriteApiTest(unittest.TestCase):
             "task_number": number,
             "description": "API работа",
             "status": "Выполнено",
+            "due_date": self.today,
             "comment": "ok",
         }
 

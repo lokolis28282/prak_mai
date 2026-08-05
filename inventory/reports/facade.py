@@ -69,14 +69,20 @@ class ReportsFacade:
     def add_work_logs(self, rows: list[dict[str, Any]]) -> int:
         return self.create_work_logs(rows)
 
-    def create_work_log(self, data: dict[str, Any]) -> int:
-        return int(self.work_log_service.create_work_log(dict(data)))
+    def create_work_log(self, data: dict[str, Any], *, require_due_date: bool = False) -> int:
+        return int(self.work_log_service.create_work_log(
+            dict(data), require_due_date=require_due_date
+        ))
 
     def create_work_logs(self, rows: list[dict[str, Any]]) -> int:
         return int(self.work_log_service.create_work_logs([dict(row) for row in rows]))
 
-    def update_work_log(self, log_id: int, data: dict[str, Any]) -> None:
-        self.work_log_service.update_work_log(int(log_id), dict(data))
+    def update_work_log(
+        self, log_id: int, data: dict[str, Any], *, require_due_date: bool = False
+    ) -> None:
+        self.work_log_service.update_work_log(
+            int(log_id), dict(data), require_due_date=require_due_date
+        )
 
     def delete_work_log(self, log_id: int) -> None:
         self.work_log_service.delete_work_log(int(log_id))
@@ -174,14 +180,169 @@ class ReportsFacade:
             return []
         return self.warehouse_events.list_events("1900-01-01", "2999-12-31", limit=limit)
 
-    def list_work_logs(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        filters = filters or {}
+    WORK_LOG_PAGE_LIMIT = 1000
+
+    def _work_log_query(self, filters: dict[str, Any]) -> dict[str, Any]:
         start, end = self.work_log_service.validate_period(
             str(filters.get("date_from", "") or ""),
             str(filters.get("date_to", "") or ""),
             optional=True,
         )
-        return self.work_logs(start, end)
+        return {
+            "date_from": start,
+            "date_to": end,
+            "search": str(filters.get("search", "") or "").strip(),
+            "needs_review": str(filters.get("needs_review", "")).strip() in ("1", "true", "True"),
+        }
+
+    def list_work_logs(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        query = self._work_log_query(filters or {})
+        return self.work_logs(
+            query["date_from"], query["date_to"],
+            search=query["search"], needs_review=query["needs_review"],
+        )
+
+    def work_logs_page(self, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Return a bounded page of work logs plus the total count.
+
+        The interactive tables request at most `WORK_LOG_PAGE_LIMIT` rows so the
+        registry stays responsive as the log grows; `total`/`truncated` let the
+        UI show how many rows matched.
+        """
+        query = self._work_log_query(filters or {})
+        limit = self.WORK_LOG_PAGE_LIMIT
+        rows = self.work_logs(
+            query["date_from"], query["date_to"],
+            search=query["search"], needs_review=query["needs_review"],
+            limit=limit + 1,
+        )
+        total = int(self.repository.count_work_logs(
+            query["date_from"], query["date_to"],
+            search=query["search"], needs_review=query["needs_review"],
+        ))
+        truncated = len(rows) > limit
+        return {"logs": rows[:limit], "total": total, "truncated": truncated, "limit": limit}
+
+    def shift_stats(self, report_date: str) -> dict[str, Any]:
+        """KPI summary for the shift dashboard on a given day."""
+        from .validators import STATUS_DONE, is_pnr_source, normalize_pnr_checklist, pnr_progress_percent
+
+        report_date = parse_date(report_date, "дата отчета")
+        rows = self.work_logs(report_date, report_date)
+        total = len(rows)
+        done = sum(1 for row in rows if str(row.get("status")).strip() == STATUS_DONE)
+        unfinished = total - done
+        pnr_rows = [row for row in rows if is_pnr_source(row.get("task_source", ""))]
+        pnr_percent = 0
+        if pnr_rows:
+            pnr_percent = round(sum(
+                pnr_progress_percent(normalize_pnr_checklist(row.get("pnr_checklist")))
+                for row in pnr_rows
+            ) / len(pnr_rows))
+        by_section: dict[str, int] = defaultdict(int)
+        for row in rows:
+            by_section[str(row.get("section") or "Без раздела")] += 1
+        return {
+            "date": report_date,
+            "total": total,
+            "done": done,
+            "unfinished": unfinished,
+            "done_percent": round(done * 100 / total) if total else 0,
+            "pnr_count": len(pnr_rows),
+            "pnr_percent": pnr_percent,
+            "by_section": [
+                {"name": name, "count": count}
+                for name, count in sorted(by_section.items(), key=lambda item: -item[1])
+            ],
+        }
+
+    def assign_section(self, log_ids: list[int], section: str) -> int:
+        """Bulk-assign a section to several rows (clears their review flag)."""
+        self.work_log_service._require_write()
+        clean_ids = [int(value) for value in log_ids]
+        return int(self.repository.assign_section(
+            clean_ids, str(section).strip(), author=self.work_log_service.audit_author()
+        ))
+
+    def handover_logs(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Tasks to carry over to the next shift: everything not fully done.
+
+        A completed task (status «Выполнено», including a fully checked PNR)
+        never appears here, so finished work is not handed over while unfinished
+        tasks are never lost between shifts.
+
+        For an unfinished PNR task the description is replaced with the specific
+        remaining actions (e.g. «Необходимо выполнить: выполнить коммутацию…»),
+        derived from the still-unchecked checklist steps, so the next shift sees
+        exactly what is left rather than what is already done.
+        """
+        from .validators import (
+            STATUS_DONE,
+            is_pnr_source,
+            normalize_pnr_checklist,
+            pnr_handover_text,
+        )
+
+        rows = self.list_work_logs(filters)
+        pending = [
+            row for row in rows
+            if str(row.get("status", "")).strip() != STATUS_DONE
+        ]
+        for row in pending:
+            if is_pnr_source(row.get("task_source", "")):
+                checked = normalize_pnr_checklist(row.get("pnr_checklist"))
+                note = pnr_handover_text(checked)
+                if note:
+                    row["description"] = note
+        return pending
+
+    def shift_report_xlsx(self, report_date: str) -> bytes:
+        """Build a two-sheet, formatted XLSX: completed works + shift handover.
+
+        Each sheet carries a green merged title band on row 7 and a yellow
+        header band on row 8 (column C), with bordered, auto-width columns.
+        """
+        from inventory.shared.xlsx_writer import SheetSpec, build_styled_workbook
+
+        report_date = parse_date(report_date, "дата отчета")
+        # The «Выполненные работы» sheet has no «Срок» column: those tasks are
+        # already done. The handover sheet keeps «Срок».
+        done_header = ["Дата", "Имя задачи", "Описание работ", "Статус", "Раздел", "Комментарий"]
+        handover_header = [
+            "Дата", "Источник", "Номер задачи", "Описание", "Статус", "Срок", "Комментарий",
+        ]
+
+        def done_row(log: dict[str, Any]) -> list[str]:
+            return [
+                log.get("work_date", ""), log.get("full_task_name", ""),
+                log.get("description", ""), log.get("status", ""),
+                log.get("section", ""), log.get("comment", ""),
+            ]
+
+        def handover_row(log: dict[str, Any]) -> list[str]:
+            return [
+                log.get("work_date", ""), log.get("task_source", ""),
+                log.get("task_number", ""), log.get("description", ""),
+                log.get("status", ""), log.get("due_date", ""), log.get("comment", ""),
+            ]
+
+        day = {"date_from": report_date, "date_to": report_date}
+        done_rows = self.list_work_logs(day)
+        handover_rows = self.handover_logs(day)
+        return build_styled_workbook([
+            SheetSpec(
+                name="Выполненные работы",
+                title="Выполненные работы",
+                header=done_header,
+                rows=[done_row(row) for row in done_rows],
+            ),
+            SheetSpec(
+                name="Передача по смене",
+                title="Передача по смене",
+                header=handover_header,
+                rows=[handover_row(row) for row in handover_rows],
+            ),
+        ])
 
     def get_daily_report(self, report_date: str) -> list[dict[str, Any]]:
         report_date = parse_date(report_date, "дата отчета")
@@ -357,6 +518,62 @@ class ReportsFacade:
 
     def export_uploaded_report_rows(self, upload_id: int) -> list[dict[str, Any]]:
         return self.get_uploaded_report(upload_id)
+
+    # --- XLSX exports -------------------------------------------------------
+    # Reports downloads are formatted XLSX (single styled sheet each). CSV
+    # import stays; only the export side moved off CSV.
+
+    @staticmethod
+    def _single_sheet_xlsx(
+        sheet_name: str,
+        title: str,
+        headers: dict[str, str] | list[tuple[str, str]],
+        rows: list[dict[str, Any]],
+    ) -> bytes:
+        """Render dict rows into one styled sheet via the column map `headers`
+        (`field -> Заголовок`). Everything is written as text."""
+        from inventory.shared.xlsx_writer import SheetSpec, build_styled_workbook
+
+        pairs = list(headers.items()) if isinstance(headers, dict) else list(headers)
+        header_labels = [label for _field, label in pairs]
+        table = [
+            ["" if row.get(field) is None else str(row.get(field, "")) for field, _label in pairs]
+            for row in rows
+        ]
+        return build_styled_workbook([
+            SheetSpec(name=sheet_name, title=title, header=header_labels, rows=table),
+        ])
+
+    def work_logs_xlsx(self, filters: dict[str, Any] | None = None) -> bytes:
+        from inventory.routes.csv import WORK_LOG_HEADERS
+        return self._single_sheet_xlsx(
+            "Все работы", "Выполненные работы", WORK_LOG_HEADERS,
+            self.export_work_logs_rows(filters),
+        )
+
+    def daily_report_xlsx(self, report_date: str) -> bytes:
+        from inventory.routes.csv import REPORT_HEADERS
+        return self._single_sheet_xlsx(
+            "Отчет за смену", "Отчет за смену", REPORT_HEADERS,
+            self.export_daily_report_rows(report_date),
+        )
+
+    def uploaded_report_xlsx(self, upload_id: int) -> bytes:
+        from inventory.routes.csv import REPORT_HEADERS
+        return self._single_sheet_xlsx(
+            "Загруженный отчет", "Загруженный отчет", REPORT_HEADERS,
+            self.export_uploaded_report_rows(upload_id),
+        )
+
+    def weekly_report_xlsx(self, start_date: str, end_date: str) -> bytes:
+        headers = [
+            ("Блок", "Блок"), ("Показатель", "Показатель"),
+            ("Принято", "Принято"), ("Списано", "Списано"),
+        ]
+        return self._single_sheet_xlsx(
+            "Отчет за неделю", "Отчет за неделю", headers,
+            self.export_weekly_report_rows(start_date, end_date),
+        )
 
     def get_reports_summary(self) -> dict[str, Any]:
         return {"daily_report_uploads": self.list_uploaded_reports()}

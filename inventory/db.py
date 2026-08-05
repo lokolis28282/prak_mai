@@ -97,6 +97,8 @@ CREATE TABLE IF NOT EXISTS work_logs (
     status TEXT NOT NULL,
     section TEXT NOT NULL DEFAULT '',
     needs_review INTEGER NOT NULL DEFAULT 0 CHECK (needs_review IN (0, 1)),
+    due_date TEXT NOT NULL DEFAULT '',
+    pnr_checklist TEXT NOT NULL DEFAULT '',
     comment TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
@@ -377,7 +379,7 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_article_tags_tag
 
 REPORTS_UVR_REFERENCES = {
     "task_source": (
-        "PNR", "ИЗМ", "ЗНР", "ЗНО", "Сопровождение", "ROOMS", "Time",
+        "PNR", "ИЗМ", "ЗНР", "ЗНО", "ИНЦ", "Сопровождение", "ROOMS", "Time",
         "Zabbix", "Заказ", "Волна", "DCIM", "ITSM", "Outlook", "Rooms",
         "Склад", "Другое",
     ),
@@ -480,6 +482,14 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
             connection.execute(
                 "ALTER TABLE work_logs ADD COLUMN needs_review INTEGER NOT NULL "
                 "DEFAULT 0 CHECK (needs_review IN (0, 1))"
+            )
+        if "due_date" not in work_log_columns:
+            connection.execute(
+                "ALTER TABLE work_logs ADD COLUMN due_date TEXT NOT NULL DEFAULT ''"
+            )
+        if "pnr_checklist" not in work_log_columns:
+            connection.execute(
+                "ALTER TABLE work_logs ADD COLUMN pnr_checklist TEXT NOT NULL DEFAULT ''"
             )
         connection.execute(
             "CREATE INDEX IF NOT EXISTS idx_work_logs_section ON work_logs(section)"
@@ -599,8 +609,8 @@ def initialize(db_path: str | Path = DEFAULT_DB_PATH) -> bool:
             "component_type": ("Комплектующие",),
             "cable_type": ("Оптика", "Медь"),
             "task_source": (
-                "PNR", "ИЗМ", "ЗНР", "ЗНО", "Сопровождение", "ROOMS", "Time",
-                "Zabbix", "Заказ", "Волна", "DCIM", "ITSM", "Outlook",
+                "PNR", "ИЗМ", "ЗНР", "ЗНО", "ИНЦ", "Сопровождение", "ROOMS",
+                "Time", "Zabbix", "Заказ", "Волна", "DCIM", "ITSM", "Outlook",
                 "Rooms", "Склад", "Другое",
             ),
             "task_type": (

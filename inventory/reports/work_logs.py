@@ -33,23 +33,27 @@ class WorkLogService:
         self.strict_reference_validation = strict_reference_validation
         self.previews = previews or ReportsPreviewStore()
 
-    def create_work_log(self, data: dict[str, Any]) -> int:
+    def create_work_log(self, data: dict[str, Any], *, require_due_date: bool = False) -> int:
         self._require_write()
         with connect(self.repository.db_path) as db:
             row = prepare_work_log(
                 data,
                 references=self.repository.reference_sets(db),
                 strict_references=self.strict_reference_validation,
+                require_due_date=require_due_date,
             )
         return self.repository.insert_work_log(row, author=self.audit_author())
 
-    def update_work_log(self, log_id: int, data: dict[str, Any]) -> None:
+    def update_work_log(
+        self, log_id: int, data: dict[str, Any], *, require_due_date: bool = False
+    ) -> None:
         self._require_write()
         with connect(self.repository.db_path) as db:
             row = prepare_work_log(
                 data,
                 references=self.repository.reference_sets(db),
                 strict_references=self.strict_reference_validation,
+                require_due_date=require_due_date,
             )
         self.repository.update_work_log(int(log_id), row, author=self.audit_author())
 

@@ -693,13 +693,6 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 raise WarehouseError(f"Параметр {name} должен быть не меньше {minimum}")
             return value
 
-        @staticmethod
-        def _work_log_payload(data: dict[str, Any]) -> dict[str, str]:
-            fields = (
-                "work_date", "task_source", "task_type", "task_number",
-                "description", "status", "section", "comment",
-            )
-            return {field: str(data.get(field, "") or "") for field in fields}
 
         def _read_json_object(self, maximum_size: int) -> dict[str, Any]:
             try:
@@ -732,6 +725,9 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             if not isinstance(action, str) or not action:
                 raise WarehouseError("Поле action должно быть непустой строкой")
             collection_fields: dict[str, dict[str, type]] = {
+                "WORK_LOG": {"pnr_checklist": list},
+                "ASSIGN_SECTION": {"ids": list},
+                "UPDATE_WORK_LOG": {"pnr_checklist": list},
                 "WORK_LOGS": {"rows": list},
                 "CONFIRM_SCANNED_RECEIPTS": {"common_fields": dict, "serial_numbers": list},
                 "CONFIRM_SCANNED_ISSUES": {"common_fields": dict, "serial_numbers": list},
@@ -773,12 +769,16 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                 if any(not isinstance(item, str) for item in value):
                     raise WarehouseError("Поле serial_numbers должно быть списком строк")
                 return
-            elif field == "line_ids":
+            elif field == "pnr_checklist":
+                if any(not isinstance(item, str) for item in value):
+                    raise WarehouseError("Поле pnr_checklist должно быть списком строк")
+                return
+            elif field in {"line_ids", "ids"}:
                 if any(
                     isinstance(item, bool) or not isinstance(item, (str, int))
                     for item in value
                 ):
-                    raise WarehouseError("Поле line_ids должно быть списком идентификаторов")
+                    raise WarehouseError(f"Поле {field} должно быть списком идентификаторов")
                 return
             else:
                 mappings = [value]

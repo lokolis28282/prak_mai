@@ -68,7 +68,7 @@ class WebappExtractionContractTest(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(webapp.HTML.encode("utf-8")).hexdigest(),
-            "17537a71177cce5525c837793b1a5e1297bf7b73e8becdf410abb28a4750d9e8",
+            "6a455a8935f38fb37a5c986e1c3ac29e4194b9ca19ae4f3d2ea3cd9d58744d6c",
         )
 
     def test_routes_and_templates_do_not_own_business_sql(self) -> None:
