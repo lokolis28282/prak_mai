@@ -52,12 +52,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--db", type=Path, default=ROOT / "data" / "warehouse.db")
     parser.add_argument("--browser", type=Path)
     parser.add_argument("--node", default=shutil.which("node"))
+    parser.add_argument(
+        "--headless-script", type=Path,
+        default=ROOT / "tests" / "headless_smoke.js",
+        help="Node/CDP scenario to run (defaults to the full UI smoke test).",
+    )
+    parser.add_argument(
+        "--headless-arg", action="append", default=[],
+        help="Additional argument passed to the selected Node/CDP scenario.",
+    )
+    parser.add_argument(
+        "--login-role", choices=("admin", "engineer", "viewer"),
+        help="Create a smoke login with this role inside the disposable copy only.",
+    )
     args = parser.parse_args(argv)
     browser = args.browser or browser_binary()
     if browser is None or not browser.is_file():
         raise SystemExit("Chrome или Edge не найден")
     if not args.node:
         raise SystemExit("Node.js не найден")
+    headless_script = args.headless_script.resolve()
+    if not headless_script.is_file():
+        raise SystemExit(f"Headless-сценарий не найден: {headless_script}")
     source_database = args.db.resolve()
     if not source_database.is_file():
         raise SystemExit(f"База не найдена: {source_database}")
@@ -81,6 +97,18 @@ def main(argv: list[str] | None = None) -> int:
                    WHERE email = 'lokolis'""",
                 (hash_password("lokolis"),),
             )
+            if args.login_role and args.login_role != "admin":
+                db.execute(
+                    """INSERT INTO users(
+                           first_name, last_name, position, email, password_hash,
+                           role, must_change_password, is_active
+                       ) VALUES (?, ?, ?, ?, ?, ?, 0, 1)""",
+                    (
+                        "Smoke", "Reports", "UI test",
+                        f"smoke-{args.login_role}", hash_password("lokolis"),
+                        args.login_role,
+                    ),
+                )
         service = WarehouseService(database)
         context = create_application_context(
             database,
@@ -123,7 +151,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise RuntimeError("DevTools Chrome не запустился")
             print("smoke: devtools ready", flush=True)
             result = subprocess.run(
-                [args.node, str(ROOT / "tests" / "headless_smoke.js"), app_url, str(debug_port)],
+                [args.node, str(headless_script), app_url, str(debug_port), *args.headless_arg],
                 cwd=ROOT, text=True, capture_output=True, timeout=180,
             )
             print(result.stdout.strip(), flush=True)

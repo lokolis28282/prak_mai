@@ -10,7 +10,7 @@ ODE («Отдел дежурных инженеров») — локальный 
 ЦОД: складской учёт (S/N-first) по двум площадкам, приход/расход со сканером,
 поставки, инвентаризация, контроль качества данных, УВР и отчёты, общий план
 отпусков, база знаний, ручной мониторинг. Python 3.10+ (только стандартная
-библиотека) + SQLite; UI в браузере; 649 автоматических тестов.
+библиотека) + SQLite; UI в браузере; 685 автоматических тестов.
 
 Приложение работает с тремя независимыми SQLite-файлами:
 
@@ -117,7 +117,7 @@ python3 scripts/audit_module_boundaries.py
 python3 scripts/audit_frontend_contracts.py
 python3 scripts/audit_repository_data.py
 python3 scripts/generate_code_graph.py --check
-python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 635 OK
+python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 685 OK
 git diff --check
 python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 ```

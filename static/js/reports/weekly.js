@@ -40,7 +40,7 @@
   if (weeklyForm) weeklyForm.onsubmit = event => { event.preventDefault(); buildLegacy(); };
   const downloadWeekly = byId('downloadWeekly');
   if (downloadWeekly) downloadWeekly.onclick = () => {
-    if (weeklyForm.reportValidity()) location.href = '/export/weekly-report.csv?' + new URLSearchParams(formData(weeklyForm));
+    if (weeklyForm.reportValidity()) location.href = '/export/weekly-report.xlsx?' + new URLSearchParams(formData(weeklyForm));
   };
   const reportForm = byId('weekReportForm');
   if (reportForm) reportForm.onsubmit = event => { event.preventDefault(); buildWeek(); };
@@ -48,7 +48,7 @@
   if (exportWeek) exportWeek.onclick = () => {
     if (!reportForm.reportValidity()) return;
     const data = formData(reportForm);
-    location.href = '/export/work-logs.csv?' + new URLSearchParams({date_from: data.date_from, date_to: data.date_to});
+    location.href = '/export/work-logs.xlsx?' + new URLSearchParams({date_from: data.date_from, date_to: data.date_to});
   };
 
   reports.weekly = {buildWeek, buildLegacy};

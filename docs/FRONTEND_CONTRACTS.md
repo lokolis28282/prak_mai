@@ -9,8 +9,9 @@
   виден в шапке и переключается только через серверную session selection;
 - Warehouse subnav содержит ровно семь складских разделов;
 - Monitoring имеет рабочий ручной hostname/DCIM flow и локальный routing;
-  Reports имеет рабочие УВР, сменные и недельные отчёты. Оба модуля изолированы
-  от Warehouse и не читают его таблицы напрямую;
+  Reports имеет УВР, PNR-чек-лист, сменный dashboard/CRUD, передачу backlog,
+  недельный отчёт и XLSX. Viewer не видит write/import/bulk controls; модуль
+  изолирован от Warehouse writes и читает складские факты только через reader;
 - `Администрирование ODE` видит только session user с backend permission;
 - role может быть скрыта из UX, но frontend не заменяет backend check;
 - reference dropdown использует `state.references`, active canonical значения

@@ -52,7 +52,9 @@ def database_health(path: Path) -> dict[str, object]:
         "size_bytes": path.stat().st_size,
         "integrity_check": integrity,
         "foreign_key_violations": len(foreign_keys),
-        "reports_ready": {"section", "needs_review"} <= work_log_columns,
+        "reports_ready": {
+            "section", "needs_review", "due_date", "pnr_checklist",
+        } <= work_log_columns,
         "knowledge_ready": {
             "knowledge_articles", "knowledge_attachments", "knowledge_article_tags",
         } <= tables,

@@ -161,6 +161,24 @@ draft по session identity и закрытие raw SQLite connections. Доба
 включает смену инженера с изоляцией черновика. Подробный evidence:
 `reviews/2026-08-07_ODE_0_20_0_FULL_STABILIZATION_AUDIT.md`.
 
+### ODE 0.20.0 Reports branch integration 2026-08-07
+
+Remote commit `bb83690` из ветки `reports` перенесён поверх актуального
+`release/0.20.0`, а не merge целиком: обе ветки расходились от `7b94127`, и
+`reports` не содержала стабилизацию `4dbd34b`. Интегрированы новый УВР/PNR flow,
+передача по смене, CRUD в сменной таблице, фильтры/пагинация и XLSX writer.
+
+Review исправил неверный состав двухлистового shift XLSX, ошибочную ссылку
+handover export, обход справочника при bulk section, SQLite bind-limit,
+неполные server filters, запрещённые XML control characters, обратную
+зависимость Reports → routes и опасное Enter auto-confirm. Дополнительно
+исправлены неполная runtime migration (`due_date`/`pnr_checklist`), потеря PNR
+из-за складского справочника, пустой маршрут Reports, viewer controls и
+трёхсекундная блокировка следующей записи. Старые CSV download URL оставлены
+совместимыми. Текущий warning-clean discover содержит 685 тестов
+(`skipped=8`). Evidence:
+`reviews/2026-08-07_ODE_0_20_0_REPORTS_INTEGRATION_AUDIT.md`.
+
 ### ODE 0.19.1 local runtime stabilization
 
 После операторской проверки 2026-08-02 устранены четыре runtime-регрессии:
@@ -410,8 +428,8 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий проверенный ODE 0.20.0 — 649 тестов; code graph содержит 248 узлов /
-506 связей. Актуальные значения и интерактивная карта находятся в
+Текущий проверенный ODE 0.20.0 — 685 тестов; актуальные значения code graph и
+интерактивная карта находятся в
 `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
 из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256
 `8681f3c34c52d12e665ddae9f9f818a7635c1108aee353baa9fc63830955305b`,

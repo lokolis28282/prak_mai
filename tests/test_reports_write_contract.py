@@ -40,6 +40,7 @@ class ReportsWriteContractTest(unittest.TestCase):
             "task_number": number,
             "description": "Диагностика узла, кириллица",
             "status": "Выполнено",
+            "due_date": date or self.today,
             "comment": "Комментарий с пробелами",
         }
 

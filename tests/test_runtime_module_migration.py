@@ -94,7 +94,9 @@ class RuntimeModuleMigrationTest(unittest.TestCase):
                 ).fetchone()[0])
                 integrity = str(db.execute("PRAGMA integrity_check").fetchone()[0])
                 foreign_keys = db.execute("PRAGMA foreign_key_check").fetchall()
-            self.assertTrue({"section", "needs_review"} <= columns)
+            self.assertTrue(
+                {"section", "needs_review", "due_date", "pnr_checklist"} <= columns
+            )
             self.assertTrue({
                 "knowledge_articles", "knowledge_attachments", "knowledge_article_tags",
             } <= tables)

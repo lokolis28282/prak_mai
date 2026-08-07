@@ -278,6 +278,7 @@ def main() -> int:
             errors.append(f"{path.relative_to(ROOT)} imports forbidden modules: {', '.join(bad)}")
 
     forbidden_reports = (
+        "inventory.routes",
         "inventory.services.warehouse_service",
         "inventory.warehouse.receipts",
         "inventory.warehouse.issues",

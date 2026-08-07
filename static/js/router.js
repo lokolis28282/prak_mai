@@ -26,6 +26,7 @@ function showSection(name){
     onClick:()=>showView(entry[0])
   })));
   showView(entries[0][0]);
+  if(name==='reports')window.updateHandoverBadge?.();
   if(name==='knowledge')window.ODE?.knowledge?.renderRoute();
 }
 function showView(id){
@@ -33,9 +34,9 @@ function showView(id){
   const actual=id==='admin_references'?'references':adminMode?'admin':id;
   document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x.id===actual));
   document.querySelectorAll('.subtab').forEach(x=>x.classList.toggle('active',x.dataset.view===id));
-  if(id==='worklogs')loadWorkLogs();
   if(id==='admin_references'||id==='references'){window.renderReferenceEditor?.();return}
-  if(id==='daily'&&typeof buildShift==='function')buildShift();
+  if(id==='daily'){window.ODE?.reports?.daily?.open?.()}
+  if(id==='handover'&&typeof buildHandover==='function')buildHandover();
   if(id==='weekly'&&typeof buildWeek==='function')buildWeek();
   if(adminMode){setAdminMode(adminMode);loadAdmin()}
   if(id==='deliveries')loadDeliveries();

@@ -46,6 +46,7 @@
 
 - Monitoring: реальный DCIM acceptance и будущие transports;
 - Reports/Knowledge/Vacations: retention, content acceptance и backup drill;
+  для Reports — cursor/offset pagination после текущего bounded окна 1000;
 - target Platform: independent gates и отдельный rehearsal/cutover;
 - точный installed-component current-state — отдельное бизнес-решение, не
   косметическое расширение текущей схемы карточки.

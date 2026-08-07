@@ -59,7 +59,10 @@
 | `/api/global-search?query=…` | Глобальный поиск от 2 символов по S/N, инв.№, hostname, наименованию, вендору, модели, поставке, проекту, полке, ЦОД, инженеру (limit 500). |
 | `/api/scan-serial?serial=…` | Проверка одного отсканированного S/N (приход/расход сценарии). |
 | `/api/deliveries` / `/api/delivery?id=…` | Реестр поставок / одна поставка со строками. |
-| `/api/work-logs?…` | УВР с фильтрами (период, поиск, статус, раздел). |
+| `/api/work-logs?date_from=…&date_to=…` | Совместимая полная выборка УВР за период. |
+| `/api/work-logs-page?…` | Bounded-реестр УВР: date range, search, status, section, needs_review; ответ `logs`, `total`, `truncated`, `limit`. |
+| `/api/shift-stats?date=…` | KPI работ выбранной смены. |
+| `/api/handover?…` | Незавершённые задачи; date/search/status filters, PNR description содержит оставшиеся шаги. |
 | `/api/daily-report?date=…` | Отчёт за смену из событий склада. |
 | `/api/weekly-report?date_from=…&date_to=…` | Недельная агрегация. |
 | `/api/uploaded-daily-report?id=…` | Строки загруженного готового отчёта. |
@@ -113,6 +116,7 @@
 |---|---|
 | `WORK_LOG` / `WORK_LOGS` | Создание одной/нескольких записей УВР. |
 | `UPDATE_WORK_LOG` / `DELETE_WORK_LOG` | Правка/удаление записи УВР. |
+| `ASSIGN_SECTION` | Массово назначить активный Reports-раздел выбранным `ids` и снять `needs_review`; engineer/admin. |
 
 ### Справочники
 
@@ -186,6 +190,13 @@ DCIM-данные (если включён collector) и подготовлен�
 
 ## Экспорт и шаблоны (GET)
 
+Текущие Reports-кнопки используют форматированные XLSX:
+`/export/work-logs.xlsx`, `/export/handover.xlsx`,
+`/export/shift-report.xlsx`, `/export/daily-report.xlsx`,
+`/export/weekly-report.xlsx`, `/export/uploaded-daily-report.xlsx`.
+Shift workbook содержит два листа: выполненные задачи выбранного дня и
+незавершённый backlog до этой даты. Значения записываются как text.
+
 `/export/*.csv` — balance, stock, receipt, issue (+`*-current` — только
 последний проверенный файл), log, work-logs, daily-report,
 uploaded-daily-report, weekly-report, problem-issues, delivery, audit.
@@ -193,7 +204,8 @@ uploaded-daily-report, weekly-report, problem-issues, delivery, audit.
 приходы, включая признак opening balance; `issue.csv` содержит ровно одну
 строку на каждую операцию расхода, включая несопоставленные строки, matched /
 unmatched quantity и название, модель, инв. №, S/N и hostname целевого
-оборудования. Пустые полные выгрузки сохраняют строку заголовков.
+оборудования. Пустые полные выгрузки сохраняют строку заголовков. Report CSV
+URLs сохранены как read-only compatibility aliases; новый UI на них не ведёт.
 
 `/import/*-template.csv` — шаблоны: receipt, issue, bulk-issue, work-logs,
 daily-report, delivery, inventory, inventory-numbers, equipment.

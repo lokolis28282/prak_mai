@@ -68,7 +68,7 @@ class WebappExtractionContractTest(unittest.TestCase):
         )
         self.assertEqual(
             hashlib.sha256(webapp.HTML.encode("utf-8")).hexdigest(),
-            "17537a71177cce5525c837793b1a5e1297bf7b73e8becdf410abb28a4750d9e8",
+            "fc34e17ce4ad771721b116fd76d8daf73a8a25342b3471569391b4241a28f1cd",
         )
 
     def test_routes_and_templates_do_not_own_business_sql(self) -> None:
@@ -102,6 +102,22 @@ class WebappExtractionContractTest(unittest.TestCase):
             "@media(max-width:950px){#admin .split{grid-template-columns:minmax(0,1fr)}",
             css,
         )
+
+    def test_reports_ui_keeps_pnr_handover_and_viewer_contracts(self) -> None:
+        form = (ROOT / "static/js/reports/form.js").read_text(encoding="utf-8")
+        handover = (ROOT / "static/js/reports/handover.js").read_text(encoding="utf-8")
+        work_logs = (ROOT / "static/js/reports/work_logs.js").read_text(encoding="utf-8")
+        ui = (ROOT / "static/js/ui.js").read_text(encoding="utf-8")
+
+        self.assertIn(".uvr-desc-cell, .uvr-description-field", form)
+        self.assertIn("state.report_references?.[kind]", form)
+        self.assertIn("openTask('reports', 'daily')", (
+            ROOT / "static/js/reports/index.js"
+        ).read_text(encoding="utf-8"))
+        self.assertIn("window.openUvrEdit(row, load)", handover)
+        self.assertIn("hidden: state.current_user.role === 'viewer'", work_logs)
+        self.assertIn("byId('shiftLogForm')?.closest('.box')", ui)
+        self.assertIn('label[for="workLogsCsv"],label[for="workLogsXlsx"]', ui)
 
 
 if __name__ == "__main__":

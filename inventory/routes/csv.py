@@ -6,18 +6,13 @@ import csv
 import io
 from typing import Any
 
+from inventory.reports.exports import (
+    DAILY_REPORT_EXPORT_COLUMNS,
+    WORK_LOG_EXPORT_COLUMNS,
+)
 
-WORK_LOG_HEADERS = {
-    "work_date": "Дата", "full_task_name": "Имя задачи",
-    "description": "Описание работ", "status": "Статус",
-    "section": "Раздел", "task_type": "Тип", "comment": "Комментарий",
-}
-REPORT_HEADERS = {
-    "date": "Дата", "report_block": "Блок отчета", "task_number": "Номер задачи",
-    "description": "Описание / наименование", "quantity": "Количество / метраж",
-    "serial_number": "S/N", "responsible": "ФИО",
-    "comment": "Комментарий / основание",
-}
+WORK_LOG_HEADERS = dict(WORK_LOG_EXPORT_COLUMNS)
+REPORT_HEADERS = dict(DAILY_REPORT_EXPORT_COLUMNS)
 RECEIPT_HEADERS = {
     "receipt_date": "Дата", "responsible": "ФИО", "order_date": "Дата заказа",
     "request_number": "Заявка№", "order_number": "Заказ№", "plu": "PLU",

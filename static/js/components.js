@@ -71,3 +71,35 @@ function renderTable({headers=[],rows=[],empty='Нет данных',rowRenderer
 }
 function renderToast(message,error=false){return renderElement('div',{className:`status show${error?' error':''}`,text:message})}
 function renderDialog({title='',children=[]}={}){return renderElement('div',{className:'modal-card',children:[renderElement('div',{className:'modal-head',children:[renderElement('h2',{text:title})]}),...children]})}
+// Styled replacement for window.confirm: returns a Promise<boolean> resolved
+// when the user confirms (true) or cancels/dismisses (false). Looks like part
+// of the site (uses the shared .modal styling) instead of a browser dialog.
+function confirmDialog({title='Подтверждение',message='',confirmText='Подтвердить',cancelText='Отмена',danger=false}={}){
+  return new Promise(resolve=>{
+    const overlay=renderElement('div',{className:'modal show confirm-modal'});
+    let settled=false;
+    const close=result=>{
+      if(settled)return;
+      settled=true;
+      document.removeEventListener('keydown',onKey);
+      overlay.remove();
+      resolve(result);
+    };
+    const onKey=event=>{
+      if(event.key==='Escape')close(false);
+    };
+    const confirmBtn=renderButton({text:confirmText,className:danger?'button danger':'button primary',onClick:()=>close(true)});
+    const cancelBtn=renderButton({text:cancelText,className:'button',onClick:()=>close(false)});
+    const card=renderElement('div',{className:'modal-card confirm-card',children:[
+      renderElement('div',{className:'modal-head',children:[renderElement('h3',{text:title})]}),
+      renderElement('p',{className:'confirm-message',text:message}),
+      renderElement('div',{className:'confirm-actions',children:[cancelBtn,confirmBtn]}),
+    ]});
+    overlay.appendChild(card);
+    // Click on the dark backdrop (outside the card) cancels.
+    overlay.addEventListener('click',event=>{if(event.target===overlay)close(false)});
+    document.addEventListener('keydown',onKey);
+    document.body.appendChild(overlay);
+    confirmBtn.focus();
+  });
+}

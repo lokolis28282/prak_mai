@@ -243,7 +243,8 @@ class WarehouseServiceTest(unittest.TestCase):
         )
         logs = self.service.work_logs(today, today)
         self.assertEqual(logs[0]["id"], log_id)
-        self.assertEqual(logs[0]["full_task_name"], "ПНР-123")
+        # full_task_name is derived from source-number now that «Тип» is gone.
+        self.assertEqual(logs[0]["full_task_name"], "DCIM-123")
 
         output = Path(self.temp_dir.name) / "work_logs.csv"
         self.service.export_work_logs_csv(output, today, today)
@@ -291,7 +292,8 @@ class WarehouseServiceTest(unittest.TestCase):
         self.assertIn("Расход", blocks)
         order = {"Логи работ": 0, "Приход": 1, "Расход": 2}
         self.assertEqual([order[block] for block in blocks], sorted(order[block] for block in blocks))
-        self.assertEqual(report[0]["task_number"], "ИНЦ-900")
+        # daily report task_number = full_task_name, now source-based.
+        self.assertEqual(report[0]["task_number"], "Zabbix-900")
 
     def test_daily_report_uses_one_date_and_full_day_range(self) -> None:
         report_date = "2026-07-01"

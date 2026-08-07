@@ -27,7 +27,8 @@ class UiNavigationArchitectureTest(unittest.TestCase):
         self.assertIn("nav.replaceChildren();", self.router)
         self.assertIn("nav.hidden=true", self.router)
         self.assertNotIn("const sectionNavItems", self.router)
-        self.assertIn("openTask('reports', 'worklogs')", self.reports)
+        self.assertIn("openTask('reports', 'daily')", self.reports)
+        self.assertIn("window.reportsMode?.('all')", self.reports)
         self.assertIn("sections.works=[['worklogs','УВР']]", self.product)
         self.assertIn("['worklogs','УВР']", self.product)
         self.assertIn("Добро пожаловать в ODE", self.ui)
@@ -45,7 +46,7 @@ class UiNavigationArchitectureTest(unittest.TestCase):
     def test_operational_and_unfinished_modules_are_distinguished(self) -> None:
         self.assertIn("Инструменты мониторинга", self.product)
         self.assertIn("window.openMonitoringManualSearch", self.product)
-        self.assertIn("reports/worklogs", self.ui)
+        self.assertIn("reports/daily", self.ui)
         self.assertIn(
             "'warehouse','works','vacations','reports','administration'",
             self.router,

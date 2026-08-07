@@ -12,7 +12,8 @@ from inventory.shared.db import connect
 
 WORK_LOG_FIELDS = (
     "work_date", "task_source", "task_type", "task_number",
-    "description", "status", "section", "needs_review", "comment",
+    "description", "status", "section", "needs_review",
+    "due_date", "pnr_checklist", "comment",
 )
 
 WORK_LOG_INSERT_COLUMNS = ", ".join(WORK_LOG_FIELDS)
@@ -27,6 +28,25 @@ class ReportsRepository:
         result: dict[str, set[str]] = {}
         for row in db.execute("SELECT kind, name FROM reference_values WHERE is_active = 1"):
             result.setdefault(str(row["kind"]), set()).add(str(row["name"]).casefold())
+        return result
+
+    def reference_options(self) -> dict[str, list[str]]:
+        """Display-ready values owned by the Reports work-log contract.
+
+        `task_source` must not be taken from Warehouse's v2
+        `operation_source`: that domain contains migration/stock-operation
+        origins and omits interactive Reports values such as PNR.
+        """
+        kinds = ("task_source", "task_type", "work_log_status", "work_log_section")
+        result = {kind: [] for kind in kinds}
+        with connect(self.db_path) as db:
+            for row in db.execute(
+                """SELECT kind, name FROM reference_values
+                   WHERE is_active = 1 AND kind IN (?, ?, ?, ?)
+                   ORDER BY kind, name COLLATE NOCASE""",
+                kinds,
+            ):
+                result[str(row["kind"])].append(str(row["name"]))
         return result
 
     def collect_references(
@@ -73,7 +93,7 @@ class ReportsRepository:
                 entity_type="work_log",
                 entity_id=log_id,
                 author=author,
-                details={"task": f"{row['task_type']}-{row['task_number']}"},
+                details={"task": f"{row['task_source']}-{row['task_number']}"},
             )
             return log_id
 
@@ -126,19 +146,85 @@ class ReportsRepository:
             )
         return len(rows)
 
-    def work_logs(self, date_from: str = "", date_to: str = "") -> list[dict[str, Any]]:
-        sql = """SELECT id, work_date, task_source, task_type, task_number,
-                        task_type || '-' || task_number AS full_task_name,
-                        description, status, section, needs_review, comment, created_at
-                 FROM work_logs WHERE 1 = 1"""
+    def _work_log_filters(
+        self,
+        date_from: str,
+        date_to: str,
+        search: str,
+        status: str,
+        section: str,
+        needs_review: bool,
+    ) -> tuple[str, list[Any]]:
+        clause = ""
         params: list[Any] = []
         if date_from:
-            sql += " AND work_date >= ?"
+            clause += " AND work_date >= ?"
             params.append(date_from)
         if date_to:
-            sql += " AND work_date <= ?"
+            clause += " AND work_date <= ?"
             params.append(date_to)
+        if status:
+            clause += " AND status = ?"
+            params.append(status)
+        if section:
+            clause += " AND section = ?"
+            params.append(section)
+        if needs_review:
+            clause += " AND needs_review = 1"
+        if search:
+            like = f"%{search.strip()}%"
+            clause += (
+                " AND (work_date LIKE ? OR task_source LIKE ? OR task_number LIKE ?"
+                " OR (CASE WHEN trim(task_number) = '' THEN task_source"
+                "          ELSE task_source || '-' || task_number END) LIKE ?"
+                " OR description LIKE ? OR status LIKE ? OR section LIKE ?"
+                " OR due_date LIKE ? OR comment LIKE ?)"
+            )
+            params.extend([like] * 9)
+        return clause, params
+
+    def count_work_logs(
+        self,
+        date_from: str = "",
+        date_to: str = "",
+        *,
+        search: str = "",
+        status: str = "",
+        section: str = "",
+        needs_review: bool = False,
+    ) -> int:
+        clause, params = self._work_log_filters(
+            date_from, date_to, search, status, section, needs_review
+        )
+        with connect(self.db_path) as db:
+            return int(db.execute(
+                f"SELECT count(*) FROM work_logs WHERE 1 = 1{clause}", params
+            ).fetchone()[0])
+
+    def work_logs(
+        self,
+        date_from: str = "",
+        date_to: str = "",
+        *,
+        search: str = "",
+        status: str = "",
+        section: str = "",
+        needs_review: bool = False,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        clause, params = self._work_log_filters(
+            date_from, date_to, search, status, section, needs_review
+        )
+        sql = f"""SELECT id, work_date, task_source, task_type, task_number,
+                        CASE WHEN trim(task_number) = '' THEN task_source
+                             ELSE task_source || '-' || task_number END AS full_task_name,
+                        description, status, section, needs_review,
+                        due_date, pnr_checklist, comment, created_at
+                 FROM work_logs WHERE 1 = 1{clause}"""
         sql += " ORDER BY work_date DESC, id DESC"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(int(limit))
         with connect(self.db_path) as db:
             return [dict(row) for row in db.execute(sql, params).fetchall()]
 
@@ -159,7 +245,7 @@ class ReportsRepository:
                 entity_type="work_log",
                 entity_id=log_id,
                 author=author,
-                details={"task": f"{row['task_type']}-{row['task_number']}"},
+                details={"task": f"{row['task_source']}-{row['task_number']}"},
             )
 
     def delete_work_log(self, log_id: int, *, author: str) -> None:
@@ -177,6 +263,33 @@ class ReportsRepository:
                 author=author,
                 details={},
             )
+
+    def assign_section(self, log_ids: list[int], section: str, *, author: str) -> int:
+        """Assign a section to several rows at once and clear their review flag."""
+        if not log_ids:
+            return 0
+        with connect(self.db_path) as db:
+            updated = 0
+            # Keep well below SQLite's historical 999-variable limit. The UI
+            # can select all 1000 rows in its bounded result set, and the
+            # section parameter itself also consumes one bind variable.
+            for start in range(0, len(log_ids), 500):
+                chunk = log_ids[start:start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                cursor = db.execute(
+                    f"UPDATE work_logs SET section = ?, needs_review = 0 "
+                    f"WHERE id IN ({placeholders})",
+                    (section, *chunk),
+                )
+                updated += int(cursor.rowcount)
+            write_audit_entry(
+                db,
+                action="WORK_LOG_BULK_SECTION",
+                entity_type="work_log",
+                author=author,
+                details={"count": updated, "section": section},
+            )
+            return updated
 
     def insert_daily_report(
         self,

@@ -74,6 +74,7 @@ class ReportsWriteApiTest(unittest.TestCase):
             "task_number": number,
             "description": "API работа",
             "status": "Выполнено",
+            "due_date": self.today,
             "comment": "ok",
         }
 
@@ -95,6 +96,18 @@ class ReportsWriteApiTest(unittest.TestCase):
         status, payload = self.action({"action": "WORK_LOGS", "rows": [self.row("B1"), self.row("B2")]})
         self.assertEqual(status, 200)
         self.assertEqual(payload, {"ok": True, "saved": 2})
+
+    def test_bulk_section_requires_active_reference(self) -> None:
+        status, payload = self.action({"action": "WORK_LOG", **self.row("SECTION")})
+        self.assertEqual(status, 200)
+        log_id = self.context.reports.list_work_logs({})[0]["id"]
+        status, payload = self.action({
+            "action": "ASSIGN_SECTION",
+            "ids": [log_id],
+            "section": "Несуществующий раздел",
+        })
+        self.assertEqual(status, 400)
+        self.assertIn("отсутствует в активном справочнике", payload["error"])
 
     def test_malformed_empty_large_and_unknown_action(self) -> None:
         for body in (b"{", b""):

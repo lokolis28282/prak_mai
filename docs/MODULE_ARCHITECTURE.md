@@ -43,7 +43,9 @@ Reports:
 - owns work logs and report generation;
 - reads warehouse events through `EventReader`;
 - writes work logs and uploaded daily reports through `ReportsFacade`;
-- owns its repository, validation, preview store and CSV export implementation;
+- owns its repository, validation, preview store and CSV/XLSX export contracts;
+- never imports `inventory/routes`; HTTP presentation depends on Reports, not
+  the reverse;
 - receives the current actor from Administration rather than from
   `WarehouseCore`;
 - must not write stock receipts, stock issues or delivery tables.
@@ -183,7 +185,7 @@ Stage 0.12.11 routes Reports write/import flows through:
 
 `web/API -> ApplicationContext -> ReportsFacade -> inventory/reports services`
 
-The migrated flows are `WORK_LOG`, `WORK_LOGS`, work-log CSV import, work-log
+The migrated flows are `WORK_LOG`, `WORK_LOGS`, `ASSIGN_SECTION`, work-log CSV import, work-log
 CSV preview/confirm and uploaded daily report import. Preview storage for these
 flows is Reports-owned and in memory.
 

@@ -15,6 +15,7 @@ from .validators import (
     migration_placeholders,
     parse_date,
     prepare_work_log,
+    reference,
     soft_work_log_source,
 )
 
@@ -33,29 +34,71 @@ class WorkLogService:
         self.strict_reference_validation = strict_reference_validation
         self.previews = previews or ReportsPreviewStore()
 
-    def create_work_log(self, data: dict[str, Any]) -> int:
+    def create_work_log(self, data: dict[str, Any], *, require_due_date: bool = False) -> int:
         self._require_write()
         with connect(self.repository.db_path) as db:
             row = prepare_work_log(
                 data,
                 references=self.repository.reference_sets(db),
                 strict_references=self.strict_reference_validation,
+                require_due_date=require_due_date,
             )
         return self.repository.insert_work_log(row, author=self.audit_author())
 
-    def update_work_log(self, log_id: int, data: dict[str, Any]) -> None:
+    def update_work_log(
+        self, log_id: int, data: dict[str, Any], *, require_due_date: bool = False
+    ) -> None:
         self._require_write()
         with connect(self.repository.db_path) as db:
             row = prepare_work_log(
                 data,
                 references=self.repository.reference_sets(db),
                 strict_references=self.strict_reference_validation,
+                require_due_date=require_due_date,
             )
         self.repository.update_work_log(int(log_id), row, author=self.audit_author())
 
     def delete_work_log(self, log_id: int) -> None:
         self._require_write()
         self.repository.delete_work_log(int(log_id), author=self.audit_author())
+
+    def assign_section(self, log_ids: list[int], section: str) -> int:
+        """Resolve imported rows into an active Reports section.
+
+        Clearing ``needs_review`` is a semantic correction, so the section is
+        validated server-side even when a caller bypasses the UI select.
+        """
+        self._require_write()
+        if not isinstance(log_ids, (list, tuple)):
+            raise WarehouseError("Поле ids должно быть списком идентификаторов")
+        clean_ids: list[int] = []
+        for value in log_ids:
+            if isinstance(value, bool):
+                raise WarehouseError("Идентификатор записи должен быть положительным числом")
+            try:
+                log_id = int(value)
+            except (TypeError, ValueError) as error:
+                raise WarehouseError(
+                    "Идентификатор записи должен быть положительным числом"
+                ) from error
+            if log_id <= 0:
+                raise WarehouseError("Идентификатор записи должен быть положительным числом")
+            if log_id not in clean_ids:
+                clean_ids.append(log_id)
+        if not clean_ids:
+            return 0
+        with connect(self.repository.db_path) as db:
+            clean_section = reference(
+                str(section or ""),
+                "раздел",
+                "work_log_section",
+                self.repository.reference_sets(db),
+            )
+        return self.repository.assign_section(
+            clean_ids,
+            clean_section,
+            author=self.audit_author(),
+        )
 
     def _known_sections(self) -> dict[str, str]:
         from inventory.reports.validators import _normalize

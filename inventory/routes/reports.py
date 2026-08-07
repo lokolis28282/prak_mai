@@ -6,8 +6,35 @@ from typing import Any
 from urllib.parse import unquote
 
 from ..service import WarehouseError
-from .csv import REPORT_HEADERS, USER_CSV_TEMPLATES, WORK_LOG_HEADERS, localized
+from .csv import (
+    REPORT_HEADERS,
+    USER_CSV_TEMPLATES,
+    WORK_LOG_HEADERS,
+    localized,
+)
 from .runtime import RouteRuntime
+
+
+_XLSX_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+
+def _send_xlsx(handler: Any, filename: str, body: bytes) -> None:
+    handler._send_binary_download(filename, body, _XLSX_CONTENT_TYPE)
+
+
+def _work_log_payload(data: dict[str, Any]) -> dict[str, Any]:
+    """Extract a work-log write payload from a JSON action body."""
+    fields = (
+        "work_date", "task_source", "task_type", "task_number",
+        "description", "status", "section", "due_date", "comment",
+    )
+    payload: dict[str, Any] = {field: str(data.get(field, "") or "") for field in fields}
+    # The PNR checklist may arrive as a JSON array; keep it unflattened so the
+    # validator can normalize the checked steps.
+    payload["pnr_checklist"] = data.get("pnr_checklist", "")
+    return payload
 
 
 def handle_get(
@@ -23,6 +50,90 @@ def handle_get(
             "date_from": handler._query(query, "date_from"),
             "date_to": handler._query(query, "date_to"),
         })})
+    elif path == "/api/work-logs-page":
+        handler._send_json(200, reports.work_logs_page({
+            "date_from": handler._query(query, "date_from"),
+            "date_to": handler._query(query, "date_to"),
+            "search": handler._query(query, "search"),
+            "status": handler._query(query, "status"),
+            "section": handler._query(query, "section"),
+            "needs_review": handler._query(query, "needs_review"),
+        }))
+    elif path == "/api/shift-stats":
+        handler._send_json(200, reports.shift_stats(handler._query(query, "date")))
+    elif path == "/api/handover":
+        handler._send_json(200, {"logs": reports.handover_logs({
+            "date_from": handler._query(query, "date_from"),
+            "date_to": handler._query(query, "date_to"),
+            "search": handler._query(query, "search"),
+            "status": handler._query(query, "status"),
+        })})
+    elif path == "/export/shift-report.xlsx":
+        body = reports.shift_report_xlsx(handler._query(query, "date"))
+        _send_xlsx(handler, "shift_report.xlsx", body)
+    elif path == "/export/work-logs.xlsx":
+        body = reports.work_logs_xlsx({
+            "date_from": handler._query(query, "date_from"),
+            "date_to": handler._query(query, "date_to"),
+            "search": handler._query(query, "search"),
+            "status": handler._query(query, "status"),
+            "section": handler._query(query, "section"),
+            "needs_review": handler._query(query, "needs_review"),
+        })
+        _send_xlsx(handler, "work_logs.xlsx", body)
+    elif path == "/export/handover.xlsx":
+        body = reports.handover_xlsx({
+            "date_from": handler._query(query, "date_from"),
+            "date_to": handler._query(query, "date_to"),
+            "search": handler._query(query, "search"),
+            "status": handler._query(query, "status"),
+        })
+        _send_xlsx(handler, "handover.xlsx", body)
+    elif path == "/export/daily-report.xlsx":
+        body = reports.daily_report_xlsx(handler._query(query, "date"))
+        _send_xlsx(handler, "daily_report.xlsx", body)
+    elif path == "/export/uploaded-daily-report.xlsx":
+        body = reports.uploaded_report_xlsx(
+            handler._query_int(query, "id", minimum=1)
+        )
+        _send_xlsx(handler, "uploaded_daily_report.xlsx", body)
+    elif path == "/export/weekly-report.xlsx":
+        body = reports.weekly_report_xlsx(
+            handler._query(query, "start_date"),
+            handler._query(query, "end_date"),
+        )
+        _send_xlsx(handler, "period_report.xlsx", body)
+    # Backward-compatible download URLs. The current UI advertises XLSX, but
+    # saved links and external local scripts from earlier ODE versions keep
+    # receiving the historical CSV contract.
+    elif path == "/export/work-logs.csv":
+        rows = reports.export_work_logs_rows({
+            "date_from": handler._query(query, "date_from"),
+            "date_to": handler._query(query, "date_to"),
+            "search": handler._query(query, "search"),
+            "status": handler._query(query, "status"),
+            "section": handler._query(query, "section"),
+            "needs_review": handler._query(query, "needs_review"),
+        })
+        handler._send_csv("work_logs.csv", localized(rows, WORK_LOG_HEADERS))
+    elif path == "/export/daily-report.csv":
+        rows = reports.export_daily_report_rows(handler._query(query, "date"))
+        handler._send_csv("daily_report.csv", localized(rows, REPORT_HEADERS))
+    elif path == "/export/uploaded-daily-report.csv":
+        rows = reports.export_uploaded_report_rows(
+            handler._query_int(query, "id", minimum=1)
+        )
+        handler._send_csv(
+            "uploaded_daily_report.csv", localized(rows, REPORT_HEADERS)
+        )
+    elif path == "/export/weekly-report.csv":
+        handler._send_csv(
+            "period_report.csv",
+            reports.export_weekly_report_rows(
+                handler._query(query, "start_date"),
+                handler._query(query, "end_date"),
+            ),
+        )
     elif path == "/api/daily-report":
         handler._send_json(
             200,
@@ -44,30 +155,6 @@ def handle_get(
                     handler._query_int(query, "id", minimum=1)
                 )
             },
-        )
-    elif path == "/export/work-logs.csv":
-        rows = reports.export_work_logs_rows({
-            "date_from": handler._query(query, "date_from"),
-            "date_to": handler._query(query, "date_to"),
-        })
-        handler._send_csv("work_logs.csv", localized(rows, WORK_LOG_HEADERS))
-    elif path == "/export/daily-report.csv":
-        rows = reports.export_daily_report_rows(handler._query(query, "date"))
-        handler._send_csv("daily_report.csv", localized(rows, REPORT_HEADERS))
-    elif path == "/export/uploaded-daily-report.csv":
-        rows = reports.export_uploaded_report_rows(
-            handler._query_int(query, "id", minimum=1)
-        )
-        handler._send_csv(
-            "uploaded_daily_report.csv", localized(rows, REPORT_HEADERS)
-        )
-    elif path == "/export/weekly-report.csv":
-        handler._send_csv(
-            "period_report.csv",
-            reports.export_weekly_report_rows(
-                handler._query(query, "start_date"),
-                handler._query(query, "end_date"),
-            ),
         )
     elif path == "/import/work-logs-template.csv":
         handler._send_template(
@@ -92,14 +179,19 @@ def handle_action(
     """Handle Reports writes routed through the Reports facade."""
     reports = runtime.app_context.reports
     if action == "WORK_LOG":
-        reports.create_work_log(handler._work_log_payload(data))
+        reports.create_work_log(_work_log_payload(data), require_due_date=True)
     elif action == "UPDATE_WORK_LOG":
         reports.update_work_log(
             handler._query_int_value(data.get("id"), "id"),
-            handler._work_log_payload(data),
+            _work_log_payload(data),
+            require_due_date=True,
         )
     elif action == "DELETE_WORK_LOG":
         reports.delete_work_log(handler._query_int_value(data.get("id"), "id"))
+    elif action == "ASSIGN_SECTION":
+        response["updated"] = reports.assign_section(
+            data.get("ids", []), data.get("section", "")
+        )
     elif action == "WORK_LOGS":
         response["saved"] = reports.create_work_logs(data.get("rows", []))
     elif action == "CONFIRM_IMPORT_PREVIEW":

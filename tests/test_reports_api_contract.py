@@ -32,10 +32,11 @@ class ReportsReadApiContractTest(unittest.TestCase):
             self.db_path, service=self.service, warehouse_contour="demo"
         )
         self.today = "2026-07-11"
-        self.service.add_work_log(
-            self.today, "ЗНР", "ПНР", "RPT-1",
-            "Проверка отчета; кириллица\nстрока", "Выполнено", "Комментарий; тест",
-        )
+        self.service.add_work_log({
+            "work_date": self.today, "task_source": "ЗНР", "task_type": "ПНР",
+            "task_number": "RPT-1", "description": "Проверка отчета; кириллица\nстрока",
+            "status": "Выполнено", "due_date": self.today, "comment": "Комментарий; тест",
+        })
         self.service.add_stock_receipt(**{
             "receipt_date": self.today, "responsible": "Инженер Отчета",
             "item_name": "Сервер отчета", "project": "Digital",
@@ -71,8 +72,12 @@ class ReportsReadApiContractTest(unittest.TestCase):
         def send_download(filename: str, body: bytes) -> None:
             handler._captured = (200, body, f'text/csv; filename="{filename}"')
 
+        def send_binary_download(filename: str, body: bytes, content_type: str) -> None:
+            handler._captured = (200, body, f'{content_type}; filename="{filename}"')
+
         handler._send = send
         handler._send_download = send_download
+        handler._send_binary_download = send_binary_download
         with self.service.user_context("lokolis", author_name="Инженер Отчета"), self.service.lock:
             handler._do_GET()
         status, body, content_type = handler._captured
@@ -109,6 +114,12 @@ class ReportsReadApiContractTest(unittest.TestCase):
         self.assertGreaterEqual(weekly["summary"]["receipts"], 1)
         self.assertGreaterEqual(weekly["summary"]["issues"], 1)
 
+    def test_reports_reference_options_are_not_warehouse_operation_sources(self) -> None:
+        options = self.context.reports.reference_options()
+        self.assertIn("PNR", options["task_source"])
+        self.assertIn("work_log_section", options)
+        self.assertNotIn("Исторический XLSX: приход", options["task_source"])
+
     def test_uploaded_report_contract_and_unknown_id(self) -> None:
         status, payload, _ = self._call_get(f"/api/uploaded-daily-report?id={self.upload['id']}")
         self.assertEqual(status, 200)
@@ -117,23 +128,49 @@ class ReportsReadApiContractTest(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("error", payload)
 
-    def test_csv_contracts_preserve_bom_headers_and_text(self) -> None:
+    def test_xlsx_export_contracts_preserve_headers_and_text(self) -> None:
+        # Reports downloads are formatted XLSX (CSV import stays; export moved
+        # off CSV). Each file is a styled workbook whose first sheet carries the
+        # header band and the expected marker value somewhere in its cells.
+        from inventory.shared.xlsx import read_sheet, sheet_names
+
+        xlsx_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         checks = [
-            (f"/export/work-logs.csv?date_from={self.today}&date_to={self.today}", "work_logs.csv", "Имя задачи", "Проверка отчета"),
-            (f"/export/daily-report.csv?date={self.today}", "daily_report.csv", "Блок отчета", "RPT-1"),
-            (f"/export/weekly-report.csv?start_date={self.today}&end_date={self.today}", "period_report.csv", "Показатель", "Логи работ"),
-            (f"/export/uploaded-daily-report.csv?id={self.upload['id']}", "uploaded_daily_report.csv", "Номер задачи", "READY-1"),
+            (f"/export/work-logs.xlsx?date_from={self.today}&date_to={self.today}", "work_logs.xlsx", "Имя задачи", "Проверка отчета"),
+            ("/export/handover.xlsx", "handover.xlsx", "Источник", "Передача по смене"),
+            (f"/export/daily-report.xlsx?date={self.today}", "daily_report.xlsx", "Блок отчета", "RPT-1"),
+            (f"/export/weekly-report.xlsx?start_date={self.today}&end_date={self.today}", "period_report.xlsx", "Показатель", "Логи работ"),
+            (f"/export/uploaded-daily-report.xlsx?id={self.upload['id']}", "uploaded_daily_report.xlsx", "Номер задачи", "READY-1"),
         ]
         for url, filename, header, marker in checks:
             with self.subTest(url=url):
                 status, data, content_type = self._call_get(url)
                 self.assertEqual(status, 200)
                 self.assertIn(filename, content_type)
-                self.assertTrue(data.startswith("\ufeff".encode("utf-8")))
-                text = data.decode("utf-8-sig")
-                self.assertIn(header, text)
-                self.assertIn(marker, text)
-                self.assertIn(";", text)
+                self.assertIn(xlsx_type, content_type)
+                self.assertIsInstance(data, (bytes, bytearray))
+                first_sheet = sheet_names(data)[0]
+                cells = [cell for row in read_sheet(data, first_sheet) for cell in row]
+                joined = "\n".join(cells)
+                # Header is an exact cell; the marker may be embedded in a
+                # composite value (full task name, PNR description…).
+                self.assertIn(header, cells)
+                self.assertIn(marker, joined)
+
+    def test_legacy_csv_download_urls_remain_compatible(self) -> None:
+        checks = [
+            (f"/export/work-logs.csv?date_from={self.today}&date_to={self.today}", "work_logs.csv"),
+            (f"/export/daily-report.csv?date={self.today}", "daily_report.csv"),
+            (f"/export/weekly-report.csv?start_date={self.today}&end_date={self.today}", "period_report.csv"),
+            (f"/export/uploaded-daily-report.csv?id={self.upload['id']}", "uploaded_daily_report.csv"),
+        ]
+        for url, filename in checks:
+            with self.subTest(url=url):
+                status, data, content_type = self._call_get(url)
+                self.assertEqual(status, 200)
+                self.assertIn(filename, content_type)
+                self.assertIsInstance(data, (bytes, bytearray))
+                self.assertTrue(data.startswith(b"\xef\xbb\xbf"))
 
     def test_bad_dates_keep_user_errors(self) -> None:
         with self.assertRaises(WarehouseError):

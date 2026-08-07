@@ -242,7 +242,7 @@ class Stage01217Test(unittest.TestCase):
     def test_invalid_numeric_queries_are_400_and_never_leak_trace_details(self) -> None:
         for path in (
             "/api/delivery?id=abc", "/api/global-search?query=server&limit=abc",
-            "/api/uploaded-daily-report?id=abc", "/export/uploaded-daily-report.csv?id=abc",
+            "/api/uploaded-daily-report?id=abc", "/export/uploaded-daily-report.xlsx?id=abc",
             "/export/delivery.csv?id=abc",
         ):
             with self.subTest(path=path):

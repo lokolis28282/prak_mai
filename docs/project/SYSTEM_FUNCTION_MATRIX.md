@@ -40,7 +40,7 @@
 
 | Модуль | Рабочие функции | Storage boundary | Проверка |
 |---|---|---|---|
-| Reports | work logs, УВР, сменные/дневные и недельные отчёты | reporting tables primary DB; Warehouse events только через reader | reports/unit/headless |
+| Reports | work logs, PNR checklist, shift KPI/CRUD, передача backlog, server filters/page 25, XLSX + legacy CSV read aliases | reporting tables primary DB; Warehouse events только через reader | reports/API/XLSX/unit/headless |
 | Monitoring | ручной hostname/DCIM поиск, ignored JSON routing, optional collector | `monitoring_*`/local ignored config; без Warehouse imports | boundary/routing/headless |
 | Knowledge | статьи, теги, private attachments | `knowledge_*` и private attachment root | permissions/upload/headless |
 | Vacations | roster, requests, календарь, конфликты, history/audit | только `data/vacations.db` | facade/API/rules/headless |
@@ -68,6 +68,8 @@
 - Preview/Confirm сценарии прихода, расхода, поставки и Inventory Number только
   на disposable DB;
 - Reports, Monitoring, Knowledge, Vacations и Administration;
+- Reports create/edit/delete/viewer, PNR checklist, handover, filters,
+  pagination, bulk section и корректные XLSX downloads;
 - диагностику и создание backup только во временный внешний каталог.
 
 Деструктивные/подтверждающие кнопки нельзя «тыкать» на рабочих БД. Реальный

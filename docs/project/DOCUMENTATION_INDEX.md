@@ -30,6 +30,8 @@
   допустимые направления зависимостей;
 - [`MODULE_ARCHITECTURE.md`](../MODULE_ARCHITECTURE.md) — фасады и постепенное
   извлечение из compatibility core;
+- [`REPORTS_ARCHITECTURE.md`](../REPORTS_ARCHITECTURE.md) — УВР/PNR, передача,
+  фильтры, импорт и экспортные контракты Reports;
 - [`SECURITY_BOUNDARIES.md`](../SECURITY_BOUNDARIES.md) — session/role,
   permissions и fail-closed границы;
 - [`VACATIONS_ARCHITECTURE.md`](../VACATIONS_ARCHITECTURE.md) — отдельная
@@ -53,6 +55,9 @@
 - [`2026-08-07_ODE_0_20_0_FULL_STABILIZATION_AUDIT.md`](reviews/2026-08-07_ODE_0_20_0_FULL_STABILIZATION_AUDIT.md)
   — полный code/backend/frontend/data/documentation gate и исправления
   подтверждённых дефектов.
+- [`2026-08-07_ODE_0_20_0_REPORTS_INTEGRATION_AUDIT.md`](reviews/2026-08-07_ODE_0_20_0_REPORTS_INTEGRATION_AUDIT.md)
+  — ancestry review ветки `reports`, интеграция УВР/PNR/XLSX и повторный
+  полный release gate.
 
 ## Нормативная целевая архитектура
 

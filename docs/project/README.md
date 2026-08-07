@@ -29,6 +29,8 @@ DDL или stage evidence, а связывает их и явно разделя
 15. [Multi-DB backup/restore](../decisions/ADR-013-multi-database-backup-restore.md)
     — реализованный status/create-backup slice и обязательный контракт будущего
     restore.
+16. [Reports architecture](../REPORTS_ARCHITECTURE.md) — УВР, PNR, передача по
+    смене, XLSX/CSV contracts и граница Warehouse events.
 
 ## Иерархия источников
 

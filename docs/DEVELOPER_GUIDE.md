@@ -79,6 +79,32 @@ Runtime data разделены физически:
 7. Снова сравните SHA runtime-БД, выполните integrity/FK checks и проверьте
    diff на секреты и generated data.
 
+### Reports-specific checks
+
+- HTTP/UI обращается только к `ApplicationContext.reports → ReportsFacade`;
+  `inventory/reports` не импортирует `inventory/routes` и не читает складские
+  таблицы напрямую.
+- Интерактивный create/update валидирует `due_date`; PNR description/status
+  выводятся из backend checklist, а не доверяются JSON-клиенту.
+- `ASSIGN_SECTION` принимает только активный `work_log_section`, работает
+  атомарно чанками и не снимает `needs_review` при ошибке.
+- Реестр и экспорт должны применять одинаковые date/search/status/section/
+  review filters. Safety-window — 1000 строк, UI page — 25.
+- Shift XLSX: первый лист только `Выполнено` за выбранный день; handover — весь
+  незавершённый backlog с `work_date <= report_date`. Dedicated handover export
+  не должен возвращать общий реестр.
+- XLSX хранит значения как inline text и заменяет запрещённые XML 1.0 control-
+  символы. Проверяйте ZIP/XML round-trip и открытие headless LibreOffice, если
+  он доступен.
+- Legacy `/export/*.csv` — read-only compatibility aliases; текущие UI-кнопки
+  должны вести на `.xlsx`.
+- Existing promoted DB получает `section`, `needs_review`, `due_date` и
+  `pnr_checklist` только через backup-guarded `migrate_runtime_modules.py`;
+  его `reports_ready` обязан проверять все четыре поля.
+- Focused UI gate запускается для engineer и viewer через
+  `tests/headless_reports_smoke.js`; `--login-role` меняет только disposable
+  smoke copy и не касается runtime DB.
+
 ## 5. Полный gate
 
 ```bash
