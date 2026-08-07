@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import io
 import json
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 from inventory.core.application import create_application_context
+from inventory.db import verify_password
 from inventory.service import WarehouseError, WarehouseService
 from inventory.webapp import LOGIN_HTML, make_handler
 
@@ -279,6 +282,30 @@ class WebappSecurityTest(unittest.TestCase):
             })
         self.assertEqual(status, 200)
         self.assertTrue(cookie.startswith("ode_session="))
+
+    def test_malformed_password_hash_fails_closed_without_login_crash(self) -> None:
+        malformed_hashes = (
+            "pbkdf2_sha256$0$YQ==$YQ==",
+            "pbkdf2_sha256$-1$YQ==$YQ==",
+            "pbkdf2_sha256$999999999999999999999999$YQ==$YQ==",
+            "pbkdf2_sha256$260000$not-base64!$also-not-base64!",
+        )
+        for encoded in malformed_hashes:
+            with self.subTest(encoded=encoded):
+                self.assertFalse(verify_password("secret", encoded))
+
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            db.execute(
+                "UPDATE users SET password_hash=? WHERE email='lokolis'",
+                (malformed_hashes[2],),
+            )
+        status, payload, _ = self._login({
+            "mode": "admin",
+            "email": "lokolis",
+            "password": "secret",
+        })
+        self.assertEqual(status, 401)
+        self.assertIn("Неверный", payload["error"])
 
 
 if __name__ == "__main__":

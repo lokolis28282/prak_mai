@@ -19,7 +19,10 @@ class DeliveryRepository:
         self.db_path = Path(db_path)
 
     def existing_stock_serials(self, serials: Iterable[str]) -> dict[str, dict[str, Any]]:
-        keys = sorted({serial.casefold(): serial for serial in serials if serial}.values())
+        keys = sorted({
+            serial.strip().casefold(): serial.strip()
+            for serial in serials if serial.strip()
+        }.values())
         result: dict[str, dict[str, Any]] = {}
         with connect(self.db_path) as db:
             for chunk in _chunks(keys):
@@ -29,15 +32,18 @@ class DeliveryRepository:
                                project, datacenter, shelf
                           FROM stock_receipts
                          WHERE trim(serial_number) <> ''
-                           AND serial_number COLLATE NOCASE IN ({placeholders})""",
+                           AND trim(serial_number) COLLATE NOCASE IN ({placeholders})""",
                     chunk,
                 ).fetchall()
                 for row in rows:
-                    result[str(row["serial_number"]).casefold()] = dict(row)
+                    result[str(row["serial_number"]).strip().casefold()] = dict(row)
         return result
 
     def existing_delivery_serials(self, serials: Iterable[str]) -> dict[str, list[dict[str, Any]]]:
-        keys = sorted({serial.casefold(): serial for serial in serials if serial}.values())
+        keys = sorted({
+            serial.strip().casefold(): serial.strip()
+            for serial in serials if serial.strip()
+        }.values())
         result: dict[str, list[dict[str, Any]]] = {}
         with connect(self.db_path) as db:
             for chunk in _chunks(keys):
@@ -48,11 +54,13 @@ class DeliveryRepository:
                           FROM delivery_lines l
                           JOIN deliveries d ON d.id = l.delivery_id
                          WHERE trim(l.serial_number) <> ''
-                           AND l.serial_number COLLATE NOCASE IN ({placeholders})""",
+                           AND trim(l.serial_number) COLLATE NOCASE IN ({placeholders})""",
                     chunk,
                 ).fetchall()
                 for row in rows:
-                    result.setdefault(str(row["serial_number"]).casefold(), []).append(dict(row))
+                    result.setdefault(
+                        str(row["serial_number"]).strip().casefold(), []
+                    ).append(dict(row))
         return result
 
     def list_deliveries(self, query: str = "", limit: int | None = None) -> list[dict[str, Any]]:

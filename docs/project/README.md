@@ -1,6 +1,6 @@
 # ODE Project Hub
 
-Дата актуализации: 2026-08-02. Текущий source/runtime: ODE 0.20.0.
+Дата актуализации: 2026-08-07. Текущий source/runtime: ODE 0.20.0.
 
 Это главная точка входа в текущее состояние проекта. Hub не копирует ADR,
 DDL или stage evidence, а связывает их и явно разделяет два параллельных
@@ -19,11 +19,14 @@ DDL или stage evidence, а связывает их и явно разделя
 8. [DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md) — статус документации.
 9. [RISKS_AND_BACKLOG.md](RISKS_AND_BACKLOG.md) — риски и отложенная работа.
 10. [AGENT_HANDOFF.md](AGENT_HANDOFF.md) — минимальный handoff нового агента.
-11. [Multi-Warehouse](../MULTI_WAREHOUSE_ARCHITECTURE.md) — физическая
+11. [USER_GUIDE.md](../USER_GUIDE.md) — рабочая инструкция оператора.
+12. [DEVELOPER_GUIDE.md](../DEVELOPER_GUIDE.md) — вход для разработчика и
+    code reviewer.
+13. [Multi-Warehouse](../MULTI_WAREHOUSE_ARCHITECTURE.md) — физическая
     изоляция IXcellerate/Solar и bootstrap Solar.
-12. [Vacations](../VACATIONS_ARCHITECTURE.md) — самостоятельный календарь,
+14. [Vacations](../VACATIONS_ARCHITECTURE.md) — самостоятельный календарь,
     графики и очередь конфликтов двух площадок.
-13. [Multi-DB backup/restore](../decisions/ADR-013-multi-database-backup-restore.md)
+15. [Multi-DB backup/restore](../decisions/ADR-013-multi-database-backup-restore.md)
     — реализованный status/create-backup slice и обязательный контракт будущего
     restore.
 

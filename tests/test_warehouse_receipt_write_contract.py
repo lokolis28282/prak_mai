@@ -100,6 +100,74 @@ class WarehouseReceiptWriteContractTest(unittest.TestCase):
                 self.context.warehouse.import_receipts([self.receipt("CSV-OK"), {**self.receipt("CSV-BAD"), "receipt_date": "bad"}])
             self.assertEqual(self.count("stock_receipts"), before)
 
+    def test_serialized_receipts_require_one_piece_in_units(self) -> None:
+        invalid_values = (
+            ("quantity-two", {"quantity": "2"}),
+            ("quantity-fraction", {"quantity": "1.5"}),
+            ("non-piece-unit", {"unit": "м"}),
+        )
+        writers = (
+            ("manual", lambda row: self.context.warehouse.create_receipt(row)),
+            (
+                "batch",
+                lambda row: self.context.warehouse.create_receipt_batch([row]),
+            ),
+            (
+                "import",
+                lambda row: self.context.warehouse.import_receipts([row]),
+            ),
+        )
+
+        with self.service.user_context("lokolis"):
+            for writer_name, writer in writers:
+                for case_name, overrides in invalid_values:
+                    with self.subTest(writer=writer_name, case=case_name):
+                        row = self.receipt(
+                            f"SERIAL-INVARIANT-{writer_name}-{case_name}",
+                            **overrides,
+                        )
+                        with self.assertRaises(WarehouseError):
+                            writer(row)
+
+        self.assertEqual(self.count("stock_receipts"), 0)
+
+    def test_batch_and_import_match_preserved_serial_outer_whitespace(self) -> None:
+        with self.service.user_context("lokolis"):
+            self.context.warehouse.create_receipt(
+                self.receipt("PRESERVED-OUTER-SPACE", inventory_number="")
+            )
+            with closing(sqlite3.connect(self.db_path)) as db, db:
+                db.execute(
+                    "UPDATE stock_receipts SET serial_number=? "
+                    "WHERE serial_number=?",
+                    (" PRESERVED-OUTER-SPACE ", "PRESERVED-OUTER-SPACE"),
+                )
+            before = self.count("stock_receipts")
+            for name, writer in (
+                (
+                    "batch",
+                    lambda: self.context.warehouse.create_receipt_batch([
+                        self.receipt("PRESERVED-OUTER-SPACE")
+                    ]),
+                ),
+                (
+                    "import",
+                    lambda: self.context.warehouse.import_receipts([
+                        self.receipt("PRESERVED-OUTER-SPACE")
+                    ]),
+                ),
+            ):
+                with self.subTest(writer=name):
+                    with self.assertRaisesRegex(WarehouseError, "уже используется"):
+                        writer()
+
+        self.assertEqual(self.count("stock_receipts"), before)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            stored = db.execute(
+                "SELECT serial_number FROM stock_receipts"
+            ).fetchone()[0]
+        self.assertEqual(stored, " PRESERVED-OUTER-SPACE ")
+
     def test_preview_confirm_repeated_confirm_and_no_writes(self) -> None:
         with self.service.user_context("lokolis"):
             before = self.count("stock_receipts")

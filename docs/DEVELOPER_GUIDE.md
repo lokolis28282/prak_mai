@@ -1,0 +1,116 @@
+# Руководство разработчика и ревьюера ODE 0.20.0
+
+Актуализировано: 2026-08-07. Это короткая точка входа для человека, который
+читает, проверяет или изменяет код. Нормативные ограничения репозитория остаются
+в корневом [`AGENTS.md`](../AGENTS.md).
+
+## 1. Что прочитать сначала
+
+1. [`project/CURRENT_STATE.md`](project/CURRENT_STATE.md) — фактический runtime.
+2. [`project/SYSTEM_FUNCTION_MATRIX.md`](project/SYSTEM_FUNCTION_MATRIX.md) —
+   экраны, API, storage и доказательства.
+3. [`DATABASE_OWNERSHIP.md`](DATABASE_OWNERSHIP.md) — владельцы таблиц.
+4. [`MODULE_ARCHITECTURE.md`](MODULE_ARCHITECTURE.md) и
+   [`API_REFERENCE.md`](API_REFERENCE.md) — фасады и HTTP-контракт.
+5. [`project/RISKS_AND_BACKLOG.md`](project/RISKS_AND_BACKLOG.md) — открытые
+   ограничения, которые нельзя выдавать за реализованные функции.
+
+Target ODE 0.13 в `docs/architecture` — утверждённое направление, но не всегда
+текущий runtime. При расхождении сначала проверяйте исполняемый код и living-
+документы из списка выше.
+
+## 2. Карта runtime
+
+```text
+app.py
+  → inventory/webapp.py          HTTP/session/security shell
+  → inventory/routes/            domain HTTP handlers
+  → ApplicationContext
+      → WarehouseFacade          inventory/warehouse
+      → ReportsFacade            inventory/reports
+      → MonitoringFacade         inventory/monitoring
+      → KnowledgeFacade          inventory/knowledge
+      → VacationFacade           inventory/vacations
+      → AdministrationFacade     inventory/administration
+```
+
+Фактический frontend находится в `static/js` и `static/css`. Итоговая сборка
+удаляет inline `<style>`/`<script>` из шаблона, поэтому frontend-изменение надо
+проверять через `inventory.webapp.HTML` или живой сервер.
+
+Runtime data разделены физически:
+
+- `data/warehouse.db` — IXcellerate и primary application contour;
+- `data/warehouse_solar.db` — отдельный Solar Warehouse;
+- `data/vacations.db` — отдельный модуль отпусков.
+
+Эти файлы, backup, raw migration input, exports, screenshots и release ZIP не
+коммитятся.
+
+## 3. Архитектурные правила ревью
+
+- Новый Web/API код идёт через `ApplicationContext → public facade`; прямой
+  business SQL в route/template запрещён.
+- Reports читает склад только через `WarehouseEventReader`; Warehouse не пишет
+  отчётные таблицы; Monitoring и Vacations изолированы от Warehouse.
+- S/N — identity оборудования. Inventory Number и полка не являются fallback-
+  идентификаторами и не создают вторую карточку.
+- Preview не пишет business data; Confirm повторно валидирует план под lock и
+  либо фиксирует всю транзакцию, либо откатывает её.
+- Права определяет session user/role. ФИО отвечает за attribution и не даёт
+  admin-доступ.
+- Composition в `/api/position-card` — только issue-history evidence, не
+  current installed state и не slot map.
+- Multi-DB restore остаётся fail-closed до полного ADR-013 workflow;
+  correction/reversal — до ADR-014.
+
+## 4. Безопасный цикл изменения
+
+1. Выполните `git status --short --branch` и отделите чужой dirty diff.
+2. Для DB-related работы зафиксируйте абсолютные пути, SHA-256 и отсутствие
+   `-wal/-shm/-journal`; mutation tests запускайте только на временной копии.
+3. Найдите реальный call path через `rg`, затем прочитайте route, facade,
+   service/repository и существующие тесты.
+4. Исправьте первопричину минимальным связным изменением и добавьте regression
+   test на наблюдаемое поведение.
+5. Обновите API, security, ownership, пользовательские инструкции и living-
+   status, если контракт изменился.
+6. Прогоните targeted tests, затем полный gate ниже.
+7. Снова сравните SHA runtime-БД, выполните integrity/FK checks и проверьте
+   diff на секреты и generated data.
+
+## 5. Полный gate
+
+```bash
+python3 -m compileall -q app.py inventory scripts tests
+find static/js tests -name '*.js' -type f -print0 | xargs -0 -n1 node --check
+python3 scripts/audit_module_boundaries.py
+python3 scripts/audit_frontend_contracts.py
+python3 scripts/audit_documentation.py
+python3 scripts/audit_repository_data.py
+python3 scripts/generate_code_graph.py --check
+python3 -W error::ResourceWarning -m unittest discover -s tests -v
+python3 scripts/create_clean_test_db.py --dry-run
+python3 scripts/smoke_ui.py
+git diff --check
+```
+
+`sqlite3.Connection` нельзя использовать как единственный context manager:
+его `__exit__` завершает транзакцию, но не закрывает соединение. Используйте
+проектный `inventory.db.connect()` либо
+`with closing(sqlite3.connect(...)) as db, db:`. Исполняемый тест репозитория
+блокирует повторное появление этого класса утечек.
+
+## 6. Что проверить перед commit/push
+
+- `git status`, `git diff --stat`, полный список изменённых файлов;
+- отсутствие `.db`, XLSX/raw, backup, ZIP, exports, внутренних hostname,
+  адресатов, токенов, паролей и password hashes;
+- результаты полного gate и точное число tests/skips;
+- SHA-256, `integrity_check` и `foreign_key_check` всех трёх runtime-БД до/после;
+- документация входит в тот же логический commit;
+- нет force push, reset или переписывания уже опубликованной истории.
+
+Датированные release/review evidence не переписываются задним числом. Для
+новой проверки создаётся новый файл в `docs/project/reviews/` и добавляется в
+[`project/DOCUMENTATION_INDEX.md`](project/DOCUMENTATION_INDEX.md).

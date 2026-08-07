@@ -78,14 +78,18 @@ class ScannerDraftFrontendContractTest(unittest.TestCase):
         self.assertIn("runtime.pending.has(key)", UI_JS)
         self.assertIn("function uniqueScanDraftRows", UI_JS)
         self.assertIn("const rows=uniqueScanDraftRows", UI_JS)
-        self.assertIn("SCAN_DRAFT_SCHEMA_VERSION=3", UI_JS)
+        self.assertIn("SCAN_DRAFT_SCHEMA_VERSION=4", UI_JS)
         self.assertIn("SCAN_DRAFT_TTL_MS=14*24*60*60*1000", UI_JS)
         self.assertIn("state.runtime?.database_fingerprint", UI_JS)
-        self.assertIn("state.current_user?.id||state.current_user?.email", UI_JS)
+        self.assertIn("function scanDraftUserScope()", UI_JS)
+        self.assertIn("user.display_name||fallback||user.email||user.id", UI_JS)
+        self.assertIn(".normalize('NFKC')", UI_JS)
+        self.assertIn("user_scope:userScope", UI_JS)
+        self.assertNotIn("user_id:user", UI_JS)
         self.assertIn("ode_scan_draft:v${SCAN_DRAFT_SCHEMA_VERSION}", UI_JS)
         self.assertIn("schema_version:SCAN_DRAFT_SCHEMA_VERSION", UI_JS)
         self.assertIn("expires_at:updatedAt+SCAN_DRAFT_TTL_MS", UI_JS)
-        for field in ("user_id:user", "user_email:", "database_fingerprint:database", "operation_type:kind", "current_step:currentStep", "entered_fields:fields", "scanned_rows:rows", "created_at:", "updated_at:updatedAt"):
+        for field in ("user_scope:userScope", "user_email:", "database_fingerprint:database", "operation_type:kind", "current_step:currentStep", "entered_fields:fields", "scanned_rows:rows", "created_at:", "updated_at:updatedAt"):
             self.assertIn(field, UI_JS)
         self.assertIn("localStorage.removeItem(`ode_${kind}_draft`)", UI_JS)
 

@@ -1,6 +1,6 @@
 # Current State
 
-Дата проверки: 2026-08-02. Authoritative repository:
+Дата проверки: 2026-08-07. Authoritative repository:
 `~/Documents/prak_mai`.
 
 ## Два разных Stage-трека
@@ -147,6 +147,19 @@ README/CODEBASE_GRAPH/SVG/PNG синхронизированы с ODE 0.20.0: 24
 запрещают ссылку на versioned PNG другой версии как current. Полный discover
 содержит 642 теста (`skipped=8`); отдельный evidence:
 `reviews/2026-08-02_ODE_0_20_0_CURRENT_VISUALS_FIX.md`.
+
+### ODE 0.20.0 full stabilization audit 2026-08-07
+
+Полный backend/frontend/security/data/documentation аудит исправил семь
+регрессионных контрактов: обязательные `quantity=1`/`unit=шт` для серийных
+приходов, normalized lookup без перезаписи raw S/N, fail-closed неоднозначный
+Inventory Number lookup, malformed password hash, HTTP 404, изоляцию scanner-
+draft по session identity и закрытие raw SQLite connections. Добавлены
+отдельные инструкции оператора и code reviewer.
+
+Текущий warning-clean discover содержит 649 тестов (`skipped=8`), Chrome E2E
+включает смену инженера с изоляцией черновика. Подробный evidence:
+`reviews/2026-08-07_ODE_0_20_0_FULL_STABILIZATION_AUDIT.md`.
 
 ### ODE 0.19.1 local runtime stabilization
 
@@ -397,7 +410,7 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий проверенный ODE 0.20.0 — 642 теста; code graph содержит 248 узлов /
+Текущий проверенный ODE 0.20.0 — 649 тестов; code graph содержит 248 узлов /
 506 связей. Актуальные значения и интерактивная карта находятся в
 `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
 из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256

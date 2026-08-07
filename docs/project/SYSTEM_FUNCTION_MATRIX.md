@@ -1,6 +1,6 @@
 # Матрица функций ODE 0.20.0
 
-Актуализировано: 2026-08-02. Это living-карта текущего runtime: где находится
+Актуализировано: 2026-08-07. Это living-карта текущего runtime: где находится
 функция, через какую границу она работает, чем хранится и как проверяется.
 
 Обозначения: **write** — меняет только принадлежащую модулю БД; **read** — не
@@ -29,7 +29,7 @@
 | Inventory Number import | preview token + confirm | карточка по S/N | write одной транзакцией; contract/headless |
 | Reference Data | WarehouseFacade → ReferenceDataService | `reference_*_v2` | admin write; alias/rename tests |
 | Equipment Card/Timeline | WarehouseFacade | read по receipts/issues/audit | read; card/timeline tests |
-| Состав целевой железки | `/api/equipment-composition` → WarehouseFacade | подтверждённые issue/allocations | read; API/service/UI/headless |
+| Состав целевой железки | `/api/position-card` → WarehouseFacade | подтверждённые issue/allocations | read; API/service/UI/headless |
 
 Состав оборудования не заявляет точный физический слот, заводскую
 комплектацию или текущее присутствие компонента без обратной операции. Схемы

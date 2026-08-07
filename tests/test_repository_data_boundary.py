@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import sqlite3
 import tempfile
 import unittest
@@ -68,6 +69,36 @@ class RepositoryDataBoundaryTest(unittest.TestCase):
                             f"SELECT COUNT(*) FROM {table}"
                         ).fetchone()[0]
                         self.assertEqual(count, 0)
+
+    def test_raw_sqlite_context_managers_cannot_leak_connections(self) -> None:
+        violations: list[str] = []
+        for source_root in ("inventory", "scripts", "tests"):
+            for path in (ROOT / source_root).rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                for node in ast.walk(tree):
+                    if not isinstance(node, (ast.With, ast.AsyncWith)):
+                        continue
+                    for item in node.items:
+                        expression = item.context_expr
+                        if not isinstance(expression, ast.Call):
+                            continue
+                        function = expression.func
+                        if (
+                            isinstance(function, ast.Attribute)
+                            and function.attr == "connect"
+                            and isinstance(function.value, ast.Name)
+                            and function.value.id == "sqlite3"
+                        ):
+                            violations.append(
+                                f"{path.relative_to(ROOT)}:{node.lineno}"
+                            )
+
+        self.assertEqual(
+            violations,
+            [],
+            "sqlite3.Connection.__enter__ does not close the connection; "
+            "wrap sqlite3.connect(...) in contextlib.closing",
+        )
 
 
 if __name__ == "__main__":

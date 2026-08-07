@@ -435,7 +435,7 @@ class WarehouseServiceTest(unittest.TestCase):
             shelf="выгородка 1", object_name="любое значение",
             project="Новый проект", equipment_type="Серверы тестовые",
             supplier="Новый поставщик", datacenter="Новый ЦОД",
-            unit="комплект", serial_number="SN-VEGMAN-1",
+            unit="шт", serial_number="SN-VEGMAN-1",
             inventory_number="INV-VEGMAN-1",
         )
         self.assertEqual(self.service.import_stock_receipt_rows([row]), 1)
@@ -444,14 +444,14 @@ class WarehouseServiceTest(unittest.TestCase):
             "shelf": "выгородка 1", "object": "любое значение",
             "project": "Новый проект", "equipment_type": "Серверы тестовые",
             "supplier": "Новый поставщик", "datacenter": "Новый ЦОД",
-            "unit": "комплект",
+            "unit": "шт",
         }
         for kind, name in expected.items():
             values = {value["name"] for value in self.service.references(kind)}
             self.assertIn(name, values)
         balance = self.service.stock_balance(
             project="Новый проект", equipment_type="Серверы тестовые",
-            unit="комплект", datacenter="Новый ЦОД",
+            unit="шт", datacenter="Новый ЦОД",
         )
         self.assertEqual(len(balance), 1)
         self.assertEqual(balance[0]["item_name"], "vegman")
@@ -1067,7 +1067,7 @@ class WarehouseServiceTest(unittest.TestCase):
                 category=category, item_type=item_type,
                 serial_number="" if category == "Кабели" else f"SN-CATEGORY-{index}",
                 inventory_number="", equipment_type="старое", component_type="старое",
-                cable_type="старое", quantity="2",
+                cable_type="старое", quantity="2" if category == "Кабели" else "1",
             )
             self.service.add_stock_receipt(**row)
             saved = self.service.stock_receipts()[0]

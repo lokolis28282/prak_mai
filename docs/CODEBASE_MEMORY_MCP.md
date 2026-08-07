@@ -122,8 +122,8 @@ secrets/credentials и session-data. SQLite-файлы дополнительн�
 самим indexer. `.cbmignore` сейчас не используется.
 
 Последний подтверждённый проект в cache называется
-`Users-lokolis-Documents-prak_mai`. Full reindex ODE 0.20.0 после equipment
-composition slice от 2026-08-02: 7 368 узлов, 31 382 ребра;
+`Users-lokolis-Documents-prak_mai`. Full reindex ODE 0.20.0 после полного
+стабилизационного аудита от 2026-08-07: 7 465 узлов, 31 742 ребра;
 `artifact_present=false`, `skipped_count=0`. Индексация выполнена с
 `persistence=false`; repository artifact не создан.
 

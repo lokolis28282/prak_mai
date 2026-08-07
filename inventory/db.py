@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import sqlite3
 import base64
+import binascii
 import hashlib
 import hmac
 import secrets
+import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -35,11 +36,29 @@ def verify_password(password: str, encoded: str) -> bool:
         algorithm, iterations, salt_text, digest_text = encoded.split("$", 3)
         if algorithm != "pbkdf2_sha256":
             return False
-        salt = base64.urlsafe_b64decode(salt_text.encode("ascii"))
-        expected = base64.urlsafe_b64decode(digest_text.encode("ascii"))
-        actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
+        iteration_count = int(iterations)
+        if iteration_count != PASSWORD_ITERATIONS:
+            return False
+        salt = base64.b64decode(
+            salt_text.encode("ascii"), altchars=b"-_", validate=True
+        )
+        expected = base64.b64decode(
+            digest_text.encode("ascii"), altchars=b"-_", validate=True
+        )
+        if len(salt) != 16 or len(expected) != hashlib.sha256().digest_size:
+            return False
+        actual = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt, iteration_count
+        )
         return hmac.compare_digest(actual, expected)
-    except (ValueError, TypeError):
+    except (
+        AttributeError,
+        binascii.Error,
+        OverflowError,
+        TypeError,
+        UnicodeError,
+        ValueError,
+    ):
         return False
 
 SCHEMA = """

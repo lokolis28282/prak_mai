@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import sqlite3
 import sys
+from contextlib import closing
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,7 +25,7 @@ def main() -> int:
         print(f"Некорректный путь к существующей SQLite-базе: {db_path}")
         return 1
     install_knowledge_schema(db_path)
-    with sqlite3.connect(db_path) as connection:
+    with closing(sqlite3.connect(db_path)) as connection:
         tables = {
             str(row[0])
             for row in connection.execute(

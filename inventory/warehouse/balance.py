@@ -535,7 +535,7 @@ class WarehouseBalanceService(WarehouseComponent):
                     placeholders = ",".join("?" for _ in target_serials)
                     add_positions(db.execute(
                         select_position
-                        + f" WHERE trim(r.serial_number) <> '' AND r.serial_number COLLATE NOCASE IN ({placeholders}) LIMIT ?",
+                        + f" WHERE trim(r.serial_number) <> '' AND trim(r.serial_number) COLLATE NOCASE IN ({placeholders}) LIMIT ?",
                         [*target_serials, limit - len(position_rows)],
                     ))
 

@@ -328,6 +328,13 @@ class WarehouseReadApiContractTest(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("error", payload)
 
+    def test_unknown_authenticated_get_returns_json_404(self) -> None:
+        status, payload, content_type = self._call_get("/does-not-exist")
+
+        self.assertEqual(status, 404)
+        self.assertEqual(payload, {"error": "Страница не найдена"})
+        self.assertTrue(content_type.startswith("application/json"))
+
     def test_position_search_and_card_contract(self) -> None:
         self._add_targeted_issue()
         status, payload, _ = self._call_get("/api/position-search?query=API-CONTRACT-1")

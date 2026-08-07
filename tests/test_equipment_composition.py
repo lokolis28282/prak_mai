@@ -4,6 +4,7 @@ import hashlib
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from inventory.core.application import create_application_context
@@ -148,7 +149,7 @@ class EquipmentCompositionTest(unittest.TestCase):
             "COMP-HBA-1", issue_date="2026-08-02", task_type="ИЗМ",
             task_number="RAW-ONLY-77", comment="Историческая запись",
         )
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db, db:
             db.execute(
                 "UPDATE stock_issues SET task_type='' WHERE task_number='RAW-ONLY-77'"
             )
@@ -171,7 +172,7 @@ class EquipmentCompositionTest(unittest.TestCase):
             "COMP-QSFP-COMMENT", issue_date="2026-08-02", task_type="ИЗМ",
             task_number="TEMP", comment="Замена по ИЗМ-000112008",
         )
-        with sqlite3.connect(self.db_path) as db:
+        with closing(sqlite3.connect(self.db_path)) as db, db:
             db.execute(
                 "UPDATE stock_issues SET task_type='', task_number='' "
                 "WHERE source_serial_number='COMP-QSFP-COMMENT'"

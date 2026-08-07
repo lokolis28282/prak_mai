@@ -15,8 +15,9 @@
 - role может быть скрыта из UX, но frontend не заменяет backend check;
 - reference dropdown использует `state.references`, active canonical значения
   и `parent_key` для vendor → model; hardcoded vendor/model arrays запрещены;
-- draft schema v3 включает user, DB fingerprint, operation, step, fields, rows,
-  timestamps и TTL 14 дней; restore только после явного выбора;
+- draft schema v4 включает нормализованную session identity, DB fingerprint,
+  operation, step, fields, rows, timestamps и TTL 14 дней; restore только после
+  явного выбора и не показывает черновик другого ФИО в том же браузере;
 - при смене склада in-memory scanner/delivery/preview state очищается, а
   сохранённые drafts остаются изолированными database fingerprint;
 - смена вкладки сохраняет draft, но новая вкладка открывает начальный экран;
@@ -40,11 +41,11 @@
   дублирует вход в профиль или смену пароля отдельными кнопками;
   `openShiftProfile()` остается единственной, role-aware точкой входа.
 - Equipment Card по целевому S/N/hostname показывает агрегированный состав и
-  операции списания через `/api/equipment-composition`. Передняя/задняя схема
-  обзорная: UI не назначает неизвестные физические слоты и явно отделяет
-  подтверждённый факт операции от предположения о размещении.
+  операции списания в `composition` ответа `/api/position-card`.
+  Передняя/задняя схема обзорная: UI не назначает неизвестные физические слоты
+  и явно отделяет подтверждённый факт операции от предположения о размещении.
 
-Дата актуализации: 2026-08-02
+Дата актуализации: 2026-08-07
 
 ## Зачем нужен контракт
 

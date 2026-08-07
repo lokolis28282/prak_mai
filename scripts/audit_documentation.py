@@ -25,8 +25,12 @@ CURRENT_DOCUMENTS = (
     "docs/README.md",
     "docs/API_REFERENCE.md",
     "docs/CODEBASE_GRAPH.md",
+    "docs/DEVELOPER_GUIDE.md",
+    "docs/FRONTEND_CONTRACTS.md",
+    "docs/USER_GUIDE.md",
     "docs/project/CURRENT_STATE.md",
     "docs/project/DOCUMENTATION_INDEX.md",
+    "docs/project/SYSTEM_FUNCTION_MATRIX.md",
 )
 CURRENT_RELEASE_REPORT = "RELEASE_REPORT_ODE_0_20_0.md"
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
@@ -145,6 +149,11 @@ def audit_current_contracts(root: Path = ROOT) -> list[str]:
         violations.append("Windows documentation still names legacy data\\backups")
     if re.search(r"восстанов(?:ить|ление).{0,80}через интерфейс", windows_text, re.I):
         violations.append("Windows documentation claims that UI restore is enabled")
+    for relative in CURRENT_DOCUMENTS:
+        if "/api/equipment-composition" in (root / relative).read_text("utf-8"):
+            violations.append(
+                f"{relative}: names removed /api/equipment-composition endpoint"
+            )
     return violations
 
 

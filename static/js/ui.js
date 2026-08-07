@@ -857,26 +857,31 @@ function renderWarehouseHistory(){
   console.error('Warehouse history rendering failed',error);ui.error.textContent='Не удалось загрузить историю складских операций.';ui.error.hidden=false;ui.body.replaceChildren(renderElement('tr',{children:[renderElement('td',{className:'empty history-empty',attrs:{colspan:6},text:'Не удалось загрузить историю складских операций.'})]}));
  }
 }
-const SCAN_DRAFT_SCHEMA_VERSION=3,SCAN_DRAFT_TTL_MS=14*24*60*60*1000;
+const SCAN_DRAFT_SCHEMA_VERSION=4,SCAN_DRAFT_TTL_MS=14*24*60*60*1000;
 function draftFieldsAreMeaningful(kind,fields,currentStep='scan'){
  const entries=Object.entries(fields||{}).filter(([,value])=>Array.isArray(value)?value.length:String(value||'').trim());
  if(String(currentStep).startsWith('wizard:'))return entries.some(([key])=>key!=='proposals');
  const automatic=new Set(kind==='receipt'?['receipt_date','responsible','datacenter','unit']:['issue_date','responsible','task_type']);
  return entries.some(([key])=>!automatic.has(key));
 }
+function scanDraftUserScope(){
+ const user=state.current_user||{},fallback=[user.last_name,user.first_name].filter(Boolean).join(' ');
+ const identity=String(user.display_name||fallback||user.email||user.id||'anonymous').normalize('NFKC').trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU');
+ return `${String(user.role||'unknown').toLocaleLowerCase()}:${identity}`;
+}
 function scanDraftStorageKey(kind){
  const database=String(state.runtime?.database_fingerprint||'pending');
- const user=String(state.current_user?.id||state.current_user?.email||'anonymous');
- return `ode_scan_draft:v${SCAN_DRAFT_SCHEMA_VERSION}:${encodeURIComponent(database)}:${encodeURIComponent(user)}:${kind}`;
+ const userScope=scanDraftUserScope();
+ return `ode_scan_draft:v${SCAN_DRAFT_SCHEMA_VERSION}:${encodeURIComponent(database)}:${encodeURIComponent(userScope)}:${kind}`;
 }
 function readScanDraft(kind){
  try{
   localStorage.removeItem(`ode_${kind}_draft`);
   const key=scanDraftStorageKey(kind),raw=localStorage.getItem(key);if(!raw)return null;
   const database=String(state.runtime?.database_fingerprint||'pending');
-  const user=String(state.current_user?.id||state.current_user?.email||'anonymous');
+  const userScope=scanDraftUserScope();
   const value=JSON.parse(raw),now=Date.now();
-  if(value?.schema_version!==SCAN_DRAFT_SCHEMA_VERSION||Number(value?.expires_at||0)<=now||value?.database_fingerprint!==database||value?.user_id!==user||value?.operation_type!==kind){localStorage.removeItem(key);return null}
+  if(value?.schema_version!==SCAN_DRAFT_SCHEMA_VERSION||Number(value?.expires_at||0)<=now||value?.database_fingerprint!==database||value?.user_scope!==userScope||value?.operation_type!==kind){localStorage.removeItem(key);return null}
   const rows=uniqueScanDraftRows(Array.isArray(value?.scanned_rows)?value.scanned_rows.filter(row=>row&&typeof row==='object'):[]);
   const enteredFields=value.entered_fields&&typeof value.entered_fields==='object'&&!Array.isArray(value.entered_fields)?value.entered_fields:{};
   if(!rows.length&&!draftFieldsAreMeaningful(kind,enteredFields,value.current_step)){localStorage.removeItem(key);return null}
@@ -886,8 +891,8 @@ function readScanDraft(kind){
 function writeScanDraft(kind,rows,enteredFields,currentStep='scan'){
  const key=scanDraftStorageKey(kind),form=document.getElementById(scanDraftElements[kind].form);
  const database=String(state.runtime?.database_fingerprint||'pending');
- const user=String(state.current_user?.id||state.current_user?.email||'anonymous');
- try{const fields=enteredFields||(form?formData(form):{}),updatedAt=Date.now(),existing=readScanDraft(kind);if(rows.length||draftFieldsAreMeaningful(kind,fields,currentStep))localStorage.setItem(key,JSON.stringify({schema_version:SCAN_DRAFT_SCHEMA_VERSION,user_id:user,user_email:String(state.current_user?.email||''),database_fingerprint:database,operation_type:kind,current_step:currentStep,entered_fields:fields,scanned_rows:rows,created_at:Number(existing?.created_at||updatedAt),updated_at:updatedAt,expires_at:updatedAt+SCAN_DRAFT_TTL_MS}));else localStorage.removeItem(key)}
+ const userScope=scanDraftUserScope();
+ try{const fields=enteredFields||(form?formData(form):{}),updatedAt=Date.now(),existing=readScanDraft(kind);if(rows.length||draftFieldsAreMeaningful(kind,fields,currentStep))localStorage.setItem(key,JSON.stringify({schema_version:SCAN_DRAFT_SCHEMA_VERSION,user_scope:userScope,user_email:String(state.current_user?.email||''),database_fingerprint:database,operation_type:kind,current_step:currentStep,entered_fields:fields,scanned_rows:rows,created_at:Number(existing?.created_at||updatedAt),updated_at:updatedAt,expires_at:updatedAt+SCAN_DRAFT_TTL_MS}));else localStorage.removeItem(key)}
  catch(_){notify('Не удалось сохранить временный список в браузере',true)}
  renderDraftPanel();
 }

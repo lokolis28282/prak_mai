@@ -140,7 +140,7 @@ def prepare_receipt(
         source["object_name"] = str(source.get("object_name") or "Не указано")
         source["datacenter"] = str(source.get("datacenter") or "Ixcellerate")
         source["unit"] = str(source.get("unit") or "шт")
-        if category:
+        if category and not str(source.get("quantity", "")).strip():
             source["quantity"] = 1
         row: dict[str, Any] = {
             "receipt_date": parse_date(str(source.get("receipt_date", "")), "дата"),
@@ -172,8 +172,14 @@ def prepare_receipt(
             raise WarehouseError("укажите ровно один классификатор: тип оборудования или компонента")
         if not row["serial_number"]:
             raise WarehouseError("S/N обязателен для оборудования и компонентов")
-        if not float(row["quantity"]).is_integer():
-            raise WarehouseError("оборудование и компоненты учитываются целыми штуками")
+        if row["quantity"] != 1:
+            raise WarehouseError(
+                "оборудование и компоненты с S/N принимаются по одной штуке"
+            )
+        if row["unit"].strip().casefold() != "шт":
+            raise WarehouseError(
+                "единица учета оборудования и компонентов с S/N должна быть «шт»"
+            )
         return row
     except WarehouseError as error:
         raise WarehouseError(prefix + str(error)) from error

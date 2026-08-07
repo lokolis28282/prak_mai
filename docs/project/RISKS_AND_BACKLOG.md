@@ -1,6 +1,6 @@
 # Risks and Backlog — ODE 0.20.0
 
-Актуализировано: 2026-08-02.
+Актуализировано: 2026-08-07.
 
 ## P0 — всегда блокирует выпуск
 
@@ -25,6 +25,10 @@
 - `LINK_EXISTING_EQUIPMENT` нельзя автоматически применять без доказанного
   Equipment Query Port; Vendor/Model matching не заменяет S/N identity;
 - 291 `#N/A` names требуют отдельной доказательной data-correction процедуры.
+- В IXcellerate остаются 160 исторических групп S/N, совпадающих после удаления
+  только внешних пробелов. Runtime не создаёт новые normalized-дубли и
+  Inventory Number assignment для неоднозначной группы fail-closed, но сами
+  строки требуют отдельной backup/provenance/audit data-correction процедуры.
 
 ## P2 — server/release readiness
 

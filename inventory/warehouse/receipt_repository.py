@@ -39,10 +39,22 @@ class ReceiptRepository:
         return result
 
     def existing_serials(self, db: sqlite3.Connection) -> set[str]:
-        return {str(row[0]).casefold() for row in db.execute("SELECT serial_number FROM stock_receipts WHERE serial_number <> ''")}
+        return {
+            str(row[0]).strip().casefold()
+            for row in db.execute(
+                "SELECT serial_number FROM stock_receipts "
+                "WHERE trim(serial_number) <> ''"
+            )
+        }
 
     def existing_inventories(self, db: sqlite3.Connection) -> set[str]:
-        return {str(row[0]).casefold() for row in db.execute("SELECT inventory_number FROM stock_receipts WHERE inventory_number <> ''")}
+        return {
+            str(row[0]).strip().casefold()
+            for row in db.execute(
+                "SELECT inventory_number FROM stock_receipts "
+                "WHERE trim(inventory_number) <> ''"
+            )
+        }
 
     def collect_references(self, db: sqlite3.Connection, rows: Iterable[dict[str, Any]], *, enabled: bool, author: str) -> None:
         if not enabled:
@@ -189,17 +201,23 @@ class ReceiptRepository:
         author: str,
     ) -> dict[str, Any]:
         """Assign an inventory number using the caller-owned transaction."""
-        receipt = db.execute(
+        matches = db.execute(
             """SELECT id, serial_number, inventory_number, legacy_equipment_id
                FROM stock_receipts
                WHERE trim(serial_number) <> ''
                  AND trim(serial_number) = trim(?) COLLATE NOCASE""",
             (serial_number,),
-        ).fetchone()
-        if receipt is None:
+        ).fetchall()
+        if not matches:
             raise WarehouseError(
                 f"Карточка оборудования с S/N «{serial_number}» не найдена"
             )
+        if len(matches) > 1:
+            raise WarehouseError(
+                f"Для S/N «{serial_number}» найдено несколько карточек. "
+                "Сначала устраните дубли S/N"
+            )
+        receipt = matches[0]
 
         receipt_id = int(receipt["id"])
         current = str(receipt["inventory_number"] or "").strip()
@@ -561,8 +579,8 @@ class ReceiptRepository:
         for row in rows:
             line = row.get("_line")
             prefix = f"Строка {line}: " if line else ""
-            serial = str(row["serial_number"]).casefold()
-            inventory = str(row["inventory_number"]).casefold()
+            serial = str(row["serial_number"]).strip().casefold()
+            inventory = str(row["inventory_number"]).strip().casefold()
             if serial and (serial in existing_serials or serial in seen_serials):
                 raise WarehouseError(f"{prefix}S/N «{row['serial_number']}» уже используется")
             if inventory and (inventory in existing_inventories or inventory in seen_inventories):
@@ -587,10 +605,10 @@ class ReceiptRepository:
             rows = db.execute(
                 f"""SELECT {column} FROM stock_receipts
                     WHERE trim({column}) <> ''
-                      AND {column} COLLATE NOCASE IN ({placeholders})""",
+                      AND trim({column}) COLLATE NOCASE IN ({placeholders})""",
                 chunk,
             )
-            result.update(str(row[0]).casefold() for row in rows)
+            result.update(str(row[0]).strip().casefold() for row in rows)
         return result
 
     def receipts(

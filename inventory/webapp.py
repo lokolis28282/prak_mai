@@ -188,6 +188,7 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
                             self, selected.runtime, path, query
                         ) is not False:
                             return
+                    self._send_json(404, {"error": "Страница не найдена"})
             except KnowledgeNotFound as error:
                 self._send_json(404, {"error": str(error)})
             except KnowledgePermissionError as error:
@@ -197,7 +198,6 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             except Exception:
                 LOGGER.exception("Unhandled GET error path=%s", path)
                 self._send_json(500, {"error": "Внутренняя ошибка сервера"})
-
         def do_POST(self) -> None:  # noqa: N802
             path = urlparse(self.path).path
             origin = self.headers.get("Origin", "")

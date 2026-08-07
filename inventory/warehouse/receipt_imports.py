@@ -284,9 +284,10 @@ class ReceiptWriteService:
             for row in valid_rows
         }
         receipts = self._receipt_rows_by_serial(db, list(serials.values()))
-        receipt_by_serial = {
-            str(row["serial_number"]).strip().casefold(): row for row in receipts
-        }
+        receipts_by_serial: dict[str, list[sqlite3.Row]] = {}
+        for receipt in receipts:
+            key = str(receipt["serial_number"]).strip().casefold()
+            receipts_by_serial.setdefault(key, []).append(receipt)
         legacy_ids = {
             int(row["legacy_equipment_id"])
             for row in receipts if row["legacy_equipment_id"] is not None
@@ -296,11 +297,21 @@ class ReceiptWriteService:
         legacy_owners = self._legacy_inventory_owners(db, list(inventories.values()))
 
         for row in valid_rows:
-            receipt = receipt_by_serial.get(row["serial_number"].casefold())
-            if receipt is None:
+            matching_receipts = receipts_by_serial.get(
+                row["serial_number"].casefold(), []
+            )
+            if not matching_receipts:
                 row["status"] = "NOT_FOUND"
                 row["message"] = "Оборудование с таким Serial Number не найдено"
                 continue
+            if len(matching_receipts) > 1:
+                row["status"] = "VALIDATION_ERROR"
+                row["message"] = (
+                    "Найдено несколько карточек с таким Serial Number. "
+                    "Сначала устраните дубли S/N"
+                )
+                continue
+            receipt = matching_receipts[0]
             receipt_id = int(receipt["id"])
             legacy_id = (
                 int(receipt["legacy_equipment_id"])
@@ -431,7 +442,7 @@ class ReceiptWriteService:
                 f"""SELECT id, serial_number, inventory_number, legacy_equipment_id
                     FROM stock_receipts
                     WHERE trim(serial_number) <> ''
-                      AND serial_number COLLATE NOCASE IN ({placeholders})""",
+                      AND trim(serial_number) COLLATE NOCASE IN ({placeholders})""",
                 chunk,
             ).fetchall())
         return rows

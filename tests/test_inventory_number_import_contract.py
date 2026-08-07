@@ -272,6 +272,63 @@ class InventoryNumberImportContractTest(unittest.TestCase):
         self.assertEqual(self.count("equipment"), before_legacy_cards)
         self.assertNotIn("CSV-LOOKUP-BY-INVENTORY", self.inventory_numbers())
 
+    def test_preserved_serial_outer_whitespace_matches_without_rewrite(self) -> None:
+        receipt_id = self.add_receipt("CSV-PRESERVED-WHITESPACE")
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            db.execute(
+                "UPDATE stock_receipts SET serial_number=? WHERE id=?",
+                (" CSV-PRESERVED-WHITESPACE ", receipt_id),
+            )
+
+        preview = self.preview([{
+            "serial_number": "CSV-PRESERVED-WHITESPACE",
+            "inventory_number": "INV-PRESERVED-WHITESPACE",
+        }])
+
+        self.assertEqual(preview["rows"][0]["status"], "SUCCESS")
+        self.assertEqual(self.confirm(preview["preview_id"])["changed_count"], 1)
+        with closing(sqlite3.connect(self.db_path)) as db:
+            stored = db.execute(
+                "SELECT serial_number, inventory_number FROM stock_receipts "
+                "WHERE id=?",
+                (receipt_id,),
+            ).fetchone()
+        self.assertEqual(stored[0], " CSV-PRESERVED-WHITESPACE ")
+        self.assertEqual(stored[1], "INV-PRESERVED-WHITESPACE")
+
+    def test_trimmed_duplicate_serial_is_ambiguous_and_fails_closed(self) -> None:
+        first_id = self.add_receipt("CSV-AMBIGUOUS-A")
+        second_id = self.add_receipt("CSV-AMBIGUOUS-B")
+        with closing(sqlite3.connect(self.db_path)) as db, db:
+            db.execute(
+                "UPDATE stock_receipts SET serial_number=? WHERE id=?",
+                (" CSV-AMBIGUOUS ", first_id),
+            )
+            db.execute(
+                "UPDATE stock_receipts SET serial_number=? WHERE id=?",
+                ("CSV-AMBIGUOUS ", second_id),
+            )
+
+        preview = self.preview([{
+            "serial_number": "CSV-AMBIGUOUS",
+            "inventory_number": "INV-MUST-NOT-BE-ASSIGNED",
+        }])
+
+        self.assertFalse(preview["can_confirm"])
+        self.assertEqual(preview["rows"][0]["status"], "VALIDATION_ERROR")
+        self.assertIn("несколько карточек", preview["rows"][0]["message"])
+        with self.service.user_context("lokolis"):
+            with self.assertRaisesRegex(WarehouseError, "несколько карточек"):
+                self.facade.assign_inventory_number(
+                    "CSV-AMBIGUOUS", "INV-MUST-NOT-BE-ASSIGNED"
+                )
+        with closing(sqlite3.connect(self.db_path)) as db:
+            assigned = db.execute(
+                "SELECT count(*) FROM stock_receipts "
+                "WHERE inventory_number='INV-MUST-NOT-BE-ASSIGNED'"
+            ).fetchone()[0]
+        self.assertEqual(assigned, 0)
+
     def test_repeat_import_is_unchanged_and_preview_token_is_one_shot(self) -> None:
         self.add_receipt("CSV-REPEAT")
         rows = [

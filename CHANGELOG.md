@@ -2,6 +2,22 @@
 
 ## ODE 0.20.0 — equipment composition projection (2026-08-02)
 
+### Full stabilization follow-up (2026-08-07)
+
+- серийные оборудование и компоненты теперь на всех manual/batch/import
+  путях принимаются только как `quantity=1`, `unit=шт`; один S/N больше нельзя
+  превратить в несколько списаний;
+- batch/import/delivery и Inventory Number lookup одинаково сопоставляют
+  preservation-aware S/N с внешними пробелами, не переписывая raw значение;
+  неоднозначная normalized-группа fail-closed до исправления дублей;
+- malformed PBKDF2 hash больше не может аварийно оборвать login;
+- неизвестный authenticated GET возвращает JSON 404, а scanner drafts разных
+  ФИО в одном браузере физически разделены ключом session identity;
+- устранены raw SQLite connection warnings и добавлен AST regression guard;
+- добавлены отдельные operator/developer guides и датированный полный audit;
+- полный gate: 649 тестов (`skipped=8`), headless Chrome и все repository/
+  architecture/frontend/documentation/data проверки — PASS.
+
 - карточка сервера, коммутатора и другого серийного оборудования показывает
   компоненты, ранее списанные на его S/N: тип, модель, исходный S/N,
   количество, hostname, дату, задачу/ИЗМ, инженера и комментарий;

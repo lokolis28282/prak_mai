@@ -1,6 +1,6 @@
 # Индекс документации ODE 0.20.0
 
-Актуализировано: 2026-08-02.
+Актуализировано: 2026-08-07.
 
 Документы разделены по статусу. Только раздел «Текущий продукт» описывает
 поведение установленного source/runtime ODE 0.20.0 целиком. Версионные release-
@@ -12,6 +12,8 @@
 | Что нужно узнать | Основной документ |
 |---|---|
 | Установка, запуск, функции пользователя | [`README.md`](../../README.md) |
+| Пошаговая рабочая инструкция оператора | [`USER_GUIDE.md`](../USER_GUIDE.md) |
+| Вход для разработчика и code reviewer | [`DEVELOPER_GUIDE.md`](../DEVELOPER_GUIDE.md) |
 | Текущий status snapshot | [`CURRENT_STATE.md`](CURRENT_STATE.md) |
 | Архитектура и границы модулей | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) |
 | API и permissions | [`API_REFERENCE.md`](../API_REFERENCE.md) |
@@ -48,6 +50,9 @@
   — полный Documentation/System/UI gate этой ревизии.
 - [`2026-08-02_ODE_0_20_0_CURRENT_VISUALS_FIX.md`](reviews/2026-08-02_ODE_0_20_0_CURRENT_VISUALS_FIX.md)
   — исправление GitHub-visible PNG/SVG и защита от показа старого графа.
+- [`2026-08-07_ODE_0_20_0_FULL_STABILIZATION_AUDIT.md`](reviews/2026-08-07_ODE_0_20_0_FULL_STABILIZATION_AUDIT.md)
+  — полный code/backend/frontend/data/documentation gate и исправления
+  подтверждённых дефектов.
 
 ## Нормативная целевая архитектура
 
