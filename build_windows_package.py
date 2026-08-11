@@ -75,6 +75,8 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
     required = [
         "app.py",
         "README.md",
+        "ODE_USER_GUIDE.md",
+        "ODE_USER_GUIDE.html",
         "README_WINDOWS.md",
         "WINDOWS_RELEASE.md",
         "CHANGELOG.md",
@@ -87,6 +89,9 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
         "docs/history/SECURITY_REVIEW.md",
         "docs/history/QA_STAGE_0_12_17.md",
         "docs/history/BUGS_STAGE_0_12_17.md",
+        "docs/assets/code_graph.html",
+        "docs/assets/ode-architecture-graph.svg",
+        f"docs/assets/ode-code-graph-{__version__}.png",
         "requirements.txt",
         "requirements-monitoring.txt",
         "start_windows.bat",

@@ -30,6 +30,11 @@ limit/Origin-Host boundary и требования к будущему machine p
 README, Windows, architecture, security, Monitoring, function matrix, roadmap,
 risks и developer/user guides приведены к одному состоянию ODE 0.21.0.
 
+User-documentation follow-up добавил автономную HTML-инструкцию для рабочего
+Windows-ноутбука и её Markdown-версию: быстрый запуск, карта разделов, приход,
+расход, Monitoring, отчёты, backup, типовые ошибки и безопасное завершение
+работы. Оба файла включаются в Windows package и лежат рядом с launcher.
+
 ## Интеграция и стабилизация ветки Reports (2026-08-07)
 
 Commit коллеги `bb83690` из remote-ветки `reports` перенесён поверх текущего

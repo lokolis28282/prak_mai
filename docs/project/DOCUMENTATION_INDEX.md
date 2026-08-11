@@ -11,6 +11,7 @@
 
 | Что нужно узнать | Основной документ |
 |---|---|
+| Понятная инструкция для инженера | [`ODE_USER_GUIDE.md`](../../ODE_USER_GUIDE.md), offline [`HTML`](../../ODE_USER_GUIDE.html) |
 | Установка, запуск, функции пользователя | [`README.md`](../../README.md) |
 | Пошаговая рабочая инструкция оператора | [`USER_GUIDE.md`](../USER_GUIDE.md) |
 | Вход для разработчика и code reviewer | [`DEVELOPER_GUIDE.md`](../DEVELOPER_GUIDE.md) |

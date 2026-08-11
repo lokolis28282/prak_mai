@@ -123,7 +123,7 @@ secrets/credentials и session-data. SQLite-файлы дополнительн�
 
 Последний подтверждённый проект в cache называется
 `Users-lokolis-Documents-prak_mai`. Full reindex ODE 0.21.0 после общего
-documentation/auth/API pass от 2026-08-11: 7 758 узлов, 33 357 рёбер;
+user-documentation pass от 2026-08-11: 7 774 узла, 33 376 рёбер;
 `artifact_present=false`, `skipped_count=0`. Индексация выполнена с
 `persistence=false`; repository artifact не создан.
 

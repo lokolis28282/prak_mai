@@ -50,3 +50,17 @@ Post-release documentation follow-up проверил весь living-компл
 точные current-контракты входа, cookie API, отсутствия API-key auth и runtime-
 конфигурации. Evidence:
 [`docs/project/reviews/2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md`](docs/project/reviews/2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md).
+
+User-documentation follow-up добавил лежащие рядом с Windows launcher
+`ODE_USER_GUIDE.html` и `ODE_USER_GUIDE.md`: быстрый запуск, карта разделов,
+безопасные сценарии прихода/расхода, Monitoring, отчёты, backup и разбор
+типовых ошибок. HTML автономен, адаптивен и визуально проверен в Chrome;
+documentation audit охватывает 213 Markdown-файлов. Warning-clean discover —
+703 tests, `OK (skipped=8)`.
+
+По отдельному запросу создан локальный чувствительный переносной snapshot
+`ODE_0.21.0_FULL_PRIVATE_WORK_LAPTOP_TRANSFER.zip` с тремя SQLite Backup API
+снимками и двумя runtime Monitoring JSON. Он не входит в Git/public release и
+может передаваться только разрешённым корпоративным способом. SHA-256 текущего
+локального артефакта:
+`41485fd5c89c4ae145797828228514ad01d83c5830be6a301fd3c7c9fd9d0da3`.

@@ -17,6 +17,7 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DOCUMENTS = (
+    "ODE_USER_GUIDE.md",
     "AGENTS.md",
     "README.md",
     "ARCHITECTURE.md",
@@ -170,6 +171,8 @@ def audit_current_contracts(root: Path = ROOT) -> list[str]:
     auth_text = (root / "docs/AUTHENTICATION_AND_API_ACCESS.md").read_text("utf-8")
     api_text = (root / "docs/API_REFERENCE.md").read_text("utf-8")
     user_text = (root / "docs/USER_GUIDE.md").read_text("utf-8")
+    quick_user_text = (root / "ODE_USER_GUIDE.md").read_text("utf-8")
+    quick_user_html = (root / "ODE_USER_GUIDE.html").read_text("utf-8")
     developer_text = (root / "docs/DEVELOPER_GUIDE.md").read_text("utf-8")
     matrix_text = (root / "docs/project/SYSTEM_FUNCTION_MATRIX.md").read_text("utf-8")
     env_example = (root / ".env.example").read_text("utf-8")
@@ -187,11 +190,20 @@ def audit_current_contracts(root: Path = ROOT) -> list[str]:
     for relative, text in (
         ("docs/API_REFERENCE.md", api_text),
         ("docs/USER_GUIDE.md", user_text),
+        ("ODE_USER_GUIDE.md", quick_user_text),
         ("docs/DEVELOPER_GUIDE.md", developer_text),
     ):
         normalized = text.casefold()
         if "api-key" not in normalized and "api-ключ" not in normalized:
             violations.append(f"{relative}: API-key authentication status is absent")
+    if "start_windows.bat" not in quick_user_text:
+        violations.append("ODE_USER_GUIDE.md: Windows launcher is absent")
+    if "Preview" not in quick_user_text or "Confirm" not in quick_user_text:
+        violations.append("ODE_USER_GUIDE.md: safe Preview/Confirm flow is absent")
+    if "start_windows.bat" not in quick_user_html:
+        violations.append("ODE_USER_GUIDE.html: Windows launcher is absent")
+    if "Мониторинг" not in quick_user_html or "Резервная копия" not in quick_user_html:
+        violations.append("ODE_USER_GUIDE.html: core user workflows are absent")
     if "/api/search`" in matrix_text or "| `/api/search`" in matrix_text:
         violations.append(
             "docs/project/SYSTEM_FUNCTION_MATRIX.md: names removed /api/search endpoint"
