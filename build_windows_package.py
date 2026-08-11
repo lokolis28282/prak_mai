@@ -24,21 +24,14 @@ Status: Release Candidate for controlled local pilot.
 
 This package includes:
 
-- warehouse;
-- equipment and component receipt;
-- equipment and component issue;
-- separate cable accounting;
-- deliveries;
-- physical delivery acceptance;
-- balance;
-- history;
-- daily and weekly reports;
-- profile.
-- compact four-module home and modal global search;
-- editable receipt/issue scanner drafts before confirmation;
-- disposable test contour with an unmistakable UI banner;
-- equipment card with operational history;
-- bounded large-data views and session-isolated previews.
+- physically isolated IXcellerate and Solar Warehouse contours;
+- separate Vacations database and workflow;
+- warehouse receipt, issue, cable, delivery, balance and history flows;
+- equipment cards and evidence-only component composition;
+- Reports, Knowledge, Administration and multi-database backup;
+- manual Monitoring workflow with local hostname routing rules;
+- normalized pasted hostnames, DCIM field enrichment and incident templates;
+- disposable test contour with an unmistakable UI banner.
 
 The package deliberately contains no runtime database, production data,
 candidate database or credentials. A target installation must create and own
@@ -46,12 +39,12 @@ its database separately under the documented bootstrap procedure.
 
 Limitations:
 
-- close delivery remains compatibility/legacy;
-- destructive override for conflicting existing data is not implemented;
-- Monitoring is still in development;
-- external system APIs are not connected;
+- correction/reversal operations are not implemented;
+- Monitoring does not send email or Rooms messages automatically;
+- live Monitoring collection requires local Selenium/Edge setup and is not
+  exercised by the source package acceptance;
 - server deployment has not been performed;
-- deployment is limited to one local ODE process and one local SQLite file;
+- deployment is limited to one local ODE process and local SQLite files;
 - real initial-baseline publish remains disabled;
 - this source package requires target Windows acceptance before any rollout.
 """
@@ -59,13 +52,15 @@ Limitations:
 
 KNOWN_ISSUES = """# Known Issues
 
-- close_delivery is still compatibility/legacy.
-- Destructive override for conflicting existing warehouse data is absent.
-- Monitoring is a placeholder.
+- Corrective/reversal warehouse operations are absent.
+- Live Monitoring collection depends on the corporate DCIM session and local
+  Selenium/Edge configuration; routing JSON is installation-owned data.
+- Monitoring does not send email or Rooms messages automatically.
 - Part of the frontend remains in legacy ui.js.
 - WarehouseCore remains a compatibility core.
 - Physical Windows launch must be confirmed on the target laptop.
 - Scheduled automatic backup is not implemented.
+- Multi-database restore remains fail-closed.
 - Server deployment is not implemented.
 - One CSV import is limited to 40,000 non-empty rows.
 - Corrective/reversal operations are not implemented.
@@ -90,11 +85,14 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
         "docs/history/QA_STAGE_0_12_17.md",
         "docs/history/BUGS_STAGE_0_12_17.md",
         "requirements.txt",
+        "requirements-monitoring.txt",
         "start_windows.bat",
         "start_macos.command",
         "start_test_windows.bat",
         "start_test_macos.command",
         "scripts/create_clean_test_db.py",
+        "scripts/generate_hostname_rules.py",
+        "scripts/integrate_recipient_rules_from_xlsx.py",
     ]
     files = [(root / name, Path(name)) for name in required]
     files.extend(

@@ -1,21 +1,21 @@
-# ODE 0.20.0 — карта кода и зависимостей
+# ODE 0.21.0 — карта кода и зависимостей
 
-![ODE 0.20.0 architecture graph](assets/ode-architecture-graph.svg)
+![ODE 0.21.0 architecture graph](assets/ode-architecture-graph.svg)
 
 ## Граф файлов и импортов
 
-[![ODE 0.20.0 — граф файлов и импортов](assets/ode-code-graph-0.20.0.png)](assets/code_graph.html)
+[![ODE 0.21.0 — граф файлов и импортов](assets/ode-code-graph-0.21.0.png)](assets/code_graph.html)
 
 - GitHub-friendly PNG:
-  [`assets/ode-code-graph-0.20.0.png`](assets/ode-code-graph-0.20.0.png);
+  [`assets/ode-code-graph-0.21.0.png`](assets/ode-code-graph-0.21.0.png);
 - интерактивный self-contained HTML:
   [`assets/code_graph.html`](assets/code_graph.html).
 
-Детерминированный committed graph ODE 0.20.0 после полного system audit
-содержит 248 файлов/модулей и 506 import/serve edges. Статический PNG и
+Детерминированный committed graph ODE 0.21.0 после полного system audit
+содержит 252 файла/модуля и 512 import/serve edges. Статический PNG и
 интерактивная карта построены из текущего `code_graph.html`.
 Последний успешно зафиксированный внешний full-снимок Codebase Memory от
-2026-08-07 содержит 7 465 узлов и 31 742 ребра (`skipped_count=0`). Он создан
+2026-08-11 содержит 7 727 узлов и 33 325 рёбер (`skipped_count=0`). Он создан
 для текущего дерева с `persistence=false`; `artifact_present=false` и
 `.codebase-memory` в repository нет.
 
@@ -62,7 +62,7 @@ flowchart LR
   Events --> R
 ```
 
-Фактический web-path в 0.19.1:
+Фактический web-path в 0.21.0:
 
 `browser → webapp HTTP shell → session WarehouseSite → inventory/routes →
 selected facade → domain service/repository → selected SQLite`.
@@ -88,7 +88,7 @@ handlers используют его для общего lock, пути/имен
 | Warehouse | `WarehouseFacade` + `WarehouseSiteRegistry` | `inventory/warehouse/` | независимые `stock_*`, deliveries, balance/history в IXcellerate/Solar; публикует события |
 | Reports | `ReportsFacade` | `inventory/reports/` | `work_logs`, `daily_report_*`; Warehouse читает только через `WarehouseEventReader` |
 | Administration | `AdministrationFacade` | `AdministrationService` + runtime registry + multi-DB backup service | users, audit, diagnostics, status/create backup; restore disabled |
-| Monitoring | `MonitoringFacade` | `inventory/monitoring/` | локальные ignored rules и optional DCIM; не импортирует Warehouse/Reports |
+| Monitoring | `MonitoringFacade` | `inventory/monitoring/` | локальные ignored rules, hostname/project/ИС routing и optional DCIM; не импортирует Warehouse/Reports |
 | Knowledge | `KnowledgeFacade` | `inventory/knowledge/` | `knowledge_*` и private attachments |
 | Vacations | `VacationFacade` | `inventory/vacations/` | собственные `vacation_*` и audit в `data/vacations.db`; складские БД не используются |
 
@@ -121,7 +121,7 @@ Migration packages не импортируются runtime Web/API и не пу�
 - `python3 scripts/generate_code_graph.py` обновляет
   [`assets/code_graph.html`](assets/code_graph.html) из Python AST и
   static-layout; версия читается из `inventory.__version__`.
-- PNG `assets/ode-code-graph-0.20.0.png` является GitHub-снимком текущего
+- PNG `assets/ode-code-graph-0.21.0.png` является GitHub-снимком текущего
   интерактивного графа. При каждом version bump он создаётся заново после
   стабилизации layout; старый versioned PNG запрещено показывать как current.
 - `python3 scripts/generate_code_graph.py --check` завершает gate ошибкой, если

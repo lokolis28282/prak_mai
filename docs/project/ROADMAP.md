@@ -1,4 +1,4 @@
-# Roadmap после ODE 0.20.0
+# Roadmap после ODE 0.21.0
 
 ## Что уже в рабочем runtime
 
@@ -40,7 +40,7 @@
   затем отдельное решение о message transports;
 - Reports/Knowledge/Vacations: retention, backup drill и operator acceptance
   внутри собственных boundaries;
-- Windows: отдельный package bump/build/sign-off; последний фактический ZIP
-  пока 0.12.17 RC1;
+- Windows: source package 0.21.0 собран; остаются install/update/sign-off на
+  целевом ноутбуке и фиксация его среды;
 - target Platform/DDL: продолжать side-by-side и публиковать только после
   отдельного rehearsal/cutover решения, не поверх рабочего Warehouse.

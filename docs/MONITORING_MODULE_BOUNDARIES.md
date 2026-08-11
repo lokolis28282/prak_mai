@@ -12,6 +12,9 @@ email sending and warehouse coupling remain out of scope.
 - `inventory/monitoring/models.py`;
 - local ignored `data/monitoring/*.json` rules;
 - offline `scripts/generate_hostname_rules.py`;
+- offline `scripts/integrate_recipient_rules_from_xlsx.py` для консервативного
+  добавления подтверждённых project/ИС/hostname rules; source и outputs
+  являются локальными корпоративными данными;
 - `static/js/monitoring/index.js`;
 - authenticated manual-search API and operator UI;
 - optional Selenium/Microsoft Edge DCIM adapter;

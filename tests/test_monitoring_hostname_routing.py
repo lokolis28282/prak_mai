@@ -16,6 +16,7 @@ from inventory.monitoring.hostname_routing import (
     TECH_RULES_NAME,
     RoutingDecision,
     build_email_body,
+    build_incident_message,
     build_email_subject,
     dedupe_recipients,
     greeting_for_hour,
@@ -25,15 +26,29 @@ from scripts.generate_hostname_rules import build_digital_payload, build_tech_pa
 
 
 class MonitoringHostnameRoutingTest(unittest.TestCase):
+    GLOBAL_CC = (
+        "DIS.SRV@x5.ru",
+        "DIS.DC@x5.ru",
+        "DIS.ENG@x5.ru",
+        "GOD@x5.ru",
+        "Dmitry.Akhmetov@x5.ru",
+    )
+
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.rules_dir = Path(self._tmp.name)
 
-    def write_rules(self, tech_rules: list[dict], digital_hostnames: list[str] | None = None) -> None:
+    def write_rules(
+        self,
+        tech_rules: list[dict],
+        digital_hostnames: list[str] | None = None,
+        global_cc: list[str] | None = None,
+    ) -> None:
         tech = {
             "version": 1,
             "cc_exclusions": ["Excluded.One", "Excluded.Two"],
+            "global_cc": global_cc or [],
             "rules": tech_rules,
         }
         digital = {
@@ -86,6 +101,26 @@ class MonitoringHostnameRoutingTest(unittest.TestCase):
         self.assertEqual(decision.to, ("Digital.Primary", "Digital.Secondary"))
         self.assertEqual(decision.cc, ("Copy.One", "Copy.Two"))
         self.assertTrue(any("Digital" in warning for warning in decision.warnings))
+
+    def test_global_cc_is_added_to_every_routed_project_without_duplicates(self) -> None:
+        x5 = self.tech_rule("x5-*")
+        x5["cc"] = ["dis.dc@X5.RU", "Local.Copy"]
+        salt = self.tech_rule("salt-*", salt=True)
+        self.write_rules(
+            [x5, salt],
+            ["digital-01"],
+            [*self.GLOBAL_CC, "dis.dc@x5.ru"],
+        )
+
+        for hostname in ("x5-01", "salt-01", "digital-01"):
+            decision = resolve_hostname_routing(hostname, rules_dir=self.rules_dir)
+            self.assertTrue(decision.email_ready)
+            for recipient in self.GLOBAL_CC:
+                self.assertIn(recipient.casefold(), {item.casefold() for item in decision.cc})
+            self.assertEqual(
+                len(decision.cc),
+                len({item.casefold() for item in decision.cc}),
+            )
 
     def test_unknown_hostname_does_not_choose_random_project(self) -> None:
         self.write_rules([self.tech_rule("known-*")])
@@ -154,17 +189,72 @@ class MonitoringHostnameRoutingTest(unittest.TestCase):
         self.assertFalse(decision.email_ready)
         self.assertTrue(any("равнозначных" in error for error in decision.errors))
 
+    def test_combined_dcim_rule_beats_broader_hostname_rule(self) -> None:
+        broad = self.tech_rule("p1-nx-apl*")
+        broad["to"] = ["Broad.Owner"]
+        combined = self.tech_rule("p1-nx-apl*")
+        combined.update(
+            {
+                "dcim_project": "BigData",
+                "information_system": "BigData Platform",
+                "to": ["BigData.Support"],
+                "confidence": 1.0,
+            }
+        )
+        self.write_rules([broad, combined])
+
+        decision = resolve_hostname_routing(
+            "P1-NX-APL0039",
+            dcim_project="  bigdata ",
+            information_system="BIGDATA PLATFORM",
+            rules_dir=self.rules_dir,
+        )
+
+        self.assertEqual(decision.to, ("BigData.Support",))
+        self.assertIn("confidence=100.00%", decision.matched_rules[0])
+
+    def test_project_rule_can_use_global_hostname_mask(self) -> None:
+        rule = self.tech_rule("*")
+        rule.update({"dcim_project": "Project ABC", "to": ["Project.Owner"]})
+        self.write_rules([rule])
+
+        decision = resolve_hostname_routing(
+            "new-server-01",
+            dcim_project="Project ABC",
+            rules_dir=self.rules_dir,
+        )
+
+        self.assertTrue(decision.email_ready)
+        self.assertEqual(decision.to, ("Project.Owner",))
+
+    def test_learned_digital_rule_uses_digital_tag(self) -> None:
+        rule = self.tech_rule("p4-x5d-*")
+        rule.update(
+            {
+                "project": "Digital",
+                "is_salt": False,
+                "to": ["Digital.Owner"],
+            }
+        )
+        self.write_rules([rule])
+
+        decision = resolve_hostname_routing("p4-x5d-101", rules_dir=self.rules_dir)
+
+        self.assertTrue(decision.email_ready)
+        self.assertEqual(decision.project, "Digital")
+        self.assertEqual(decision.tag, "[Digital]")
+
     def test_subject_and_body_use_required_format(self) -> None:
         subject = build_email_subject("[Digital]", "digital-db-02", "высокая загрузка CPU")
+        rooms_message = "Коллеги, доброй ночи!\n\nГотовый общий шаблон"
         body = build_email_body(
             "digital-db-02",
             "высокая загрузка CPU",
-            "Текст Rooms без изменений.",
+            rooms_message,
             at=datetime(2026, 7, 15, 18, 30),
         )
         self.assertEqual(subject, "[Digital] digital-db-02 высокая загрузка CPU")
-        self.assertTrue(body.startswith("Коллеги, добрый вечер!\n\n"))
-        self.assertTrue(body.endswith("Текст Rooms без изменений."))
+        self.assertEqual(body, rooms_message)
 
     def test_greeting_covers_all_time_ranges(self) -> None:
         self.assertEqual(greeting_for_hour(5), "Коллеги, доброе утро!")
@@ -172,6 +262,26 @@ class MonitoringHostnameRoutingTest(unittest.TestCase):
         self.assertEqual(greeting_for_hour(18), "Коллеги, добрый вечер!")
         self.assertEqual(greeting_for_hour(23), "Коллеги, доброй ночи!")
         self.assertEqual(greeting_for_hour(4), "Коллеги, доброй ночи!")
+
+    def test_message_greeting_covers_all_required_boundaries(self) -> None:
+        cases = {
+            (4, 59): "Коллеги, доброй ночи!",
+            (5, 0): "Коллеги, доброе утро!",
+            (11, 59): "Коллеги, доброе утро!",
+            (12, 0): "Коллеги, добрый день!",
+            (17, 59): "Коллеги, добрый день!",
+            (18, 0): "Коллеги, добрый вечер!",
+            (22, 59): "Коллеги, добрый вечер!",
+            (23, 0): "Коллеги, доброй ночи!",
+            (0, 0): "Коллеги, доброй ночи!",
+        }
+        for (hour, minute), expected in cases.items():
+            message = build_incident_message(
+                "server-01",
+                "problem",
+                at=datetime(2026, 8, 8, hour, minute),
+            )
+            self.assertEqual(message.splitlines()[0], expected)
 
     def test_recipient_deduplication_is_case_insensitive(self) -> None:
         self.assertEqual(

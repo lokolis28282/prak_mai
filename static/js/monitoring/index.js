@@ -17,12 +17,25 @@
       renderElement('dd',{text:value||'—'})
     ]});
   }
-  async function copyText(text){
+  function normalizeHostnameInput(value){return String(value??'').replace(/\s/gu,'');}
+  function normalizeHostnameField(input){
+    if(!input)return '';
+    const original=input.value||'',cursor=input.selectionStart;
+    const normalized=normalizeHostnameInput(original);
+    if(normalized!==original){
+      const normalizedCursor=typeof cursor==='number'?normalizeHostnameInput(original.slice(0,cursor)).length:null;
+      input.value=normalized;
+      if(normalizedCursor!==null&&typeof input.setSelectionRange==='function')input.setSelectionRange(normalizedCursor,normalizedCursor);
+    }
+    input.setCustomValidity('');
+    return normalized;
+  }
+  async function copyTextByUserAction(text){
     try{
       await navigator.clipboard.writeText(text||'');
       notify('Текст скопирован');
     }catch(error){
-      notify('Не удалось скопировать текст автоматически',true);
+      notify('Не удалось скопировать текст',true);
     }
   }
   function loadManualHistory(){
@@ -67,8 +80,8 @@
       renderElement('h3',{text:'Рекомендация'}),
       renderElement('p',{className:'hint',text:event.recommendation||'—'}),
       renderElement('div',{className:'actions',children:[
-        renderButton({text:'Скопировать Rooms',className:'button primary',onClick:()=>copyText(event.message)}),
-        renderButton({text:'Скопировать письмо',className:'button',disabled:!emailReady,onClick:()=>copyText(emailText)})
+        renderButton({text:'Скопировать Rooms',className:'button primary',onClick:()=>copyTextByUserAction(event.message)}),
+        renderButton({text:'Скопировать письмо',className:'button',disabled:!emailReady,onClick:()=>copyTextByUserAction(emailText)})
       ]}),
       renderElement('h3',{text:'Сообщение Rooms'}),preBlock(event.message),
       renderElement('h3',{text:'Тело письма'}),preBlock(emailText||(emailReady?'—':'Письмо не сформировано: проект hostname не определён.')),
@@ -161,12 +174,21 @@
       renderElement('div',{attrs:{id:'monitoringManualHistory'}})
     );
     renderManualHistory();
+    const hostInput=byId('monitoringManualHost');
+    hostInput?.addEventListener('input',()=>normalizeHostnameField(hostInput));
     byId('monitoringManualForm').onsubmit=async event=>{
       event.preventDefault();
-      const form=event.currentTarget,submit=event.submitter;if(submit)submit.disabled=true;
+      const form=event.currentTarget,submit=event.submitter;
+      const host=normalizeHostnameField(form.elements.host);
+      if(!host){
+        form.elements.host.setCustomValidity('Введите hostname.');
+        form.elements.host.reportValidity();
+        return;
+      }
+      if(submit)submit.disabled=true;
       byId('monitoringManualResult').replaceChildren(renderElement('div',{className:'placeholder',text:'Выполняю сбор данных. Если DCIM попросит авторизацию, завершите вход в открывшемся Microsoft Edge.'}));
       try{
-        const payload={host:form.elements.host.value,problem:form.elements.problem.value};
+        const payload={host,problem:form.elements.problem.value};
         const result=await request('/api/monitoring/manual-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         renderManualResult(result);
         notify('Ручной поиск завершён');

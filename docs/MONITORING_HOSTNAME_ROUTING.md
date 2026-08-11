@@ -18,6 +18,9 @@ flowchart LR
 ## Файлы и безопасность публикации
 
 - `Hostname Tech.json` содержит exact/wildcard/ограниченные regex-правила;
+- Tech-правило может дополнительно содержать точные нормализуемые условия
+  `dcim_project` и/или `information_system`. Эти поля необязательны, поэтому
+  ранее созданные hostname-only правила остаются совместимыми;
 - `Hostname Digital.json` содержит точный список Digital hostname и общих
   адресатов. Генератор читает только колонку F `X5T_Support_HostName` листа
   `Технические имена`; колонка E намеренно игнорируется;
@@ -34,10 +37,11 @@ Runtime принимает только JSON version 1, ограничивает
 ## Приоритет и результат
 
 Приоритет проектов: `Salt → Digital → X5Tech`. Внутри одного Tech-класса:
-`exact → wildcard → regex`, затем большая специфичность. Равнозначные лучшие
-правила считаются ошибкой конфигурации. Адресаты дедуплицируются без учёта
-регистра и суффикса `@x5.ru`; Tech CC исключает основной `To` и утверждённый
-exclusion list.
+`exact → wildcard → regex`, затем комбинация `project + information_system`,
+отдельный `project`, отдельная `information_system` и специфичность hostname.
+Равнозначные лучшие правила считаются ошибкой конфигурации. Адресаты
+дедуплицируются без учёта регистра и суффикса `@x5.ru`; Tech CC исключает
+основной `To` и утверждённый exclusion list.
 
 `RoutingDecision.email_ready=true` означает только то, что обязательные поля
 подготовлены без ошибок. ODE не отправляет письмо автоматически.
@@ -61,6 +65,20 @@ source-файлов обязательны, output по умолчанию за�
 `data/monitoring`. Генератор работает на Python standard library
 через безопасный read-only OOXML-reader ODE, проверяет ZIP path/размеры и пишет
 каждый JSON атомарной заменой. `openpyxl` не требуется.
+
+Подтверждённую выгрузку `Hostname / Информационная система / Проект /
+Адресаты` можно проанализировать и интегрировать консервативным генератором:
+
+```bash
+python3 scripts/integrate_recipient_rules_from_xlsx.py \
+  /approved/DCIM_ITSM_servers_info_recipients_found.xlsx
+```
+
+Генератор принимает обобщённое правило только при `confidence=100%`, отдельно
+оценивает режим без exact-hostname и group-holdout, а машинный анализ и полный
+отчёт пишет в `recipient_rules_analysis.json` и
+`recipient_rules_integration_report.txt`. Exact-hostname используется только
+для подтверждённых исключений, не покрытых надёжным обобщённым правилом.
 
 После регенерации необходимо выполнить:
 

@@ -1,4 +1,4 @@
-# Security Boundaries — ODE 0.20.0
+# Security Boundaries — ODE 0.21.0
 
 ## FULL Inventory 0.14
 
@@ -33,7 +33,7 @@ Production correction exact S/N требует validated external backups, immut
 evidence manifest, exact predicate, transaction, post-commit integrity/FK и
 append-only correction audit. Массовое изменение S/N запрещено.
 
-Документ фиксирует минимальные границы безопасности текущего ODE 0.20.0 и
+Документ фиксирует минимальные границы безопасности текущего ODE 0.21.0 и
 сохраняет scoped-контракты прежних Stage ниже как provenance решений.
 
 **CURRENT LOCAL FACT:** builder/reference/staging logic remains offline, while
@@ -86,7 +86,7 @@ Admin-only:
   multi-DB restore).
 
 Restore через Administration UI/`RESTORE_BACKUP` отключён с ODE 0.18.1 и
-остаётся fail-closed в ODE 0.20.0.
+остаётся fail-closed в ODE 0.21.0.
 
 Доступны текущему пользователю:
 

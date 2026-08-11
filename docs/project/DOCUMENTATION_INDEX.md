@@ -1,9 +1,9 @@
-# Индекс документации ODE 0.20.0
+# Индекс документации ODE 0.21.0
 
-Актуализировано: 2026-08-07.
+Актуализировано: 2026-08-11.
 
 Документы разделены по статусу. Только раздел «Текущий продукт» описывает
-поведение установленного source/runtime ODE 0.20.0 целиком. Версионные release-
+поведение установленного source/runtime ODE 0.21.0 целиком. Версионные release-
 отчёты и датированные reviews остаются неизменяемыми доказательствами своего
 этапа и не должны восприниматься как текущая инструкция.
 
@@ -22,6 +22,7 @@
 | Рабочие IXcellerate/Solar/Vacations DB | [`LOCAL_WORKING_DATABASE_RUNBOOK.md`](../LOCAL_WORKING_DATABASE_RUNBOOK.md) |
 | Windows source/runtime | [`README_WINDOWS.md`](../../README_WINDOWS.md) |
 | Windows release procedure | [`WINDOWS_RELEASE.md`](../../WINDOWS_RELEASE.md) |
+| Текущий release gate | [`RELEASE_REPORT_ODE_0_21_0.md`](../../RELEASE_REPORT_ODE_0_21_0.md) |
 | Риски и открытый технический долг | [`RISKS_AND_BACKLOG.md`](RISKS_AND_BACKLOG.md), [`TECH_DEBT.md`](../../TECH_DEBT.md) |
 
 Дополнительные living-контракты:
@@ -39,6 +40,8 @@
 - [`MONITORING_HOSTNAME_ROUTING.md`](../MONITORING_HOSTNAME_ROUTING.md) и
   [`MONITORING_KNOWLEDGE_GUIDE.md`](../MONITORING_KNOWLEDGE_GUIDE.md) —
   Monitoring/Knowledge;
+- [`reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md`](reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md)
+  — текущий Monitoring integration/release evidence;
 - [`operations/backup-restore.md`](../operations/backup-restore.md) —
   реализованный multi-database backup и отключённый restore;
 - [`CODEBASE_GRAPH.md`](../CODEBASE_GRAPH.md) и
@@ -98,6 +101,7 @@
 - [`2026-07-26_FULL_PROJECT_UX_REGRESSION.md`](reviews/2026-07-26_FULL_PROJECT_UX_REGRESSION.md);
 - [`2026-07-27_VACATIONS_MODULE_REVIEW.md`](reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md);
 - [`2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md`](reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md).
+- [`2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md`](reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md).
 
 ## Правило актуальности
 
@@ -105,7 +109,7 @@
    контракты и тесты.
 2. Release получает новый датированный report; старый report не редактируется.
 3. `python3 scripts/audit_documentation.py` проверяет локальные ссылки,
-   обязательную версию 0.20.0 в текущих документах, текущий release report и
+   обязательную версию 0.21.0 в текущих документах, текущий release report и
    запрет устаревших Windows backup/restore инструкций.
 4. Prompts не являются архитектурным решением или evidence реализации; у них
    должен быть явный статус `ACTIVE` либо `SUPERSEDED`.

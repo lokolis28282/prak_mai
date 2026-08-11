@@ -23,7 +23,9 @@ MAX_RULES_FILE_BYTES = 5 * 1024 * 1024
 MAX_TECH_RULES = 10_000
 MAX_DIGITAL_HOSTNAMES = 100_000
 HOSTNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$")
-HOSTNAME_PATTERN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._*?-]{0,252}$")
+HOSTNAME_PATTERN_RE = re.compile(
+    r"^(?=.{1,253}$)(?=.*[A-Za-z0-9])[A-Za-z0-9._*?-]+$"
+)
 RECIPIENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._%+@-]{0,253}$")
 
 
@@ -51,6 +53,15 @@ def clean_text(value: Any) -> str:
 
 
 def normalize_hostname(value: Any) -> str:
+    return clean_text(value).casefold()
+
+
+def normalize_project(value: Any) -> str:
+    text = clean_text(value).translate(str.maketrans({"–": "-", "—": "-", "−": "-"}))
+    return re.sub(r"\s*-\s*", "-", text).casefold()
+
+
+def normalize_information_system(value: Any) -> str:
     return clean_text(value).casefold()
 
 
@@ -117,7 +128,11 @@ def _validate_tech_rule(rule: Any, index: int) -> str:
         return f"Tech-правило {index} имеет неподдерживаемый match_type"
     if not identity:
         return f"Tech-правило {index} не содержит hostname pattern"
-    if match_type in {"exact", "wildcard"} and not HOSTNAME_PATTERN_RE.fullmatch(identity):
+    if (
+        match_type in {"exact", "wildcard"}
+        and identity != "*"
+        and not HOSTNAME_PATTERN_RE.fullmatch(identity)
+    ):
         return f"Tech-правило {index} содержит недопустимый hostname pattern"
     if match_type == "exact" and ("*" in identity or "?" in identity):
         return f"Tech-правило {index} exact содержит wildcard"
@@ -126,13 +141,22 @@ def _validate_tech_rule(rule: Any, index: int) -> str:
         if regex_error:
             return f"Tech-правило {index}: {regex_error}"
     project = clean_text(rule.get("project"))
-    if project.casefold() not in {"x5tech", "salt"}:
+    if project.casefold() not in {"x5tech", "salt", "digital"}:
         return f"Tech-правило {index} содержит неизвестный project"
     is_salt = rule.get("is_salt")
     if not isinstance(is_salt, bool):
         return f"Tech-правило {index} должно содержать boolean is_salt"
     if is_salt != (project.casefold() == "salt"):
         return f"Tech-правило {index} содержит противоречивый project/is_salt"
+    for field, normalizer in (
+        ("dcim_project", normalize_project),
+        ("information_system", normalize_information_system),
+    ):
+        if field not in rule:
+            continue
+        value = rule.get(field)
+        if not isinstance(value, str) or not normalizer(value) or len(clean_text(value)) > 1_000:
+            return f"Tech-правило {index} содержит недопустимое поле {field}"
     for field in ("to", "cc"):
         error = _recipient_list_error(rule.get(field, []), f"rules[{index}].{field}")
         if error:
@@ -147,6 +171,9 @@ def _validate_tech_payload(payload: dict[str, Any]) -> str:
     if len(rules) > MAX_TECH_RULES:
         return "Hostname Tech.json содержит слишком много правил"
     error = _recipient_list_error(payload.get("cc_exclusions", []), "cc_exclusions")
+    if error:
+        return error
+    error = _recipient_list_error(payload.get("global_cc", []), "global_cc")
     if error:
         return error
     for index, rule in enumerate(rules, 1):
@@ -247,38 +274,66 @@ def _rule_identity(rule: dict[str, Any]) -> str:
     return clean_text(rule.get("hostname") or rule.get("hostname_pattern") or rule.get("regex"))
 
 
-def _rule_score(hostname: str, rule: dict[str, Any]) -> tuple[int, int] | None:
+def _rule_score(
+    hostname: str,
+    rule: dict[str, Any],
+    *,
+    information_system: str = "",
+    dcim_project: str = "",
+) -> tuple[int, int, int] | None:
     match_type = clean_text(rule.get("match_type")).casefold()
     pattern = _rule_identity(rule)
     if not pattern:
         return None
+    expected_project = normalize_project(rule.get("dcim_project"))
+    expected_system = normalize_information_system(rule.get("information_system"))
+    if expected_project and expected_project != dcim_project:
+        return None
+    if expected_system and expected_system != information_system:
+        return None
+    condition_rank = 3 if expected_project and expected_system else (2 if expected_project else (1 if expected_system else 0))
     normalized_pattern = pattern.casefold()
     if match_type == "exact":
-        return (3, len(normalized_pattern)) if hostname == normalized_pattern else None
+        return (3, condition_rank, len(normalized_pattern)) if hostname == normalized_pattern else None
     if match_type == "wildcard":
         if fnmatch.fnmatchcase(hostname, normalized_pattern):
             specificity = len(re.sub(r"[*?]", "", normalized_pattern))
-            return 2, specificity
+            return 2, condition_rank, specificity
         return None
     if match_type == "regex":
         try:
-            return (1, len(normalized_pattern)) if re.fullmatch(pattern, hostname, flags=re.IGNORECASE) else None
+            return (
+                (1, condition_rank, len(normalized_pattern))
+                if re.fullmatch(pattern, hostname, flags=re.IGNORECASE)
+                else None
+            )
         except re.error as error:
             LOGGER.warning("Некорректное regex-правило %s: %s", pattern, error)
     return None
 
 
-def _best_tech_rule(hostname: str, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str], list[str]]:
+def _best_tech_rule(
+    hostname: str,
+    payload: dict[str, Any],
+    *,
+    information_system: str = "",
+    dcim_project: str = "",
+) -> tuple[dict[str, Any] | None, list[str], list[str]]:
     rules = payload.get("rules")
     if not isinstance(rules, list):
         return None, [], ["В Hostname Tech.json отсутствует массив rules"]
-    matches: list[tuple[tuple[int, int], int, dict[str, Any]]] = []
+    matches: list[tuple[tuple[int, int, int], int, dict[str, Any]]] = []
     warnings: list[str] = []
     for index, rule in enumerate(rules):
         if not isinstance(rule, dict):
             warnings.append(f"Tech-правило {index + 1} пропущено: ожидался JSON-объект")
             continue
-        score = _rule_score(hostname, rule)
+        score = _rule_score(
+            hostname,
+            rule,
+            information_system=information_system,
+            dcim_project=dcim_project,
+        )
         if score is not None:
             matches.append((score, index, rule))
     if not matches:
@@ -313,9 +368,29 @@ def _digital_match(hostname: str, payload: dict[str, Any]) -> tuple[bool, list[s
     return hostname in normalized, []
 
 
-def resolve_hostname_routing(hostname: Any, *, rules_dir: Path | None = None) -> RoutingDecision:
+def _matched_rule_label(rule: dict[str, Any]) -> str:
+    parts = [f"Tech: {_rule_identity(rule)}"]
+    if clean_text(rule.get("dcim_project")):
+        parts.append(f"project={clean_text(rule['dcim_project'])}")
+    if clean_text(rule.get("information_system")):
+        parts.append(f"information_system={clean_text(rule['information_system'])}")
+    confidence = rule.get("confidence")
+    if isinstance(confidence, (int, float)):
+        parts.append(f"confidence={float(confidence):.2%}")
+    return " | ".join(parts)
+
+
+def resolve_hostname_routing(
+    hostname: Any,
+    *,
+    information_system: Any = None,
+    dcim_project: Any = None,
+    rules_dir: Path | None = None,
+) -> RoutingDecision:
     display_hostname = clean_text(hostname)
     normalized = normalize_hostname(display_hostname)
+    normalized_system = normalize_information_system(information_system)
+    normalized_project = normalize_project(dcim_project)
     if not normalized:
         return RoutingDecision(display_hostname, errors=("Hostname не указан",))
     if not HOSTNAME_RE.fullmatch(display_hostname):
@@ -329,7 +404,12 @@ def resolve_hostname_routing(hostname: Any, *, rules_dir: Path | None = None) ->
     digital_found = False
 
     if tech_payload is not None:
-        tech_rule, tech_warnings, tech_errors = _best_tech_rule(normalized, tech_payload)
+        tech_rule, tech_warnings, tech_errors = _best_tech_rule(
+            normalized,
+            tech_payload,
+            information_system=normalized_system,
+            dcim_project=normalized_project,
+        )
         warnings.extend(tech_warnings)
         errors.extend(tech_errors)
     if digital_payload is not None:
@@ -348,7 +428,7 @@ def resolve_hostname_routing(hostname: Any, *, rules_dir: Path | None = None) ->
 
     if tech_is_salt:
         project, tag = "Salt", "[Salt]"
-        matched_rules.append(f"Tech: {_rule_identity(tech_rule or {})}")
+        matched_rules.append(_matched_rule_label(tech_rule or {}))
         to = dedupe_recipients((tech_rule or {}).get("to", []))
         exclusions = (tech_payload or {}).get("cc_exclusions", [])
         cc = filter_cc((tech_rule or {}).get("cc", []), to, exclusions)
@@ -361,16 +441,22 @@ def resolve_hostname_routing(hostname: Any, *, rules_dir: Path | None = None) ->
         cc = filter_cc((digital_payload or {}).get("default_cc", []), to)
         if tech_rule is not None:
             warnings.append("Hostname найден в Tech и Digital; применен приоритет Digital")
-            matched_rules.append(f"Tech conflict: {_rule_identity(tech_rule)}")
+            matched_rules.append(f"Tech conflict: {_matched_rule_label(tech_rule)}")
     elif tech_rule is not None:
-        project, tag = "X5Tech", "[X5Tech]"
-        matched_rules.append(f"Tech: {_rule_identity(tech_rule)}")
+        if clean_text(tech_rule.get("project")).casefold() == "digital":
+            project, tag = "Digital", "[Digital]"
+        else:
+            project, tag = "X5Tech", "[X5Tech]"
+        matched_rules.append(_matched_rule_label(tech_rule))
         to = dedupe_recipients(tech_rule.get("to", []))
         exclusions = (tech_payload or {}).get("cc_exclusions", [])
         cc = filter_cc(tech_rule.get("cc", []), to, exclusions)
     else:
         if not errors:
             errors.append(f"Hostname {display_hostname} не найден в правилах Tech и Digital")
+
+    if project and tech_payload is not None:
+        cc = dedupe_recipients([*cc, *tech_payload.get("global_cc", [])])
 
     if project and not to:
         errors.append(f"Для проекта {project} не заданы адресаты поля «Кому»")
@@ -413,15 +499,48 @@ def greeting_for_hour(hour: int) -> str:
     return "Коллеги, доброй ночи!"
 
 
+def _incident_field(value: Any, default: str = "-") -> str:
+    text = str(value or "").strip()
+    return text if text and text not in {"—", "None"} else default
+
+
+def build_incident_message(
+    hostname: Any,
+    problem: Any,
+    *,
+    model: Any = None,
+    serial_number: Any = None,
+    location: Any = None,
+    project: Any = None,
+    itsm: Any = None,
+    criticality_class: Any = None,
+    at: datetime | None = None,
+) -> str:
+    display_hostname = _incident_field(hostname, "")
+    display_problem = _incident_field(problem, "")
+    if not display_hostname or not display_problem:
+        raise ValueError("Для сообщения нужны hostname и описание проблемы")
+    greeting = greeting_for_hour((at or datetime.now()).hour)
+    return (
+        f"{greeting}\n\n"
+        f"На хосте {display_hostname} наблюдается проблема: {display_problem}\n\n"
+        f"1. Описание проблемы: {display_problem}\n"
+        f"2. имя хоста: {display_hostname}\n"
+        f"3. Модель оборудования: {_incident_field(model)}\n"
+        f"4. S/N: {_incident_field(serial_number)}\n"
+        f"5. {_incident_field(location)}\n"
+        f"6. Проект: {_incident_field(project)}\n"
+        f"7. ITSM: {_incident_field(itsm)}\n"
+        "8. Отложенный ремонт: YES\n"
+        f"9. Класс критичности: {_incident_field(criticality_class)}"
+    )
+
+
 def build_email_body(hostname: Any, problem: Any, rooms_message: Any, *, at: datetime | None = None) -> str:
-    clean_hostname = clean_text(hostname)
-    clean_problem = clean_text(problem)
-    if not clean_hostname or not clean_problem:
-        raise ValueError("Для тела письма нужны hostname и описание проблемы")
-    current = at or datetime.now()
-    body = f"{greeting_for_hour(current.hour)}\n\nНа хосте {clean_hostname} наблюдается проблема: {clean_problem}"
     rooms = str(rooms_message or "").strip()
-    return f"{body}\n\n{rooms}" if rooms else body
+    if rooms:
+        return rooms
+    return build_incident_message(hostname, problem, at=at)
 
 
 def build_email_text(subject: Any, to: Iterable[Any], cc: Iterable[Any], body: Any) -> str:

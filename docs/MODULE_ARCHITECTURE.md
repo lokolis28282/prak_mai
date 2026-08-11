@@ -12,7 +12,8 @@ legacy `service`, `webapp`, Reports, Monitoring или offline migration package
 Stage 0.12.6 introduced product module boundaries without removing the legacy
 UI. ODE 0.16.0 physically extracts Administration, Reports and Warehouse.
 `WarehouseCore` now exists only as a deprecated compatibility adapter without
-business SQL. Last built ZIP remains `0.12.17 RC1`.
+business SQL. Current source package is `ODE_0.21.0_windows_source.zip`;
+physical Windows sign-off remains pending.
 
 ## Modules
 

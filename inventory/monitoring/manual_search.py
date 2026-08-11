@@ -14,6 +14,7 @@ from .hostname_routing import (
     build_email_body,
     build_email_subject,
     build_email_text,
+    build_incident_message,
     resolve_hostname_routing,
 )
 
@@ -22,10 +23,9 @@ DCIM_BASE = os.environ.get("ODE_MONITORING_DCIM_BASE_URL", "https://dcim.x5.ru")
 DCIM_SEARCH_URL = f"{DCIM_BASE}/search/?q={{host}}"
 OLD_DELL_MODELS = ["R630", "R730", "R730XD", "R830"]
 TYPICAL_PROBLEM_REGEXES = [r"BMC:\s*No health data more than", r"Host is unavailable by API more than"]
-DEFAULT_PROJECT = "-"
 DEFAULT_TICKET = "-"
 DEFAULT_SUPPORT = "Группа эксплуатации и развития ЦОД"
-DEFAULT_DEFERRED = "-"
+DEFAULT_DEFERRED = "YES"
 EDGE_PROFILE_DIR = Path(
     os.environ.get(
         "ODE_MONITORING_EDGE_PROFILE_DIR",
@@ -43,6 +43,13 @@ def normalize_spaces(text: Any) -> str:
         return ""
     text = str(text).replace("\xa0", " ").replace("\t", " ")
     return re.sub(r"[ ]{2,}", " ", text).strip()
+
+
+def normalize_hostname_input(value: Any) -> str:
+    """Remove only Unicode whitespace from a manually entered hostname."""
+    if value is None:
+        return ""
+    return "".join(character for character in str(value) if not character.isspace())
 
 
 def fix_visible_newlines(text: Any) -> str:
@@ -64,7 +71,7 @@ def extract_emails(text: Any) -> list[str]:
 
 
 def validate_hostname(host: Any) -> tuple[bool, str]:
-    host = normalize_spaces(host)
+    host = normalize_hostname_input(host)
     if not host:
         return False, "Hostname пустой."
     if len(host) < 3:
@@ -88,7 +95,7 @@ def validate_problem_text(problem: Any) -> tuple[bool, str]:
 
 
 def make_problem_stable_key(host: Any, problem: Any) -> str:
-    host_norm = normalize_spaces(host).upper()
+    host_norm = normalize_hostname_input(host).upper()
     problem_norm = re.sub(r"\s+", " ", normalize_spaces(problem).upper())
     return f"{host_norm}|{problem_norm}"
 
@@ -110,6 +117,125 @@ def find_value_after_any_marker(lines: list[str], markers: list[str], default: s
         if value:
             return value
     return default
+
+
+def find_dcim_field(lines: list[str], markers: list[str], default: str = "-") -> str:
+    marker_names = {normalize_spaces(marker).casefold() for marker in markers}
+    known_labels = marker_names | {
+        "имя",
+        "модель",
+        "серийный номер",
+        "серийный номер мониторинг",
+        "серийный номер инвентарный",
+        "технический владелец",
+        "информационная система",
+        "ис",
+        "проект",
+        "класс критичности",
+        "среда",
+        "environment",
+        "criticality class",
+        "criticality",
+        "itsm",
+        "номер itsm",
+        "номер инцидента",
+        "активность",
+        "поставщик оборудования",
+    }
+    ordered_markers = sorted(
+        ((normalize_spaces(marker), normalize_spaces(marker).casefold()) for marker in markers),
+        key=lambda item: len(item[0]),
+        reverse=True,
+    )
+    for index, line in enumerate(lines):
+        normalized_line = normalize_spaces(line)
+        line_key = normalized_line.casefold()
+        for marker, marker_key in ordered_markers:
+            if line_key == marker_key:
+                if index + 1 >= len(lines):
+                    return default
+                value = normalize_spaces(lines[index + 1])
+                if not value or value in {"—", "-", "None"} or value.casefold() in known_labels:
+                    return default
+                return value
+            if not line_key.startswith(marker_key):
+                continue
+            suffix = normalized_line[len(marker):]
+            if not suffix or suffix[0] not in " :-–—":
+                continue
+            value = suffix.lstrip(" :-–—").strip()
+            if value and value not in {"—", "-", "None"} and value.casefold() not in known_labels:
+                return value
+    return default
+
+
+def _xpath_literal(value: str) -> str:
+    if "'" not in value:
+        return f"'{value}'"
+    if '"' not in value:
+        return f'"{value}"'
+    parts = value.split("'")
+    return "concat(" + ", \"'\", ".join(f"'{part}'" for part in parts) + ")"
+
+
+def _candidate_dcim_value(text: Any, label: str) -> str:
+    value = normalize_spaces(text)
+    if not value or value in {"—", "-", "None"}:
+        return ""
+    label_key = normalize_spaces(label).casefold()
+    value_key = value.casefold()
+    if value_key == label_key:
+        return ""
+    if value_key.startswith(label_key):
+        suffix = value[len(normalize_spaces(label)):]
+        if suffix and suffix[0] in " :-–—":
+            value = suffix.lstrip(" :-–—").strip()
+    return value if value and value.casefold() != label_key else ""
+
+
+def extract_dcim_labeled_value(
+    driver: Any,
+    label: str,
+    *,
+    section_label: str = "Принадлежность к ИС/ЭИС",
+    log_func: Callable[[str], None] | None = None,
+) -> str:
+    """Read a DCIM label/value pair from the existing Selenium page."""
+    _, By, _, _, _ = import_selenium()
+    section_xpath = f"//*[normalize-space(.)={_xpath_literal(section_label)}]"
+    try:
+        for section in driver.find_elements(By.XPATH, section_xpath):
+            classes = normalize_spaces(section.get_attribute("class") or "").casefold()
+            expanded = normalize_spaces(section.get_attribute("aria-expanded") or "").casefold()
+            if expanded == "false" or "collapsed" in classes:
+                section.click()
+                time.sleep(0.25)
+                break
+    except Exception as error:
+        if log_func:
+            log_func(f"Предупреждение: секцию DCIM не удалось раскрыть: {error}")
+
+    label_xpath = f"//*[normalize-space(.)={_xpath_literal(label)}]"
+    candidate_xpaths = (
+        "./following-sibling::*[normalize-space(.)][1]",
+        "./parent::*/following-sibling::*[normalize-space(.)][1]",
+        "./ancestor::tr[1]/*[self::td or self::th][normalize-space(.)][last()]",
+        "./ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' row ')][1]/*[normalize-space(.)][last()]",
+        "./parent::*/*[normalize-space(.)][last()]",
+    )
+    try:
+        labels = driver.find_elements(By.XPATH, label_xpath)
+        labels.sort(key=lambda element: len(getattr(element, "text", "") or ""))
+        for label_element in labels:
+            for xpath in candidate_xpaths:
+                for candidate in label_element.find_elements(By.XPATH, xpath):
+                    value = _candidate_dcim_value(getattr(candidate, "text", ""), label)
+                    if value:
+                        return value
+    except Exception as error:
+        if log_func:
+            log_func(f"Предупреждение: поле DCIM «{label}» не прочитано из DOM: {error}")
+    return "-"
 
 
 def find_host(lines: list[str], original_host: str) -> str:
@@ -202,6 +328,11 @@ def parse_dcim_page(page_text: str, original_host: str) -> dict[str, str]:
     lines = clean_lines(page_text)
     location_line = find_location_line(lines)
     dc, room, row = parse_location(location_line)
+    criticality_class = find_dcim_field(
+        lines,
+        ["Класс критичности", "Criticality class", "Criticality"],
+        "-",
+    )
     return {
         "host": find_host(lines, original_host),
         "model": find_model(lines),
@@ -213,8 +344,11 @@ def parse_dcim_page(page_text: str, original_host: str) -> dict[str, str]:
         "support": find_value_after_any_marker(lines, ["Группа поддержки", "Группы поддержки", "Тип поддержки"], DEFAULT_SUPPORT),
         "deferred": DEFAULT_DEFERRED,
         "env": find_value_after_any_marker(lines, ["Класс критичности", "Среда", "Environment"], "-"),
+        "criticality_class": criticality_class,
+        "itsm": find_dcim_field(lines, ["ITSM", "Номер ITSM", "Номер инцидента"], DEFAULT_TICKET),
         "owner": find_technical_owner(lines),
         "information_system": find_value_after_any_marker(lines, ["Информационная система", "ИС"], "-"),
+        "project": find_value_after_any_marker(lines, ["Проект"], "-"),
     }
 
 
@@ -324,24 +458,32 @@ def make_recommendation(model: Any, problem: Any, ping_status: str, ips: list[st
     return "Рекомендация: типовая BMC/API-проблема, но ping не удалось определить. Проверить вручную."
 
 
-def build_rooms_message(data: dict[str, Any], problem: Any) -> str:
+def build_rooms_message(
+    data: dict[str, Any],
+    problem: Any,
+    *,
+    project: Any = None,
+    itsm: Any = None,
+    at: datetime | None = None,
+) -> str:
     def val(key: str, default: str = "-") -> str:
         value = fix_visible_newlines(data.get(key, default)).strip()
-        return value if value else default
-    return (
-        f"1. Описание проблемы: {fix_visible_newlines(problem).strip()}\n"
-        f"2. имя хоста: {val('host')}\n"
-        f"3. Модель оборудования: {val('model')}\n"
-        f"4. S/N: {val('serial')}\n"
-        f"5. {val('dc')}\n"
-        f"6. {val('room')}\n"
-        f"7. {val('row')}\n"
-        f"8. Проект: {DEFAULT_PROJECT}\n"
-        f"9. Номер заявки: {DEFAULT_TICKET}\n"
-        f"10. Тип поддержки: {val('support')}\n"
-        f"11. Отложенный ремонт: {DEFAULT_DEFERRED}\n"
-        f"12. Среда: {val('env')}\n"
-        f"13. Технический владелец: {val('owner')}"
+        return value if value and value not in {"—", "None"} else default
+
+    location = val("location_raw")
+    if location == "-":
+        parts = [val(key) for key in ("dc", "room", "row")]
+        location = " / ".join(value for value in parts if value != "-") or "-"
+    return build_incident_message(
+        val("host", ""),
+        fix_visible_newlines(problem).strip(),
+        model=val("model"),
+        serial_number=val("serial"),
+        location=location,
+        project=project,
+        itsm=itsm if itsm is not None else val("itsm", DEFAULT_TICKET),
+        criticality_class=val("criticality_class"),
+        at=at,
     )
 
 
@@ -488,6 +630,9 @@ def get_dcim_data_and_ips(host: str, log_func: Callable[[str], None], headless: 
         if not page_text:
             return {}, [], {"dcim_url": dcim_url, "search_url": search_url}, {}
         data = parse_dcim_page(page_text, host)
+        dom_criticality = extract_dcim_labeled_value(driver, "Класс критичности", log_func=log_func)
+        if dom_criticality != "-":
+            data["criticality_class"] = dom_criticality
         ips = find_all_ips(page_text)
         ip_source = "device_card"
         mgmt_ports_url = ""
@@ -540,7 +685,7 @@ def run_manual_search(
     def log(message: str) -> None:
         logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {message}")
 
-    host = normalize_spaces(host)
+    host = normalize_hostname_input(host)
     problem = fix_visible_newlines(problem).strip()
     host_ok, host_msg = validate_hostname(host)
     if not host_ok:
@@ -559,7 +704,22 @@ def run_manual_search(
         if not data:
             raise ManualSearchError("Не удалось получить данные из DCIM.")
     else:
-        data = {"host": host, "model": "-", "serial": "-", "dc": "-", "room": "-", "row": "-", "support": DEFAULT_SUPPORT, "env": "-", "owner": "-", "information_system": "-"}
+        data = {
+            "host": host,
+            "model": "-",
+            "serial": "-",
+            "dc": "-",
+            "room": "-",
+            "row": "-",
+            "location_raw": "-",
+            "support": DEFAULT_SUPPORT,
+            "env": "-",
+            "criticality_class": "-",
+            "itsm": DEFAULT_TICKET,
+            "owner": "-",
+            "information_system": "-",
+            "project": "-",
+        }
         ips = []
         urls = {"search_url": DCIM_SEARCH_URL.format(host=host), "dcim_url": "", "mgmt_ports_url": "", "mgmt_port_url": "", "ip_source": "skipped"}
         raw_texts = {}
@@ -572,6 +732,12 @@ def run_manual_search(
     log(f"S/N: {data.get('serial', '-')}")
     log(f"Локация: {data.get('dc', '-')} / {data.get('room', '-')} / {data.get('row', '-')}")
     log(f"Технический владелец: {data.get('owner', '-')}")
+    log(f"Проект DCIM: {data.get('project', '-')}")
+    criticality_class = str(data.get("criticality_class") or "-").strip() or "-"
+    if criticality_class == "-":
+        log("Предупреждение: класс критичности не найден в DCIM; используется '-'.")
+    else:
+        log(f"Класс критичности: {criticality_class}")
     log("Найдено IP: " + ", ".join(ips) if ips else "IP не найдены автоматически.")
     ping_status, ping_results = ping_all_ips(ips, log)
     for ip, status in ping_results:
@@ -579,9 +745,10 @@ def run_manual_search(
     problem_type = classify_problem(problem)
     recommendation = make_recommendation(data.get("model", "-"), problem, ping_status, ips)
     task_tag, task_status_label = classify_task_status(problem, ping_status, item)
-    message = build_rooms_message(data, problem)
     routing = resolve_hostname_routing(
         host,
+        information_system=data.get("information_system"),
+        dcim_project=data.get("project"),
         rules_dir=Path(rules_dir) if rules_dir is not None else None,
     )
     for routing_warning in routing.warnings:
@@ -591,6 +758,12 @@ def run_manual_search(
     recipients = list(routing.to)
     cc_recipients = list(routing.cc)
     matched_rules = list(routing.matched_rules)
+    message = build_rooms_message(
+        data,
+        problem,
+        project=routing.tag or "-",
+        itsm=data.get("itsm", DEFAULT_TICKET),
+    )
     email_subject = ""
     email_body = ""
     email_text = ""
@@ -608,9 +781,12 @@ def run_manual_search(
         "host": data.get("host", host), "problem": problem, "problem_type": problem_type,
         "task_tag": task_tag, "task_status": task_status_label, "model": data.get("model", "-"),
         "serial": data.get("serial", "-"), "dc": data.get("dc", "-"), "room": data.get("room", "-"),
-        "row": data.get("row", "-"), "support": data.get("support", "-"), "deferred": DEFAULT_DEFERRED,
+        "row": data.get("row", "-"), "location": data.get("location_raw", "-"),
+        "support": data.get("support", "-"), "deferred": DEFAULT_DEFERRED,
         "env": data.get("env", "-"), "owner": data.get("owner", "-"),
-        "information_system": data.get("information_system", "-"), "ips": ips, "ping_status": ping_status,
+        "criticality_class": criticality_class, "itsm": data.get("itsm", DEFAULT_TICKET),
+        "information_system": data.get("information_system", "-"),
+        "dcim_project": data.get("project", "-"), "ips": ips, "ping_status": ping_status,
         "ping_results": [{"ip": ip, "status": status} for ip, status in ping_results],
         "ip_source": urls.get("ip_source", "-"), "urls": urls, "recommendation": recommendation,
         "business_note": "", "message": message, "email_recipients": recipients,

@@ -67,8 +67,19 @@ class MonitoringFacade:
             },
         }
 
-    def resolve_hostname(self, hostname: Any) -> RoutingDecision:
-        return resolve_hostname_routing(hostname, rules_dir=self._rules_dir)
+    def resolve_hostname(
+        self,
+        hostname: Any,
+        *,
+        information_system: Any = None,
+        dcim_project: Any = None,
+    ) -> RoutingDecision:
+        return resolve_hostname_routing(
+            hostname,
+            information_system=information_system,
+            dcim_project=dcim_project,
+            rules_dir=self._rules_dir,
+        )
 
     def manual_search(self, host: Any, problem: Any) -> dict[str, Any]:
         if not self._collect_dcim and not self._development_mock:

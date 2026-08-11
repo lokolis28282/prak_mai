@@ -32,7 +32,7 @@ CURRENT_DOCUMENTS = (
     "docs/project/DOCUMENTATION_INDEX.md",
     "docs/project/SYSTEM_FUNCTION_MATRIX.md",
 )
-CURRENT_RELEASE_REPORT = "RELEASE_REPORT_ODE_0_20_0.md"
+CURRENT_RELEASE_REPORT = "RELEASE_REPORT_ODE_0_21_0.md"
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 VERSION_RE = re.compile(r'__version__\s*=\s*["\']([^"\']+)["\']')
 

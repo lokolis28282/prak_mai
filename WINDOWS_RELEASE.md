@@ -1,8 +1,8 @@
-# Windows release procedure — ODE 0.20.0
+# Windows release procedure — ODE 0.21.0
 
-Статус на 2026-08-02: исходный runtime имеет версию 0.20.0, но последний
-фактически собранный Windows ZIP — `ODE 0.12.17 RC1`. Новый архив нельзя
-называть готовым релизом до отдельной сборки и Windows sign-off.
+Статус на 2026-08-11: source-ZIP `ODE_0.21.0_windows_source.zip` собран и
+проверен; его внешний SHA-256 хранится рядом с конкретным артефактом. ZIP
+нельзя называть утверждённым рабочим rollout до физического Windows sign-off.
 
 ## Что входит и не входит в code release
 
@@ -54,7 +54,7 @@ Administration создаёт allowlisted snapshot выбранной runtime-Б
 Backup API во внешний каталог. По умолчанию используется системный каталог;
 оператор может задать `ODE_BACKUP_DIR`. Каталог внутри source/package запрещён.
 
-Restore UI остаётся fail-closed в ODE 0.20.0. В package не должно быть рабочей
+Restore UI остаётся fail-closed в ODE 0.21.0. В package не должно быть рабочей
 кнопки или инструкции «выбрать файл и восстановить». Полный restore требует
 остановки writers, allowlisted database id, manifest/provenance, страховочной
 копии, sibling `.next`, integrity/FK и атомарной публикации — см.
@@ -72,5 +72,5 @@ Restore UI остаётся fail-closed в ODE 0.20.0. В package не долж�
 - SHA-256 и integrity/FK всех трёх runtime-БД до/после;
 - датированный Windows manual QA verdict.
 
-До появления этих артефактов актуальным считается source ODE 0.20.0, а не
-новый Windows package.
+До физического Windows sign-off актуальным считается source ODE 0.21.0 и его
+проверенный переносимый кандидат, а не утверждённый рабочий rollout.

@@ -25,6 +25,12 @@ class MonitoringFrontendContractTest(unittest.TestCase):
         self.assertIn("openMonitoringManualSearch", monitoring)
         self.assertIn("ode_monitoring_manual_search_history", monitoring)
         self.assertIn("Development mock", monitoring)
+        self.assertIn("normalizeHostnameInput", monitoring)
+        self.assertIn("addEventListener('input'", monitoring)
+        self.assertIn("normalizeHostnameField(form.elements.host)", monitoring)
+        self.assertIn("copyTextByUserAction", monitoring)
+        self.assertEqual(monitoring.count("navigator.clipboard.writeText"), 1)
+        self.assertNotIn("copyTextByUserAction(event.message);", monitoring)
         self.assertIn(".monitoring-tool-launcher", css)
         self.assertNotIn("innerHTML", monitoring)
 

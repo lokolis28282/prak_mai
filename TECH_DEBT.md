@@ -1,6 +1,6 @@
-# Технический долг ODE 0.20.0
+# Технический долг ODE 0.21.0
 
-Актуализировано: 2026-08-07. Закрытые пункты не выдаются за текущие дефекты;
+Актуализировано: 2026-08-11. Закрытые пункты не выдаются за текущие дефекты;
 история их реализации остаётся в release reports.
 
 ## P1 — бизнес-целостность и восстановление
@@ -31,8 +31,8 @@
    preflight, deployment, secrets и concurrent acceptance.
 4. Backup пока без автоматического расписания, ротации, шифрования и измеренного
    disaster-recovery RTO/RPO.
-5. Новый Windows ZIP 0.20.0 не собран; последний фактический package — 0.12.17
-   RC1. Builder/metadata/sign-off требуют отдельного release.
+5. Source-ZIP 0.21.0 собран и проверен на macOS, но физический Windows
+   install/update sign-off на целевом ноутбуке ещё не выполнен.
 6. FULL Inventory Preview не имеет cooperative cancel/resume; для будущего
    1m-row контура нужны progress/checkpoint и ограниченное время остановки.
 7. Delivery inspect/batch/conflict flows имеют backend и основное browser

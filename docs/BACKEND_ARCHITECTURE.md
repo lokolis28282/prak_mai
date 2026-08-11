@@ -1,4 +1,4 @@
-# BACKEND_ARCHITECTURE — ODE 0.20.0
+# BACKEND_ARCHITECTURE — ODE 0.21.0
 
 ## FULL Inventory 0.14
 
@@ -11,7 +11,7 @@ append-only и применяются при новом deterministic Preview ru
 rehearsal создаёт отдельную target DB; реального publish endpoint нет.
 
 Раздел выше фиксирует origin FULL Inventory slice 0.14. Текущий source/runtime:
-`0.20.0`, дата общей актуализации — 2026-08-02.
+`0.21.0`, дата общей актуализации — 2026-08-02.
 
 ## Цель refactoring
 

@@ -1,4 +1,4 @@
-# Agent Handoff — ODE 0.20.0
+# Agent Handoff — ODE 0.21.0
 
 Минимальный безопасный вход в задачу:
 
@@ -16,7 +16,7 @@
    runtime-код живёт в `static/`, итог проверяется через `webapp.HTML`.
 7. До edit сформулировать scope, invariants, permissions и executable tests.
 
-Текущий приоритет — эксплуатационная устойчивость ODE 0.20.0: поиск по
+Текущий приоритет — эксплуатационная устойчивость ODE 0.21.0: поиск по
 целевой железке, Equipment Composition как evidence issue-history,
 Multi-Warehouse, Vacations, multi-database backup и согласованность living-
 документации. Monitoring/Reports/Knowledge развиваются только внутри своих

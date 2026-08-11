@@ -1,6 +1,6 @@
-# Матрица функций ODE 0.20.0
+# Матрица функций ODE 0.21.0
 
-Актуализировано: 2026-08-07. Это living-карта текущего runtime: где находится
+Актуализировано: 2026-08-11. Это living-карта текущего runtime: где находится
 функция, через какую границу она работает, чем хранится и как проверяется.
 
 Обозначения: **write** — меняет только принадлежащую модулю БД; **read** — не
@@ -41,7 +41,7 @@
 | Модуль | Рабочие функции | Storage boundary | Проверка |
 |---|---|---|---|
 | Reports | work logs, PNR checklist, shift KPI/CRUD, передача backlog, server filters/page 25, XLSX + legacy CSV read aliases | reporting tables primary DB; Warehouse events только через reader | reports/API/XLSX/unit/headless |
-| Monitoring | ручной hostname/DCIM поиск, ignored JSON routing, optional collector | `monitoring_*`/local ignored config; без Warehouse imports | boundary/routing/headless |
+| Monitoring | ручной hostname/DCIM поиск, очистка вставленного hostname, routing по hostname/project/ИС, ITSM/criticality и шаблон Rooms/письма, optional collector | local ignored JSON config; без Warehouse/Reports storage и imports | boundary/routing/parser/API/frontend/headless без live DCIM |
 | Knowledge | статьи, теги, private attachments | `knowledge_*` и private attachment root | permissions/upload/headless |
 | Vacations | roster, requests, календарь, конфликты, history/audit | только `data/vacations.db` | facade/API/rules/headless |
 | Administration | users, roles, audit, diagnostics, topology, backup | primary admin tables + внешний backup root | permission/backup/headless |
@@ -82,5 +82,5 @@
 - корректировка/сторно проведённой складской операции;
 - точная slot/rack topology установленного компонента;
 - серверный многопользовательский deployment;
-- готовый Windows ZIP 0.20.0;
+- физически подтверждённый Windows rollout 0.21.0;
 - transport-интеграции email/Rooms/Kaiten.

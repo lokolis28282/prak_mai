@@ -1,6 +1,6 @@
 # Current State
 
-Дата проверки: 2026-08-07. Authoritative repository:
+Дата проверки: 2026-08-11. Authoritative repository:
 `~/Documents/prak_mai`.
 
 ## Два разных Stage-трека
@@ -10,8 +10,9 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.20.0`.
-- Последний фактически собранный ZIP: `0.12.17 RC1`.
+- Current source/runtime metadata: `0.21.0`.
+- Текущий source-ZIP: `ODE_0.21.0_windows_source.zip`; физическая Windows-
+  приёмка остаётся обязательной до рабочего rollout.
 - Рабочий runtime: `app.py` → общий application context + выбранный Warehouse
   site → `data/warehouse.db` (IXcellerate) или
   `data/warehouse_solar.db` (Solar).
@@ -178,6 +179,29 @@ handover export, обход справочника при bulk section, SQLite b
 совместимыми. Текущий warning-clean discover содержит 685 тестов
 (`skipped=8`). Evidence:
 `reviews/2026-08-07_ODE_0_20_0_REPORTS_INTEGRATION_AUDIT.md`.
+
+### ODE 0.21.0 Monitoring integration 2026-08-11
+
+Из папки коллеги `ODE_0.21.0_new_monitor` перенесён только проверенный
+Monitoring-срез: backend resolver/manual collector, frontend нормализации
+hostname, тесты, универсальный stdlib-генератор правил и профильная
+документация. Одноразовый корпоративный генератор с персональными путями,
+рабочие БД, hostname/recipient JSON и отчёты анализа не публикуются.
+
+Маршрутизация поддерживает необязательные условия `dcim_project` и
+`information_system`, общую копию, learned Digital rules и прежний приоритет
+`Salt → Digital → X5Tech`. Ручной flow удаляет Unicode-пробелы из вставленного
+hostname до запроса, извлекает проект/ИС/ITSM/класс критичности и формирует
+единый девятипунктовый текст Rooms/письма. Автоотправки нет. Живой DCIM-поиск
+в release gate намеренно не выполняется; проверяются mock, parser, routing,
+API и UI без внешнего запроса. Evidence:
+`reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md`.
+
+Локальный warning-clean gate: 703 теста (`skipped=8`), Python/JS syntax,
+module/frontend/repository-data/documentation audits, code graph, clean-DB
+dry-run и headless Chrome — PASS. Ручная браузерная проверка выполнена на
+disposable demo DB; live DCIM/ping не запускались. Три рабочие БД остались
+byte-identical и прошли integrity/FK.
 
 ### ODE 0.19.1 local runtime stabilization
 
@@ -428,7 +452,7 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий проверенный ODE 0.20.0 — 685 тестов; актуальные значения code graph и
+Текущий проверенный ODE 0.21.0 — 703 теста; актуальные значения code graph и
 интерактивная карта находятся в
 `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
 из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256

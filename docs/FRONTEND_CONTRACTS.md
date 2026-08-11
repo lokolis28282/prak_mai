@@ -1,6 +1,6 @@
 # FRONTEND_CONTRACTS
 
-Текущий runtime: ODE 0.20.0.
+Текущий runtime: ODE 0.21.0.
 
 ## Warehouse stabilization contract
 

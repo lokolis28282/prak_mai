@@ -21,6 +21,14 @@ __pycache__/
 # Internal Monitoring routing data contains company hostnames and recipients.
 # Keep generated rules local; the public repository contains only code/tests/docs.
 /data/monitoring/*.json
+# One-off Monitoring analysis can contain internal hostnames, projects,
+# recipients and source paths. Keep it local even if an older helper writes
+# the files at repository root.
+/recipient_rules*.json
+/recipient_rules*_report.txt
+/clipboard_hostname_fix_report.txt
+/cc_criticality_hostname_update_report.txt
+/message_template_change_report.txt
 /data/uploads/
 *.db-wal
 *.db-shm

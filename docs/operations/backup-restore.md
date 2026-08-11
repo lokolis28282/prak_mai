@@ -1,9 +1,9 @@
 # Backup and restore
 
 Статус: **PARTIALLY IMPLEMENTED** — create/status реализованы с ODE 0.18.1 и
-поддерживаются в текущем ODE 0.20.0; restore остаётся **PROPOSED** по ADR-013.
+поддерживаются в текущем ODE 0.21.0; restore остаётся **PROPOSED** по ADR-013.
 
-## Current ODE 0.20.0 runtime slice
+## Current ODE 0.21.0 runtime slice
 
 Administration регистрирует три независимых файла:
 
