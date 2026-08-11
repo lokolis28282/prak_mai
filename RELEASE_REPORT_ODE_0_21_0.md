@@ -34,11 +34,11 @@ DCIM/Zabbix запросы и ping в приёмке не запускались
 
 Public source ZIP:
 `ODE_0.21.0_windows_source.zip`, SHA-256
-`53ef4db6b30fc9a68b55d91574ead9b410e55b8cdd33e7557b4e5d0ba690c597`.
+`f6eafd759128f4546593239bb046b84e3ae62a1ac54f5b070e14f1fa2a0a60fb`.
 
 Private Monitoring transfer ZIP (не публиковать):
 `ODE_0.21.0_PRIVATE_MONITORING_TRANSFER.zip`, SHA-256
-`603cfd1477de688eadfbfda5babb769e8981e20825821239d04ad83957e96f4e`.
+`f353499cd5c7596045d8905a29cdcb6c7a9e493e3ee83ed4fe82310b61e79854`.
 
 Финальные команды, количество тестов, SHA БД и состав ZIP фиксируются в
 [`docs/project/reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md`](docs/project/reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md).
