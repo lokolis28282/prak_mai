@@ -11,10 +11,10 @@
 | Функция | Runtime-граница | Данные/эффект | Проверка |
 |---|---|---|---|
 | `python app.py` | `app.py → inventory.webapp` | Подключает IXcellerate, Solar и Vacations | startup/unit/headless smoke |
-| Вход инженера и администратора | session + backend permission | Session; audit в primary DB | auth/security tests |
+| Вход инженера и credentialed/admin | `/api/login` → in-memory session + backend permission | `ode_session`; login audit в primary DB | auth/security tests; API-key/Bearer отсутствуют |
 | Главная и карточки модулей | внешний HTML + `static/js` | Только навигация | frontend audit + Chrome |
 | Выбор IXcellerate/Solar | `ApplicationContext → WarehouseFacade` | Site хранится в session, DB физически раздельны | multi-warehouse tests + Chrome |
-| Глобальный поиск | `/api/search` | read по оборудованию, поставкам и инженерам | API/unit/headless |
+| Глобальный поиск | `/api/global-search` | read по оборудованию, поставкам и инженерам | API/unit/headless |
 
 ## Warehouse
 
@@ -27,7 +27,7 @@
 | Поставки | delivery routes/facade | `deliveries`, `delivery_lines`, receipts | write; Preview/Confirm tests |
 | Инвентаризация по S/N | WarehouseFacade | read projection | read; reconciliation tests |
 | Inventory Number import | preview token + confirm | карточка по S/N | write одной транзакцией; contract/headless |
-| Reference Data | WarehouseFacade → ReferenceDataService | `reference_*_v2` | admin write; alias/rename tests |
+| Reference Data | WarehouseFacade → ReferenceDataService | `reference_*_v2` | engineer/admin controlled workflow; alias/rename tests |
 | Equipment Card/Timeline | WarehouseFacade | read по receipts/issues/audit | read; card/timeline tests |
 | Состав целевой железки | `/api/position-card` → WarehouseFacade | подтверждённые issue/allocations | read; API/service/UI/headless |
 
@@ -84,3 +84,4 @@
 - серверный многопользовательский deployment;
 - физически подтверждённый Windows rollout 0.21.0;
 - transport-интеграции email/Rooms/Kaiten.
+- API-key/Bearer/OAuth machine authentication и опубликованный внешний API.

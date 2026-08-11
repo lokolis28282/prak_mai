@@ -12,7 +12,10 @@
 3. [`DATABASE_OWNERSHIP.md`](DATABASE_OWNERSHIP.md) — владельцы таблиц.
 4. [`MODULE_ARCHITECTURE.md`](MODULE_ARCHITECTURE.md) и
    [`API_REFERENCE.md`](API_REFERENCE.md) — фасады и HTTP-контракт.
-5. [`project/RISKS_AND_BACKLOG.md`](project/RISKS_AND_BACKLOG.md) — открытые
+5. [`AUTHENTICATION_AND_API_ACCESS.md`](AUTHENTICATION_AND_API_ACCESS.md) и
+   [`RUNTIME_CONFIGURATION.md`](RUNTIME_CONFIGURATION.md) — реальные способы
+   входа, отсутствие API keys и поддержанные runtime settings.
+6. [`project/RISKS_AND_BACKLOG.md`](project/RISKS_AND_BACKLOG.md) — открытые
    ограничения, которые нельзя выдавать за реализованные функции.
 
 Target ODE 0.13 в `docs/architecture` — утверждённое направление, но не всегда
@@ -64,7 +67,31 @@ Runtime data разделены физически:
 - Multi-DB restore остаётся fail-closed до полного ADR-013 workflow;
   correction/reversal — до ADR-014.
 
-## 4. Безопасный цикл изменения
+## 4. Auth и API: фактический runtime
+
+- `/api/login` принимает только два режима: `engineer` с `full_name` без
+  пароля и credentialed `admin` с `email/password`.
+- `mode` не заменяет backend role. Engineer mode принудительно получает
+  `engineer`; credentialed user сохраняет роль записи `users`.
+- Защищённые endpoints принимают только in-memory `ode_session` cookie.
+  `Authorization: Bearer`, `X-API-Key`, JWT/OAuth и `ODE_API_KEY` отсутствуют.
+- Cookie имеет `HttpOnly; SameSite=Strict; Path=/`, idle TTL 12 часов;
+  logout/restart инвалидируют её. Cookie не `Secure`, потому что штатный
+  профиль — loopback HTTP.
+- Пять неудачных credentialed-входов за пять минут дают блокировку на 15 минут
+  по client address + normalized email.
+- POST с `Origin` проверяет exact `Origin.netloc == Host` и local/private/
+  allowlisted host. Это не полноценный production CSRF/TLS profile.
+- `X-Correlation-ID` — диагностический ID, не credential; допустимы 16–200
+  символов `[A-Za-z0-9._:-]`.
+
+Не используйте session cookie как «временный API key» в интеграции. Будущий
+machine-auth требует отдельного principal/scopes/hash/expiry/revoke/audit/TLS
+контракта и отрицательных security tests. Полная модель и безопасные локальные
+примеры запросов находятся в
+[`AUTHENTICATION_AND_API_ACCESS.md`](AUTHENTICATION_AND_API_ACCESS.md).
+
+## 5. Безопасный цикл изменения
 
 1. Выполните `git status --short --branch` и отделите чужой dirty diff.
 2. Для DB-related работы зафиксируйте абсолютные пути, SHA-256 и отсутствие
@@ -105,7 +132,7 @@ Runtime data разделены физически:
   `tests/headless_reports_smoke.js`; `--login-role` меняет только disposable
   smoke copy и не касается runtime DB.
 
-## 5. Полный gate
+## 6. Полный gate
 
 ```bash
 python3 -m compileall -q app.py inventory scripts tests
@@ -127,7 +154,7 @@ git diff --check
 `with closing(sqlite3.connect(...)) as db, db:`. Исполняемый тест репозитория
 блокирует повторное появление этого класса утечек.
 
-## 6. Что проверить перед commit/push
+## 7. Что проверить перед commit/push
 
 - `git status`, `git diff --stat`, полный список изменённых файлов;
 - отсутствие `.db`, XLSX/raw, backup, ZIP, exports, внутренних hostname,

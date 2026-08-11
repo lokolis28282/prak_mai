@@ -36,6 +36,9 @@ Timeline и подтверждённую операциями историю к�
   текущую установку, заводскую комплектацию или точный физический слот.
 - Restore, correction/reversal и server deployment не симулируются частично:
   незавершённые опасные действия остаются fail-closed.
+- Текущий HTTP API принадлежит локальному browser runtime и использует только
+  in-memory cookie session. API-key/Bearer/OAuth и machine principal появятся
+  только после отдельного security/deployment решения.
 - Рабочая БД, raw sources, candidate DB, test DB и release artifacts имеют
   разные lifecycle и не подменяют друг друга.
 

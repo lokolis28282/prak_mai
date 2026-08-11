@@ -18,6 +18,10 @@
 - Module architecture: [`../MODULE_ARCHITECTURE.md`](../MODULE_ARCHITECTURE.md)
 - Ownership: [`../DATABASE_OWNERSHIP.md`](../DATABASE_OWNERSHIP.md)
 - Security boundaries: [`../SECURITY_BOUNDARIES.md`](../SECURITY_BOUNDARIES.md)
+- Current authentication/API access:
+  [`../AUTHENTICATION_AND_API_ACCESS.md`](../AUTHENTICATION_AND_API_ACCESS.md)
+- Current runtime configuration:
+  [`../RUNTIME_CONFIGURATION.md`](../RUNTIME_CONFIGURATION.md)
 - Warehouse events: [`../WAREHOUSE_EVENTS.md`](../WAREHOUSE_EVENTS.md)
 - S/N preservation: [`../SERIAL_NUMBER_PRESERVATION.md`](../SERIAL_NUMBER_PRESERVATION.md)
 - Reference data: [`../REFERENCE_DATA_ARCHITECTURE.md`](../REFERENCE_DATA_ARCHITECTURE.md)

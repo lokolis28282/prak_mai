@@ -1,18 +1,22 @@
 # Monitoring: маршрутизация по hostname
 
-Статус: **IMPLEMENTED backend capability**. Operator UI, сбор из DCIM/Zabbix и
-отправка писем в этот slice не входят.
+Статус: **IMPLEMENTED CURRENT RUNTIME — ODE 0.21.0**. Operator UI, manual
+hostname search и optional DCIM collector реализованы. Zabbix ingestion,
+Kaiten/ITSM transport и автоматическая отправка email/Rooms отсутствуют.
 
 `MonitoringFacade.resolve_hostname()` определяет проект и подготовленные поля
-письма по локальным правилам из `data/monitoring`. Excel при запуске ODE не
-открывается, сеть и рабочая складская БД не используются.
+письма по локальным правилам из `data/monitoring`. Сам resolver не открывает
+Excel, не обращается к сети и не использует рабочую складскую БД. Отдельный
+`manual_search()` обращается к DCIM только после явного действия пользователя.
 
 ```mermaid
 flowchart LR
   A["Утверждённые Tech/Digital XLSX"] -->|"offline generator"| B["local JSON rules"]
   B --> C["hostname_routing.py"]
   C --> D["MonitoringFacade"]
-  D --> E["future operator UI / API"]
+  D --> E["POST /api/monitoring/manual-search"]
+  E --> F["operator UI: preview/copy only"]
+  G["Microsoft Edge / DCIM"] -->|"explicit optional collection"| D
 ```
 
 ## Файлы и безопасность публикации

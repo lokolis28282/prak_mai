@@ -22,6 +22,14 @@
 собран отдельный private ZIP с локальными правилами, но без любой SQLite-БД.
 Живой DCIM/hostname поиск в release gate не запускается.
 
+Documentation follow-up синхронизировал весь living-комплект с фактическим
+runtime: добавлены отдельные контракты аутентификации/API-доступа и CLI/env-
+конфигурации, исправлены payload'ы engineer/credentialed login, явно
+зафиксировано отсутствие API-key/Bearer/OAuth auth, описаны session TTL/rate
+limit/Origin-Host boundary и требования к будущему machine principal. Общие
+README, Windows, architecture, security, Monitoring, function matrix, roadmap,
+risks и developer/user guides приведены к одному состоянию ODE 0.21.0.
+
 ## Интеграция и стабилизация ветки Reports (2026-08-07)
 
 Commit коллеги `bb83690` из remote-ветки `reports` перенесён поверх текущего

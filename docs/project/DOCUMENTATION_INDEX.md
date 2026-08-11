@@ -14,6 +14,8 @@
 | Установка, запуск, функции пользователя | [`README.md`](../../README.md) |
 | Пошаговая рабочая инструкция оператора | [`USER_GUIDE.md`](../USER_GUIDE.md) |
 | Вход для разработчика и code reviewer | [`DEVELOPER_GUIDE.md`](../DEVELOPER_GUIDE.md) |
+| Вход, cookie API и статус API keys | [`AUTHENTICATION_AND_API_ACCESS.md`](../AUTHENTICATION_AND_API_ACCESS.md) |
+| CLI/env и runtime paths | [`RUNTIME_CONFIGURATION.md`](../RUNTIME_CONFIGURATION.md) |
 | Текущий status snapshot | [`CURRENT_STATE.md`](CURRENT_STATE.md) |
 | Архитектура и границы модулей | [`ARCHITECTURE.md`](../../ARCHITECTURE.md) |
 | API и permissions | [`API_REFERENCE.md`](../API_REFERENCE.md) |
@@ -35,6 +37,11 @@
   фильтры, импорт и экспортные контракты Reports;
 - [`SECURITY_BOUNDARIES.md`](../SECURITY_BOUNDARIES.md) — session/role,
   permissions и fail-closed границы;
+- [`AUTHENTICATION_AND_API_ACCESS.md`](../AUTHENTICATION_AND_API_ACCESS.md) —
+  фактические login payloads, session lifecycle, отсутствие API-key auth и
+  future machine-auth gate;
+- [`RUNTIME_CONFIGURATION.md`](../RUNTIME_CONFIGURATION.md) — поддержанные
+  аргументы, env, defaults и test/review flags;
 - [`VACATIONS_ARCHITECTURE.md`](../VACATIONS_ARCHITECTURE.md) — отдельная
   Vacations DB;
 - [`MONITORING_HOSTNAME_ROUTING.md`](../MONITORING_HOSTNAME_ROUTING.md) и
@@ -42,6 +49,8 @@
   Monitoring/Knowledge;
 - [`reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md`](reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md)
   — текущий Monitoring integration/release evidence;
+- [`reviews/2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md`](reviews/2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md)
+  — полный semantic documentation/auth/API/configuration follow-up;
 - [`operations/backup-restore.md`](../operations/backup-restore.md) —
   реализованный multi-database backup и отключённый restore;
 - [`CODEBASE_GRAPH.md`](../CODEBASE_GRAPH.md) и
@@ -102,6 +111,7 @@
 - [`2026-07-27_VACATIONS_MODULE_REVIEW.md`](reviews/2026-07-27_VACATIONS_MODULE_REVIEW.md);
 - [`2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md`](reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md).
 - [`2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md`](reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md).
+- [`2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md`](reviews/2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md).
 
 ## Правило актуальности
 

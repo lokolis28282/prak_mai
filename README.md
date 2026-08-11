@@ -5,8 +5,10 @@
 с полной историей, контроль качества данных, УВР и сменные отчёты, база знаний,
 ручной мониторинг и общий календарь отпусков двух площадок.
 
-Работает полностью офлайн: Python (только стандартная библиотека) + SQLite,
-интерфейс открывается в браузере на локальном компьютере.
+Основной контур работает локально: Python (стандартная библиотека) + SQLite,
+интерфейс открывается в браузере на том же компьютере. Только явно запущенный
+optional Monitoring collector обращается к корпоративному DCIM через локальный
+Microsoft Edge/Selenium; автоматических transport-интеграций нет.
 
 > **Версия 0.21.0** · Python 3.10+ · Windows /
 > macOS / Linux · основной runtime без внешних зависимостей
@@ -52,7 +54,7 @@
 - **Отпуска** — общий календарь IXcellerate/Solar, графики `5/2` и
   круглосуточные смены `1/3`, ручной статус согласования в Сфере, подменный и
   отдельная очередь конфликтов с подтверждением/отклонением.
-- **Безопасность** — роли `admin` / `engineer` / `viewer` на сервере, PBKDF2
+- **Безопасность** — роли `admin` / `engineer` / `viewer` в backend, PBKDF2
   хеши паролей, единый `audit_log` всех операций и проверенные внешние
   резервные копии каждой runtime-БД.
 
@@ -65,6 +67,11 @@ python3 app.py
 Интерфейс откроется на `http://127.0.0.1:8765`. Готовые ярлыки:
 `start_macos.command` и `start_windows.bat`. Подробности, первый вход и
 перенос на рабочий ноутбук — в разделе [«Запуск»](#запуск).
+
+Обычная смена входит по ФИО в локальном режиме инженера; административные
+действия требуют отдельного credentialed-входа. API-ключи, Bearer/JWT и OAuth
+в 0.21.0 не реализованы: browser/API используют только `ode_session` cookie.
+См. [аутентификацию и API-доступ](docs/AUTHENTICATION_AND_API_ACCESS.md).
 
 ## Политика данных (важно)
 
@@ -253,7 +260,7 @@ app.py
      inventory/warehouse/     склад, поставки, приемка и списание
      inventory/reports/       отчеты и логи работ
      inventory/administration/пользователи, аудит и резервные копии
-     inventory/monitoring/    граница будущего модуля мониторинга
+     inventory/monitoring/    ручной hostname/DCIM flow и routing
      inventory/vacations/     общий план отпусков и графиков
      inventory/migration/     offline extraction/reference/staging/full candidate
              │
@@ -324,7 +331,8 @@ start_*migration*           marker-guarded read-only pilot/full launchers
 - Python 3.10 или новее;
 - Windows, macOS или Linux;
 - свободный локальный порт `8765`;
-- внешние пакеты не требуются.
+- внешние пакеты не требуются для основного контура; live DCIM использует
+  optional `requirements-monitoring.txt`.
 
 Из корня проекта:
 
@@ -360,6 +368,12 @@ py app.py
 ```
 
 Также доступны `start_macos.command` и `start_windows.bat`.
+
+Поддержанные CLI/env-настройки перечислены в
+[runtime-конфигурации](docs/RUNTIME_CONFIGURATION.md). `.env.example` не
+загружается автоматически. Не используйте `start_lan_windows.bat` или
+`--host 0.0.0.0` как production deployment: в текущем runtime нет TLS,
+`Secure` cookie, persistent sessions и полноценного server security profile.
 
 ### Перенос на рабочий ноутбук
 
@@ -603,6 +617,10 @@ python3 scripts/smoke_migration_full_ui.py
 
 - [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — короткий безопасный
   вход для разработчика и code reviewer;
+- [docs/AUTHENTICATION_AND_API_ACCESS.md](docs/AUTHENTICATION_AND_API_ACCESS.md)
+  — режимы входа, cookie API и требования к будущим API keys;
+- [docs/RUNTIME_CONFIGURATION.md](docs/RUNTIME_CONFIGURATION.md) — фактические
+  CLI/env settings и их безопасные границы;
 - [ARCHITECTURE.md](ARCHITECTURE.md) — целевая архитектура и фасады модулей;
 - [docs/README.md](docs/README.md) — индекс всей технической документации;
 - [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md) — правила работы с кодовой

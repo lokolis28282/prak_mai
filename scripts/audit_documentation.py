@@ -17,19 +17,31 @@ from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
 CURRENT_DOCUMENTS = (
+    "AGENTS.md",
     "README.md",
     "ARCHITECTURE.md",
+    "CLAUDE.md",
     "ITOG.md",
     "README_WINDOWS.md",
+    "TECH_DEBT.md",
     "WINDOWS_RELEASE.md",
     "docs/README.md",
     "docs/API_REFERENCE.md",
+    "docs/APPLICATION_CONTEXT.md",
+    "docs/AUTHENTICATION_AND_API_ACCESS.md",
     "docs/CODEBASE_GRAPH.md",
     "docs/DEVELOPER_GUIDE.md",
     "docs/FRONTEND_CONTRACTS.md",
+    "docs/MONITORING_MODULE_BOUNDARIES.md",
+    "docs/MONITORING_HOSTNAME_ROUTING.md",
+    "docs/RUNTIME_CONFIGURATION.md",
+    "docs/SECURITY_BOUNDARIES.md",
     "docs/USER_GUIDE.md",
     "docs/project/CURRENT_STATE.md",
     "docs/project/DOCUMENTATION_INDEX.md",
+    "docs/project/MASTER_CONTEXT.md",
+    "docs/project/RISKS_AND_BACKLOG.md",
+    "docs/project/ROADMAP.md",
     "docs/project/SYSTEM_FUNCTION_MATRIX.md",
 )
 CURRENT_RELEASE_REPORT = "RELEASE_REPORT_ODE_0_21_0.md"
@@ -154,6 +166,51 @@ def audit_current_contracts(root: Path = ROOT) -> list[str]:
             violations.append(
                 f"{relative}: names removed /api/equipment-composition endpoint"
             )
+
+    auth_text = (root / "docs/AUTHENTICATION_AND_API_ACCESS.md").read_text("utf-8")
+    api_text = (root / "docs/API_REFERENCE.md").read_text("utf-8")
+    user_text = (root / "docs/USER_GUIDE.md").read_text("utf-8")
+    developer_text = (root / "docs/DEVELOPER_GUIDE.md").read_text("utf-8")
+    matrix_text = (root / "docs/project/SYSTEM_FUNCTION_MATRIX.md").read_text("utf-8")
+    env_example = (root / ".env.example").read_text("utf-8")
+    for marker in (
+        '"mode":"engineer"',
+        '"mode":"admin"',
+        "ode_session",
+        "X-API-Key",
+        "ODE_API_KEY",
+    ):
+        if marker not in auth_text:
+            violations.append(
+                f"docs/AUTHENTICATION_AND_API_ACCESS.md: missing auth marker {marker}"
+            )
+    for relative, text in (
+        ("docs/API_REFERENCE.md", api_text),
+        ("docs/USER_GUIDE.md", user_text),
+        ("docs/DEVELOPER_GUIDE.md", developer_text),
+    ):
+        normalized = text.casefold()
+        if "api-key" not in normalized and "api-ключ" not in normalized:
+            violations.append(f"{relative}: API-key authentication status is absent")
+    if "/api/search`" in matrix_text or "| `/api/search`" in matrix_text:
+        violations.append(
+            "docs/project/SYSTEM_FUNCTION_MATRIX.md: names removed /api/search endpoint"
+        )
+    if "/api/global-search" not in matrix_text:
+        violations.append(
+            "docs/project/SYSTEM_FUNCTION_MATRIX.md: current global-search endpoint is absent"
+        )
+    monitoring_text = (root / "docs/MONITORING_HOSTNAME_ROUTING.md").read_text("utf-8")
+    if "future operator UI / API" in monitoring_text:
+        violations.append(
+            "docs/MONITORING_HOSTNAME_ROUTING.md: current operator UI is still described as future"
+        )
+    if "POST /api/monitoring/manual-search" not in monitoring_text:
+        violations.append(
+            "docs/MONITORING_HOSTNAME_ROUTING.md: current manual-search route is absent"
+        )
+    if "does not load .env automatically" not in env_example:
+        violations.append(".env.example: automatic-loading warning is absent")
     return violations
 
 

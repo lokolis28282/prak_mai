@@ -1,4 +1,4 @@
-# APPLICATION_CONTEXT
+# ApplicationContext — ODE 0.21.0 current wiring and extraction history
 
 `ApplicationContext` is the root object for product modules.
 
@@ -170,4 +170,9 @@ Central flags:
 - `FEATURE_MOBILE = false`;
 - `FEATURE_EXTERNAL_API = false`.
 
-No settings UI is added in this stage.
+`FEATURE_MONITORING=false` — legacy metadata из раннего extraction stage, а не
+runtime activation gate: текущий `MonitoringFacade.module_status()` возвращает
+`enabled=true`, и manual UI/API смонтированы отдельно. `FEATURE_EXTERNAL_API`
+остаётся корректным: опубликованного external API и API-key auth нет.
+
+Отдельный settings UI для этих legacy flags не добавлен.

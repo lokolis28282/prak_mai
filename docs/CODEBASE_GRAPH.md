@@ -15,7 +15,7 @@
 содержит 252 файла/модуля и 512 import/serve edges. Статический PNG и
 интерактивная карта построены из текущего `code_graph.html`.
 Последний успешно зафиксированный внешний full-снимок Codebase Memory от
-2026-08-11 содержит 7 727 узлов и 33 325 рёбер (`skipped_count=0`). Он создан
+2026-08-11 содержит 7 758 узлов и 33 357 рёбер (`skipped_count=0`). Он создан
 для текущего дерева с `persistence=false`; `artifact_present=false` и
 `.codebase-memory` в repository нет.
 

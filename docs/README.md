@@ -21,6 +21,8 @@ repository, включая рабочий Warehouse source/runtime track, нах
 [архитектура и правила отпусков](VACATIONS_ARCHITECTURE.md),
 [multi-DB backup/restore ADR](decisions/ADR-013-multi-database-backup-restore.md),
 [справочник HTTP API](API_REFERENCE.md),
+[аутентификация и API-доступ](AUTHENTICATION_AND_API_ACCESS.md),
+[runtime-конфигурация](RUNTIME_CONFIGURATION.md),
 [карта проекта и Codebase Memory snapshot](CODEBASE_GRAPH.md),
 [интерактивный граф связей кодовой базы](assets/code_graph.html),
 [операции контроля качества данных](DATA_QUALITY_OPERATIONS.md),

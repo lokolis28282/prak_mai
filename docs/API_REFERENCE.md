@@ -2,8 +2,8 @@
 
 Фактическая поверхность локального HTTP API (`inventory/webapp.py` и
 `inventory/routes/`, порт по умолчанию `8765`). Составлен по коду версии
-0.21.0. API предназначен
-для собственного браузерного UI; внешние интеграции появятся после 1.0.
+0.21.0. API предназначен для собственного браузерного UI и локальной
+диагностики; стабильный внешний integration contract не опубликован.
 
 ## Общий контракт
 
@@ -12,6 +12,9 @@
   `X-Filename` (URL-encoded имя).
 - Аутентификация — session cookie `ode_session` (`HttpOnly; SameSite=Strict`),
   выдаётся `POST /api/login`. Все `/api/*`, кроме login, требуют сессию.
+- API-key auth отсутствует: `Authorization: Bearer`, `X-API-Key`, JWT/OAuth и
+  `ODE_API_KEY` не поддерживаются. Не используйте session cookie как machine
+  credential.
 - Роли: `viewer` (только чтение), `engineer` (складские/отчётные записи),
   `admin` (всё). Ролевая проверка выполняется на сервере
   (`_require_write`/`_require_role`); отдельные действия дополнительно требуют
@@ -42,9 +45,28 @@
 
 | Метод и путь | Назначение |
 |---|---|
-| `POST /api/login` | Вход: `{email, password, mode?}`; `mode:"admin"` открывает админ-режим; rate-limit → 429. Ставит cookie. |
+| `POST /api/login` | Инженер: `{"mode":"engineer","full_name":"…"}`. Credentialed/admin: `{"mode":"admin","email":"…","password":"…"}`. Другой mode или неверные типы → 401; rate-limit → 429. Ставит cookie, token в JSON не возвращает. |
 | `POST /api/logout` | Завершение сессии, сброс cookie. |
 | `POST /api/warehouse/select` | Выбрать склад для текущей сессии: `{"warehouse":"ixcellerate"}` или `{"warehouse":"solar"}`. Неизвестный key → 400. |
+
+`mode` — режим сессии, а не выдаваемая клиентом роль. Engineer mode всегда
+получает backend override `engineer`; в credentialed mode роль читается из
+локальной таблицы `users`. Отдельного `mode:"viewer"` нет.
+
+Сессии существуют только в памяти процесса, истекают после 12 часов
+бездействия и пропадают при logout/restart. Максимум — 500 сессий. Пять
+неверных credentialed-входов в пятиминутном окне блокируют client+email на 15
+минут. Полный контракт, примеры `curl` и требования к будущим API keys:
+[AUTHENTICATION_AND_API_ACCESS.md](AUTHENTICATION_AND_API_ACCESS.md).
+
+Для POST с заголовком `Origin` сервер требует совпадение `Origin.netloc` и
+`Host`, а hostname — localhost, private IP или значение из
+`ODE_ALLOWED_HOSTS`. Штатный runtime остаётся loopback HTTP; TLS, `Secure`
+cookie, внешний reverse proxy и полноценный CSRF-token не реализованы.
+
+Клиент может передать `X-Correlation-ID` длиной 16–200 символов из
+`[A-Za-z0-9._:-]`; иначе сервер генерирует `corr_*`. Correlation ID не является
+секретом или средством аутентификации.
 
 ## Чтение данных (GET)
 

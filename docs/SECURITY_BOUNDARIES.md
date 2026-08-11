@@ -1,5 +1,30 @@
 # Security Boundaries — ODE 0.21.0
 
+## Current local authentication boundary
+
+Current runtime поддерживает только cookie-authenticated browser/API session:
+
+- engineer login: `mode=engineer` + `full_name`, без пароля, с принудительным
+  backend role override `engineer` и attribution по введённому ФИО;
+- credentialed login: `mode=admin` + локальные `email/password`, PBKDF2-SHA256
+  verification и role из `users`;
+- in-memory `ode_session`, `HttpOnly; SameSite=Strict; Path=/`, idle TTL 12
+  часов, logout/restart invalidation и максимум 500 sessions;
+- пять неверных credentialed-попыток за пять минут → блокировка client+email на
+  15 минут;
+- POST Origin/Host check для присутствующего `Origin` и local/private/
+  `ODE_ALLOWED_HOSTS` hostname.
+
+API key, Bearer/JWT, OAuth/OIDC, service account и refresh token не
+реализованы. Correlation ID и Monitoring URL не являются credential. Engineer
+login по ФИО — доверенный локальный режим общей сменной машины, а не строгая
+персональная identity proof.
+
+Текущая cookie не имеет `Secure`, отдельного synchronizer CSRF token нет,
+sessions не persistent. Поэтому runtime нельзя публиковать в LAN/Internet как
+production service. Полный текущий контракт и требования к будущему machine
+auth: [AUTHENTICATION_AND_API_ACCESS.md](AUTHENTICATION_AND_API_ACCESS.md).
+
 ## FULL Inventory 0.14
 
 - create/upload/Preview/resolution требуют authenticated admin/engineer actor;
@@ -13,9 +38,10 @@
 
 ## Warehouse stabilization authorization
 
-Права определяет backend session user и роль `admin/engineer/viewer`. ФИО,
+Права определяет backend session context и роль `admin/engineer/viewer`. ФИО,
 фамилия, подпись инженера и видимый title никогда не используются как grant.
-Отдельного UI-переключателя «режим администратора» нет.
+На login-странице есть отдельный credentialed вход администратора; внутри
+рабочего UI нет переключателя, способного повысить права текущей сессии.
 
 Выбор IXcellerate/Solar не является новой аутентификацией и не повышает роль.
 Session user проверяется общей Administration-службой. Для Solar в отдельный

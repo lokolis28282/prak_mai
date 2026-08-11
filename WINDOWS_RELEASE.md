@@ -16,6 +16,11 @@ normalized/workspace, пароли и локальные правила Monitori
 - `data\warehouse_solar.db` — Solar Warehouse;
 - `data\vacations.db` — изолированный Vacations bounded context.
 
+В source package входит безопасный `.env.example`, но ODE не загружает `.env`
+автоматически. API-key/Bearer/OAuth вход не реализован; фактические
+CLI/env-параметры и cookie-auth описаны в `docs/RUNTIME_CONFIGURATION.md` и
+`docs/AUTHENTICATION_AND_API_ACCESS.md`.
+
 Перед подготовкой пакета остановите writers, сделайте внешний byte-copy всех
 трёх файлов и проверенный SQLite backup. Зафиксируйте SHA-256, `integrity_check`
 и пустой `foreign_key_check` до и после процедуры.

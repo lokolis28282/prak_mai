@@ -1,5 +1,11 @@
 # MODULE_MIGRATION_PLAN
 
+Статус: **HISTORICAL EXTRACTION PLAN**. Текущий ODE 0.21.0 уже смонтировал
+Monitoring UI/manual DCIM flow за `MonitoringFacade`; сохранённый legacy
+`FEATURE_MONITORING=false` не является runtime activation gate. Актуальная
+топология находится в `MODULE_ARCHITECTURE.md` и
+`MONITORING_MODULE_BOUNDARIES.md`.
+
 ## A. Core Boundaries
 
 - Keep `ApplicationContext` as the only module wiring point.
@@ -83,10 +89,10 @@
 - Move users, backup, restore, audit and integrity checks behind `AdministrationFacade`.
 - Keep audit as infrastructure-owned until event storage is separated.
 
-## E. Monitoring Integration Point
+## E. Monitoring Integration Point (исторический план)
 
-- Keep `FEATURE_MONITORING = false`.
-- Mount future monitoring code behind `MonitoringFacade`.
+- Legacy `FEATURE_MONITORING = false` was kept during extraction.
+- Monitoring code is now mounted behind `MonitoringFacade`.
 - Keep Monitoring independent from Warehouse and Reports.
 
 ## F. Removal of WarehouseCore

@@ -1,6 +1,6 @@
 # Administration API Migration ODE 0.12.9
 
-Статус: историческая карта извлечения Stage 0.12.9. Текущий ODE 0.20.0 уже
+Статус: историческая карта извлечения Stage 0.12.9. Текущий ODE 0.21.0 уже
 использует `AdministrationFacade`, `RuntimeDatabaseRegistry` и
 `MultiDatabaseBackupService`; живой контракт —
 [backup/restore](operations/backup-restore.md).

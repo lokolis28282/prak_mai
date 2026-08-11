@@ -3,6 +3,10 @@
 Дата проверки: 2026-08-11. Authoritative repository:
 `~/Documents/prak_mai`.
 
+Текущий общий release gate ODE 0.21.0 — 703 теста (`skipped=8`), code graph
+252/512. Более низкие version-specific counts в разделах ниже являются
+историческим evidence соответствующего среза, а не текущим итогом проекта.
+
 ## Два разных Stage-трека
 
 Номера Stage в проекте использовались для двух разных программ работ. Их нельзя
@@ -23,6 +27,11 @@
 - Web routes/templates, Warehouse, Reports и Administration физически
   выделены из монолитов; compatibility adapters сохранены без второй
   реализации бизнес-логики.
+- HTTP auth остаётся локальным: engineer mode по ФИО и credentialed/admin mode
+  по локальному паролю создают только in-memory `ode_session`. API-key,
+  Bearer/JWT/OAuth, service accounts и внешний стабильный API не реализованы.
+  Нормативный current contract:
+  [`../AUTHENTICATION_AND_API_ACCESS.md`](../AUTHENTICATION_AND_API_ACCESS.md).
 
 Multi-Warehouse slice от 2026-07-26 добавляет session-scoped выбор склада.
 Solar физически изолирован, стартует без operational rows и получает только
@@ -126,7 +135,7 @@ Headless Chrome smoke в этой среде не запускался и не �
 hostname, задачу/ИЗМ и первичные реквизиты компонента. Заводской состав,
 фактическое наличие и физические слоты явно остаются неподтверждёнными.
 
-Текущий release gate: 639 тестов (`skipped=8` на macOS/Linux), включая отдельные
+Release gate этого среза: 639 тестов (`skipped=8` на macOS/Linux), включая отдельные
 backend/API/UI contracts и headless Chrome сценарий карточки. Evidence:
 `../../RELEASE_REPORT_ODE_0_20_0.md`.
 
@@ -176,7 +185,7 @@ handover export, обход справочника при bulk section, SQLite b
 исправлены неполная runtime migration (`due_date`/`pnr_checklist`), потеря PNR
 из-за складского справочника, пустой маршрут Reports, viewer controls и
 трёхсекундная блокировка следующей записи. Старые CSV download URL оставлены
-совместимыми. Текущий warning-clean discover содержит 685 тестов
+совместимыми. Warning-clean discover этого среза содержит 685 тестов
 (`skipped=8`). Evidence:
 `reviews/2026-08-07_ODE_0_20_0_REPORTS_INTEGRATION_AUDIT.md`.
 

@@ -34,14 +34,19 @@ DCIM/Zabbix запросы и ping в приёмке не запускались
 
 Public source ZIP:
 `ODE_0.21.0_windows_source.zip`, SHA-256
-`f6eafd759128f4546593239bb046b84e3ae62a1ac54f5b070e14f1fa2a0a60fb`.
+`65534a63a4302544d92e6dbd681ea4d9589bc31295c49ac4007aabbbd8c6299e`.
 
 Private Monitoring transfer ZIP (не публиковать):
 `ODE_0.21.0_PRIVATE_MONITORING_TRANSFER.zip`, SHA-256
-`f353499cd5c7596045d8905a29cdcb6c7a9e493e3ee83ed4fe82310b61e79854`.
+`1da522788f7cf3c89ee0ab891fd4dae0ce148d329aeb2212e8dfc14397d141ca`.
 
 Финальные команды, количество тестов, SHA БД и состав ZIP фиксируются в
 [`docs/project/reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md`](docs/project/reviews/2026-08-11_ODE_0_21_0_MONITORING_INTEGRATION_AUDIT.md).
 
 Физическая проверка на целевом Windows-ноутбуке остаётся обязательной до
 рабочего rollout.
+
+Post-release documentation follow-up проверил весь living-комплект и добавил
+точные current-контракты входа, cookie API, отсутствия API-key auth и runtime-
+конфигурации. Evidence:
+[`docs/project/reviews/2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md`](docs/project/reviews/2026-08-11_ODE_0_21_0_DOCUMENTATION_AND_API_ACCESS_AUDIT.md).

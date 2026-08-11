@@ -398,11 +398,13 @@ transaction-aware repository helper.
 - admin-only: пользователи, backup/restore, audit view, production DB upload и
   diagnostics;
 - actor/audit author берётся из authenticated application context;
-- session cookie — HttpOnly/SameSite, POST проверяет Origin/Host;
+- session cookie — HttpOnly/SameSite, POST с присутствующим Origin проверяет
+  Origin/Host; API-key/Bearer/OAuth auth отсутствует;
 - CSV body ограничен 50 МБ, импорт — 40 000 непустых строк;
 - preview имеет TTL/лимиты и owner binding согласно конкретному flow.
 
-Подробности — [docs/SECURITY_BOUNDARIES.md](docs/SECURITY_BOUNDARIES.md).
+Подробности — [docs/SECURITY_BOUNDARIES.md](docs/SECURITY_BOUNDARIES.md) и
+[docs/AUTHENTICATION_AND_API_ACCESS.md](docs/AUTHENTICATION_AND_API_ACCESS.md).
 
 ## Известные архитектурные ограничения
 
@@ -412,8 +414,9 @@ transaction-aware repository helper.
 - `WarehouseCore` и часть legacy service/API flows ещё существуют;
 - Warehouse preview хранится в памяти и не переживает restart;
 - нет persisted import jobs, progress/cancel и отдельного batch audit ID;
-- Monitoring operator UI и внешние интеграции остаются вне текущего runtime;
-  реализован только локальный hostname routing через публичный facade;
+- Monitoring operator UI, hostname routing и explicit optional DCIM collection
+  реализованы через публичный facade; автоматический alert ingestion и
+  email/Rooms/Kaiten/ITSM/Zabbix transports отсутствуют;
 - корректирующие/сторнирующие операции требуют отдельной модели событий.
 
 Изменения этих ограничений нельзя выполнять массовым refactor: каждый доменный

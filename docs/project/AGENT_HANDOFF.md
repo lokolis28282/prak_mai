@@ -15,6 +15,9 @@
 6. Для frontend помнить: итоговый inline `<style>/<script>` удаляется;
    runtime-код живёт в `static/`, итог проверяется через `webapp.HTML`.
 7. До edit сформулировать scope, invariants, permissions и executable tests.
+8. Для HTTP/auth/config задач прочитать `AUTHENTICATION_AND_API_ACCESS.md` и
+   `RUNTIME_CONFIGURATION.md`; не придумывать API keys или `.env` autoload,
+   которых нет в runtime.
 
 Текущий приоритет — эксплуатационная устойчивость ODE 0.21.0: поиск по
 целевой железке, Equipment Composition как evidence issue-history,

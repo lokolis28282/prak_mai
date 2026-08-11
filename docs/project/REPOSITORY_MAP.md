@@ -22,7 +22,7 @@ Authoritative checkout: `/Users/lokolis/Documents/prak_mai`. Другие коп
 ## Installation-owned runtime data
 
 - `data/warehouse.db` — IXcellerate плюс primary Administration/Reports/
-  Monitoring/Knowledge contour;
+  Knowledge contour; Monitoring не владеет таблицами;
 - `data/warehouse_solar.db` — физически отдельный Solar Warehouse;
 - `data/vacations.db` — отдельный общий календарь двух площадок;
 - `data/README.md` — clone/setup/data separation policy.
@@ -30,6 +30,11 @@ Authoritative checkout: `/Users/lokolis/Documents/prak_mai`. Другие коп
 Все DB ignored. В Git после clone находится только документация. Backup
 создаётся во внешнем системном каталоге или `ODE_BACKUP_DIR`; restore UI
 отключён.
+
+Current user/developer contracts: `docs/USER_GUIDE.md`,
+`docs/DEVELOPER_GUIDE.md`, `docs/AUTHENTICATION_AND_API_ACCESS.md` и
+`docs/RUNTIME_CONFIGURATION.md`. `.env.example` содержит только placeholders и
+не загружается автоматически.
 
 ## Offline migration и target track
 

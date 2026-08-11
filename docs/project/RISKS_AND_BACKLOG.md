@@ -34,6 +34,9 @@
 
 - process owner, single-writer/concurrency lifecycle;
 - service account, secrets и filesystem permissions;
+- отдельный machine principal/API-key contract со scopes, hash-at-rest,
+  expiry/rotation/revoke, audit, rate-limit и TLS; session cookie не должна
+  использоваться как integration token;
 - backup schedule/rotation/retention/encryption и restore acceptance;
 - deployment/update/rollback и network filesystem rejection;
 - concurrent operator acceptance;

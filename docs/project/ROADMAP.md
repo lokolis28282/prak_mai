@@ -30,6 +30,8 @@
 
 - process owner и single-writer/concurrency policy;
 - service account, filesystem permissions, secrets/bootstrap/reset;
+- отдельная machine-auth/API-key модель: scopes, lifecycle, revoke, audit,
+  rate-limit и HTTPS; browser session cookie не переиспользуется;
 - backup retention, rotation, encryption и restore acceptance;
 - maintenance/migration и network/filesystem preflight;
 - deployment runbook без runtime/test/candidate DB в code release.

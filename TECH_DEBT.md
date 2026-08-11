@@ -38,6 +38,10 @@
 7. Delivery inspect/batch/conflict flows имеют backend и основное browser
    покрытие, но перед крупным UI rewrite нужен более глубокий accessibility и
    file-dialog E2E на Windows.
+8. Внешний API и machine authentication отсутствуют. Текущая in-memory browser
+   cookie не подходит как API key; server stage требует отдельные principals,
+   scopes, hash-at-rest, expiry/rotation/revoke, audit, rate-limit, HTTPS и
+   persistent session/credential lifecycle.
 
 ## Data-quality backlog
 

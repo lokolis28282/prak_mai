@@ -117,7 +117,7 @@ python3 scripts/audit_module_boundaries.py
 python3 scripts/audit_frontend_contracts.py
 python3 scripts/audit_repository_data.py
 python3 scripts/generate_code_graph.py --check
-python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 685 OK
+python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 703 OK
 git diff --check
 python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 ```
@@ -138,8 +138,12 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
   топологии, не current source map;
 - **`docs/API_REFERENCE.md`** — полный справочник HTTP API (маршруты, все
   actions, payload'ы, коды ошибок, лимиты);
+- **`docs/AUTHENTICATION_AND_API_ACCESS.md`** — engineer/credentialed login,
+  session cookie, отсутствие API-key auth и требования будущего machine auth;
+- **`docs/RUNTIME_CONFIGURATION.md`** — CLI/env, Monitoring, paths и
+  test/review flags;
 - **`docs/assets/code_graph.html`** — интерактивный граф связей кодовой базы
-  (246 узлов / 503 связи: Python-импорты + webapp→static; фильтры по модулям,
+  (252 узла / 512 связей: Python-импорты + webapp→static; фильтры по модулям,
   поиск, зум). Открывается в браузере офлайн; перегенерация после патча:
   `python3 scripts/generate_code_graph.py`; проверка актуальности без записи:
   `python3 scripts/generate_code_graph.py --check`;
@@ -163,8 +167,9 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
   — Monitoring/Knowledge;
 - `CLAUDE.md` / `AGENTS.md` — правила работы с кодовой базой (люди и
   AI-агенты); `TECH_DEBT.md` — актуальный долг;
-- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_19_0.md` — изменения и текущий
-  релизный отчёт; отчёты 0.18.1 и раньше — датированные исторические снимки;
+- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_21_0.md` — изменения и текущий
+  релизный отчёт; предыдущие release reports — датированные исторические
+  снимки;
 - `docs/STAGES_HISTORY.md`, `docs/history/` — история этапов и датированные
   снимки старых отчётов;
 - `WINDOWS_RELEASE.md`, `README_WINDOWS.md`, `build_windows_package.py` —
@@ -172,8 +177,10 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 
 ## 7. Ключи, секреты, конфигурация
 
-Секретов и API-ключей в проекте **нет** — приложение офлайн, интеграции
-(Zabbix/DCIM/Kaiten/почта) не реализованы. Реальные пароли/токены и рабочие
+API-key auth в текущем runtime **нет**: ODE не принимает Bearer/JWT/OAuth,
+`X-API-Key` или `ODE_API_KEY`. Основной контур локальный; optional DCIM
+collector реализован через Edge/Selenium, но Zabbix/Kaiten/ITSM/email/Rooms
+transport и их credentials отсутствуют. Реальные пароли/tokens и рабочие
 данные в репозиторий не вносятся. Что существует:
 
 - пароли пользователей — только PBKDF2-SHA256-хеши в таблице `users`;
@@ -186,6 +193,10 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 - marker-guard env миграционных review-контуров — только для disposable БД;
 - опциональная зависимость Selenium (`requirements-monitoring.txt`) — нужна
   только для живого DCIM-сбора.
+
+Точный контракт — `docs/AUTHENTICATION_AND_API_ACCESS.md`, полный список
+настроек — `docs/RUNTIME_CONFIGURATION.md`. `.env.example` не загружается
+приложением автоматически.
 
 ## 8. Известные ограничения и долг
 

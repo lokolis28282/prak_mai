@@ -50,6 +50,17 @@ SQLite snapshot, рабочая Vacations DB не читается. В инте�
 скрытой кнопкой интерфейса. Начальный пароль новой установки сначала нужно
 сменить. Пароли существующих пользователей при обновлении кода не сбрасываются.
 
+API-key, Bearer/JWT и OAuth входа нет. Сессия хранится в памяти процесса и
+передаётся только HttpOnly cookie; restart/logout и 12 часов бездействия её
+завершают. Подробнее:
+[`docs/AUTHENTICATION_AND_API_ACCESS.md`](docs/AUTHENTICATION_AND_API_ACCESS.md).
+
+`start_lan_windows.bat` — legacy/dev launcher и не входит в утверждённый
+source package. Не используйте его для рабочей сетевой эксплуатации: текущий
+HTTP profile не имеет TLS, `Secure` cookie, persistent sessions и полноценного
+server deployment. Поддержанные настройки перечислены в
+[`docs/RUNTIME_CONFIGURATION.md`](docs/RUNTIME_CONFIGURATION.md).
+
 ## Резервные копии
 
 Откройте `Администрирование → Резервные копии`. Экран показывает состояние

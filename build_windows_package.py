@@ -47,6 +47,8 @@ Limitations:
 - deployment is limited to one local ODE process and local SQLite files;
 - real initial-baseline publish remains disabled;
 - this source package requires target Windows acceptance before any rollout.
+- API-key/Bearer/OAuth authentication is not implemented; the local browser
+  and HTTP API use an in-memory cookie session only.
 """
 
 
@@ -77,6 +79,7 @@ def package_files(root: Path = ROOT) -> list[tuple[Path, Path]]:
         "WINDOWS_RELEASE.md",
         "CHANGELOG.md",
         "ARCHITECTURE.md",
+        ".env.example",
         "docs/history/PRODUCT_REVIEW.md",
         "docs/history/UX_REVIEW.md",
         "docs/history/ARCHITECT_REVIEW.md",
