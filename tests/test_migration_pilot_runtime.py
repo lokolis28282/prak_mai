@@ -21,6 +21,8 @@ from inventory.warehouse.migration_pilot_review import (
     PILOT_FILENAME,
     validate_migration_pilot_database,
 )
+from inventory import webapp
+from inventory.core.web_runtime import prepare_web_runtime
 from inventory.webapp import make_handler
 
 
@@ -281,6 +283,169 @@ class MigrationPilotRuntimeTest(unittest.TestCase):
             validate_migration_pilot_database(ordinary, enabled=True)
         with self.assertRaisesRegex(RuntimeError, "называться"):
             validate_migration_pilot_database(self.root / "valid.db", enabled=True)
+
+    def test_invalid_review_startup_creates_no_sibling_database(self) -> None:
+        for environment, filename in (
+            (PILOT_ENV, PILOT_FILENAME),
+            ("ODE_FULL_MIGRATION_CANDIDATE", "warehouse_full_candidate.db"),
+        ):
+            with self.subTest(environment=environment):
+                review_root = self.root / environment.casefold()
+                review_root.mkdir()
+                candidate = review_root / filename
+                initialize(candidate)
+                candidate.chmod(0o600)
+                before_sha = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                before_files = {path.name for path in review_root.iterdir()}
+                with patch.dict(os.environ, {environment: "1"}, clear=False):
+                    with self.assertRaises(SystemExit) as stopped:
+                        webapp.main(
+                            ["--db", str(candidate), "--no-browser", "--port", "0"]
+                        )
+                self.assertEqual(stopped.exception.code, 2)
+                self.assertEqual(
+                    {path.name for path in review_root.iterdir()}, before_files
+                )
+                self.assertEqual(
+                    hashlib.sha256(candidate.read_bytes()).hexdigest(), before_sha
+                )
+                self.assertFalse(Path(str(candidate) + "-wal").exists())
+                self.assertFalse(Path(str(candidate) + "-journal").exists())
+
+    def test_valid_review_startup_uses_only_temporary_vacations_runtime(self) -> None:
+        before_sha = hashlib.sha256(self.db_path.read_bytes()).hexdigest()
+        before_files = {path.name for path in self.root.iterdir()}
+
+        class ServerStub:
+            server_port = 0
+
+            def serve_forever(self) -> None:
+                return None
+
+            def server_close(self) -> None:
+                return None
+
+        with patch.dict(os.environ, {PILOT_ENV: "1"}, clear=False), patch.object(
+            webapp, "ThreadingHTTPServer", return_value=ServerStub()
+        ):
+            self.assertEqual(
+                webapp.main(["--db", str(self.db_path), "--no-browser", "--port", "0"]),
+                0,
+            )
+        self.assertEqual({path.name for path in self.root.iterdir()}, before_files)
+        self.assertEqual(hashlib.sha256(self.db_path.read_bytes()).hexdigest(), before_sha)
+        self.assertFalse(Path(str(self.db_path) + "-wal").exists())
+        self.assertFalse(Path(str(self.db_path) + "-journal").exists())
+
+    def test_review_runtime_isolates_auxiliary_state_and_external_monitoring(self) -> None:
+        forbidden_aux_root = self.root / "production-aux-must-stay-absent"
+        production_legacy_backups = self.root / "backups"
+        production_runtime_backups = self.root / "ode-runtime-backups"
+        for backup_root in (production_legacy_backups, production_runtime_backups):
+            backup_root.mkdir()
+            (backup_root / "production-sentinel.db").write_bytes(b"do not read or write")
+        production_backup_state = {
+            path: {item.name: item.read_bytes() for item in path.iterdir()}
+            for path in (production_legacy_backups, production_runtime_backups)
+        }
+        production_rules = self.root / "production-monitoring-rules"
+        production_rules.mkdir()
+        (production_rules / "Hostname Tech.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "cc_exclusions": [],
+                    "global_cc": [],
+                    "rules": [
+                        {
+                            "hostname_pattern": "prod-only-host",
+                            "match_type": "exact",
+                            "project": "X5Tech",
+                            "is_salt": False,
+                            "to": ["Prod.Owner"],
+                            "cc": [],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (production_rules / "Hostname Digital.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "default_to": [],
+                    "default_cc": [],
+                    "hostnames": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch.dict(
+            os.environ,
+            {
+                PILOT_ENV: "1",
+                "ODE_MONITORING_RULES_DIR": str(production_rules),
+            },
+            clear=False,
+        ):
+            runtime = prepare_web_runtime(
+                db_path=self.db_path,
+                solar_db_path=None,
+                vacations_db_path=None,
+                warehouse_contour="production",
+                inventory_state_root=forbidden_aux_root,
+                test_mode=False,
+            )
+        try:
+            inventory_root = runtime.app_context.full_inventory.paths.root
+            knowledge_root = runtime.app_context.knowledge.upload_root
+            owned_root = inventory_root.parent
+            self.assertEqual(knowledge_root.parent, owned_root)
+            self.assertEqual(runtime.app_context.vacations.db_path.parent, owned_root)
+            legacy_backup_root = runtime.app_context.administration.backup_dir
+            runtime_backup_root = (
+                runtime.app_context.administration.service
+                .multi_database_backup_service.backup_root
+            )
+            self.assertEqual(legacy_backup_root, owned_root / "backups")
+            self.assertEqual(runtime_backup_root, owned_root / "backups")
+            self.assertNotEqual(inventory_root, forbidden_aux_root.resolve())
+            capabilities = runtime.app_context.monitoring.module_status()["capabilities"]
+            monitoring_configuration = runtime.app_context.monitoring.module_status()[
+                "configuration"
+            ]
+            monitoring_rules = runtime.app_context.monitoring._rules_dir
+            self.assertEqual(monitoring_rules, owned_root / "monitoring_rules")
+            self.assertTrue(monitoring_rules.is_dir())
+            self.assertTrue(monitoring_configuration["rules_configured"])
+            self.assertFalse(capabilities["external_collection"])
+            self.assertTrue(capabilities["development_mock"])
+            decision = runtime.app_context.monitoring.resolve_hostname("prod-only-host")
+            self.assertEqual(decision.project, "")
+            self.assertNotIn("Prod.Owner", decision.to)
+            overview = runtime.app_context.administration.get_administration_overview()
+            self.assertEqual(overview["backups"], [])
+            self.assertEqual(
+                {
+                    path: {item.name: item.read_bytes() for item in path.iterdir()}
+                    for path in (production_legacy_backups, production_runtime_backups)
+                },
+                production_backup_state,
+            )
+            self.assertTrue(owned_root.is_dir())
+            self.assertFalse(forbidden_aux_root.exists())
+        finally:
+            runtime.close()
+        self.assertFalse(owned_root.exists())
+        self.assertFalse(forbidden_aux_root.exists())
+        self.assertEqual(
+            {
+                path: {item.name: item.read_bytes() for item in path.iterdir()}
+                for path in (production_legacy_backups, production_runtime_backups)
+            },
+            production_backup_state,
+        )
 
     def test_production_samefile_and_sidecars_are_rejected(self) -> None:
         with patch(

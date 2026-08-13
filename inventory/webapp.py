@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .core.application import ApplicationContext, create_application_context, ensure_application_context
+from .core.application import ApplicationContext, ensure_application_context
+from .core.web_runtime import prepare_web_runtime, validate_runtime_database_contours
 from .db import DEFAULT_DB_PATH
 from .knowledge import KnowledgeNotFound, KnowledgePermissionError
 from .monitoring.facade import MonitoringError
@@ -45,16 +46,14 @@ from .warehouse.migration_pilot_review import (
     migration_pilot_requested,
     validate_migration_pilot_database,
 )
-from .warehouse.baseline.posting_policy import PostingPolicy, WarehousePostingBlocked
+from .warehouse.baseline.posting_policy import WarehousePostingBlocked
 from .warehouse.baseline.workspace import WorkspaceError
 from .warehouse.baseline.xlsx_parser import FullInventoryXlsxError
 from .warehouse.sites import (
     DEFAULT_SITE_KEY,
     build_warehouse_site_registry,
     configured_solar_path,
-    warehouse_runtime_config,
 )
-from .vacations.schema import prepare_vacations_database
 
 STATIC_ROOT = Path(__file__).resolve().parent.parent / "static"
 LOGGER = logging.getLogger(__name__)
@@ -67,20 +66,6 @@ LOGIN_HTML, HTML = build_web_templates(
     migration_pilot=ODE_MIGRATION_PILOT,
     full_migration_candidate=ODE_FULL_MIGRATION_CANDIDATE,
 )
-def _validate_test_mode_database(db_path: str | Path) -> None:
-    """Refuse a test-labelled server that actually points at the working DB."""
-    if not ODE_TEST_MODE:
-        return
-    selected = Path(db_path).resolve()
-    production = DEFAULT_DB_PATH.resolve()
-    same_file = selected == production
-    if not same_file and selected.exists() and production.exists():
-        same_file = os.path.samefile(selected, production)
-    if same_file:
-        raise RuntimeError(
-            "ODE_TEST_MODE=1 нельзя использовать с рабочей data/warehouse.db; "
-            "укажите отдельную тестовую базу через --db"
-        )
 
 
 def _json_bytes(data: Any) -> bytes:
@@ -90,7 +75,27 @@ def _json_bytes(data: Any) -> bytes:
 def make_handler(application: WarehouseService | ApplicationContext) -> type[BaseHTTPRequestHandler]:
     app_context = ensure_application_context(application)
     service = app_context.service_adapter()
-    _validate_test_mode_database(service.db_path)
+    settings = (
+        app_context.configuration.settings
+        if app_context.configuration is not None
+        else {}
+    )
+    selected_solar = (
+        configured_solar_path(settings)
+        if settings.get("warehouse_sites_enabled")
+        else settings.get("solar_db_path")
+    )
+    validate_runtime_database_contours(
+        test_mode=ODE_TEST_MODE,
+        db_path=service.db_path,
+        solar_db_path=selected_solar,
+        vacations_db_path=app_context.vacations.db_path,
+        warehouse_contour=(
+            app_context.configuration.warehouse_contour
+            if app_context.configuration is not None
+            else "unknown"
+        ),
+    )
     migration_full_status = validate_full_migration_database(service.db_path)
     migration_pilot_status = validate_migration_pilot_database(service.db_path)
     database_stat = service.db_path.stat()
@@ -905,6 +910,8 @@ def make_handler(application: WarehouseService | ApplicationContext) -> type[Bas
             return
 
     return Handler
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="ODE — учет работ и склада")
     parser.add_argument("--db", default=str(DEFAULT_DB_PATH), help="путь к файлу SQLite")
@@ -925,75 +932,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="внешний application state root для FULL inventory Preview",
     )
     return parser
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     try:
-        _validate_test_mode_database(args.db)
-        vacations_path = prepare_vacations_database(args.db, args.vacations_db, args.solar_db)
-        contour_policy = PostingPolicy(
-            args.db,
-            mode=args.warehouse_contour,
-            production_db_path=DEFAULT_DB_PATH,
+        runtime = prepare_web_runtime(
+            db_path=args.db,
+            solar_db_path=args.solar_db,
+            vacations_db_path=args.vacations_db,
+            warehouse_contour=args.warehouse_contour,
+            inventory_state_root=args.inventory_state_root,
+            test_mode=ODE_TEST_MODE,
         )
-        if args.warehouse_contour == "demo" and not contour_policy.demo:
-            raise RuntimeError(str(contour_policy.status()["configuration_error"]))
-        # This must run before WarehouseService/initialize can touch the file.
-        migration_full_status = validate_full_migration_database(args.db)
-        migration_pilot_status = validate_migration_pilot_database(args.db)
     except RuntimeError as error:
         parser.error(str(error))
-    service = WarehouseService(
-        args.db,
-        initialize_database=not migration_pilot_status.get("enabled")
-        and not migration_full_status.get("read_only"),
-    )
-    app_context = create_application_context(
-        args.db,
-        service=service,
-        vacations_db_path=vacations_path,
-        configuration=warehouse_runtime_config(
-            service.db_path,
-            contour=args.warehouse_contour,
-            inventory_state_root=args.inventory_state_root,
-            solar_path=args.solar_db,
-        ),
-    )
-    handler_type = make_handler(app_context)
-    stats = service.dashboard_stats()
-    health = app_context.administration.database_check(
-        service.db_path, service.KEY_TABLES
-    )
-    integrity_status = "ok" if health["ok"] else "; ".join(health["messages"])
-    contour = (
-        "REVIEW DATABASE"
-        if migration_pilot_status.get("enabled") or migration_full_status.get("read_only")
-        else "WORKING DATABASE"
-    )
-    if contour == "WORKING DATABASE":
-        contour = "DEMO DATABASE" if contour_policy.demo else "WORKING PROVISIONAL DATABASE"
-    print(contour)
-    print(f"Path: {service.db_path.resolve()}")
-    if app_context.configuration.settings.get("warehouse_sites_enabled"):
-        print(f"Solar path: {configured_solar_path(app_context.configuration.settings)}")
-    print(f"ODE version: {PRODUCT_VERSION}")
-    print(f"Cards: {int(stats.get('cards', stats['positions']))}")
-    print(f"Integrity: {integrity_status}")
-    server = ThreadingHTTPServer((args.host, args.port), handler_type)
-    url = f"http://{args.host}:{server.server_port}"
-    print(f"Интерфейс открыт: {url}")
-    print("Для завершения нажмите Ctrl+C.")
-    if not args.no_browser:
-        threading.Timer(0.35, lambda: webbrowser.open(url)).start()
     try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nРабота завершена.")
+        handler_type = make_handler(runtime.app_context)
+        print(runtime.contour_label)
+        print(f"Path: {runtime.service.db_path.resolve()}")
+        if runtime.solar_path is not None:
+            print(f"Solar path: {runtime.solar_path}")
+        print(f"ODE version: {PRODUCT_VERSION}")
+        print(f"Cards: {runtime.cards}")
+        print(f"Integrity: {runtime.integrity_status}")
+        server = ThreadingHTTPServer((args.host, args.port), handler_type)
+        url = f"http://{args.host}:{server.server_port}"
+        print(f"Интерфейс открыт: {url}")
+        print("Для завершения нажмите Ctrl+C.")
+        if not args.no_browser:
+            threading.Timer(0.35, lambda: webbrowser.open(url)).start()
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\nРабота завершена.")
+        finally:
+            server.server_close()
+        return 0
     finally:
-        server.server_close()
-    return 0
+        runtime.close()
 
 
 if __name__ == "__main__":

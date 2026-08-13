@@ -1,4 +1,4 @@
-# Agent Handoff — ODE 0.21.0
+# Agent Handoff — ODE 0.21.1
 
 Минимальный безопасный вход в задачу:
 
@@ -19,7 +19,8 @@
    `RUNTIME_CONFIGURATION.md`; не придумывать API keys или `.env` autoload,
    которых нет в runtime.
 
-Текущий приоритет — эксплуатационная устойчивость ODE 0.21.0: поиск по
+Текущий приоритет — эксплуатационная устойчивость ODE 0.21.1: Windows
+double-click acceptance, поиск по
 целевой железке, Equipment Composition как evidence issue-history,
 Multi-Warehouse, Vacations, multi-database backup и согласованность living-
 документации. Monitoring/Reports/Knowledge развиваются только внутри своих

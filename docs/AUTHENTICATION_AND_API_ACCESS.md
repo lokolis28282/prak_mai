@@ -1,9 +1,10 @@
-# ODE 0.21.0 — аутентификация и доступ к HTTP API
+# ODE 0.21.1 — аутентификация и доступ к HTTP API
 
 Статус: **CURRENT RUNTIME CONTRACT**. Проверено по
-`inventory/webapp.py` и auth/security-тестам 2026-08-11.
+`inventory/webapp.py` и auth/security-тестам 2026-08-13. Patch 0.21.1 не меняет
+режимы входа, TTL, cookie или permission contracts.
 
-ODE 0.21.0 — локальное браузерное приложение. Его HTTP API обслуживает
+ODE 0.21.1 — локальное браузерное приложение. Его HTTP API обслуживает
 собственный frontend и по умолчанию доступен только на
 `http://127.0.0.1:8765`. Это не опубликованный интеграционный API.
 

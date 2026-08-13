@@ -1,8 +1,12 @@
 # Архитектура ODE
 
-Дата проверки: 2026-08-11. Текущий source/runtime: `0.21.0`.
+Дата проверки: 2026-08-13. Текущий source/runtime: `0.21.1` release candidate.
 
-## ODE 0.21.0 runtime boundary
+## ODE 0.21.1 runtime boundary
+
+Patch 0.21.1 не меняет HTTP API, cookie-auth, DDL или бизнес-семантику
+операций. Он укрепляет границы путей test/build runtime и исправляет состав и
+формат переносимого Windows source package.
 
 Приложение обслуживает три физически независимых SQLite-файла:
 
@@ -36,7 +40,7 @@ Restore из UI намеренно отключён. Частично безоп
 Компенсирующие складские операции (сторно ошибочного прихода/расхода) описаны
 отдельно в
 [ADR-014](docs/decisions/ADR-014-warehouse-correction-reversal.md) и в
-0.21.0 не реализованы.
+0.21.1 не реализованы.
 
 Карточка серийного оборудования получает связанную комплектацию только как
 read-only evidence projection:
@@ -91,7 +95,7 @@ migration confidence/provenance остаётся в `Администриров�
 
 Раздел выше описывал состояние на 2026-07-16 (`0.14.0`) и сохранён как
 исторический контекст. Текущий source-artifact —
-`ODE_0.21.0_windows_source.zip`; рабочий rollout требует отдельного Windows
+`ODE_0.21.1_windows_source.zip`; рабочий rollout требует отдельного Windows
 sign-off.
 
 ## Текущий локальный runtime contour
@@ -128,7 +132,8 @@ deployment, multi-user topology и release transport здесь не реали�
 
 ODE — локальное браузерное приложение дежурной смены для складского учёта,
 поставок, логов работ и отчётов. Runtime использует Python standard library и
-один SQLite-файл; внешние сервисы для основных операций не требуются.
+три физически независимых SQLite-файла; внешние сервисы для основных операций
+не требуются.
 
 Главный бизнес-идентификатор сериализованного оборудования и компонентов —
 S/N. Inventory Number является вторичным реквизитом и может быть назначен
@@ -144,7 +149,7 @@ app.py
              │
              ▼
  inventory/
- ├─ core/                      ApplicationContext, feature flags, event contracts
+ ├─ core/                      ApplicationContext, web runtime guards, event contracts
  ├─ routes/                    per-module HTTP branches
  ├─ templates/                 HTML shell assembly
  ├─ warehouse/                 receipts, issues, cables, deliveries, balance/history
@@ -178,6 +183,11 @@ writer при сборке, а browser читает только allowlisted pil
 `KnowledgeFacade` и `VacationFacade`. `WarehouseCore`/`WarehouseService`
 сохраняются как compatibility layer для ещё не мигрированных сценариев, но
 новая доменная логика не должна вызываться из webapp напрямую через core.
+
+`inventory/core/web_runtime.py` владеет pre-write startup boundary: проверяет
+production/test/review contour, marker/role трёх DB, filesystem aliases и
+SQLite sidecars, затем создаёт `ApplicationContext`. Обычный HTTP/session shell
+в `inventory/webapp.py` не выполняет schema composition самостоятельно.
 
 Модульные границы контролирует `scripts/audit_module_boundaries.py`. Владение
 таблицами описано в [docs/DATABASE_OWNERSHIP.md](docs/DATABASE_OWNERSHIP.md),
@@ -395,8 +405,9 @@ transaction-aware repository helper.
 
 - `admin` и `engineer` выполняют operational writes;
 - `viewer` остаётся read-only и отклоняется backend, а не только скрытием UI;
-- admin-only: пользователи, backup/restore, audit view, production DB upload и
-  diagnostics;
+- admin-only: пользователи, создание backup, audit view и diagnostics;
+- restore и production DB upload не доступны в UI/API и остаются fail-closed
+  до реализации утверждённого maintenance-протокола;
 - actor/audit author берётся из authenticated application context;
 - session cookie — HttpOnly/SameSite, POST с присутствующим Origin проверяет
   Origin/Host; API-key/Bearer/OAuth auth отсутствует;
@@ -410,7 +421,8 @@ transaction-aware repository helper.
 
 - single-process SQLite не предназначен для активной многопользовательской
   записи и server deployment без отдельного решения;
-- `inventory/webapp.py` остаётся крупным переходным composition/HTTP файлом;
+- `inventory/webapp.py` остаётся крупным переходным HTTP/session файлом;
+  startup database composition уже вынесена в `inventory/core/web_runtime.py`;
 - `WarehouseCore` и часть legacy service/API flows ещё существуют;
 - Warehouse preview хранится в памяти и не переживает restart;
 - нет persisted import jobs, progress/cancel и отдельного batch audit ID;

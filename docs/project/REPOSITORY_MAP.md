@@ -1,4 +1,4 @@
-# Repository Map — ODE 0.21.0
+# Repository Map — ODE 0.21.1
 
 Authoritative checkout: `/Users/lokolis/Documents/prak_mai`. Другие копии не
 являются источником истины и используются только read-only после явного
@@ -11,12 +11,15 @@ Authoritative checkout: `/Users/lokolis/Documents/prak_mai`. Другие коп
 - `inventory/routes/` — domain HTTP handlers без business SQL;
 - `inventory/templates/` — сборка итогового HTML;
 - `static/css`, `static/js` — реально загружаемый frontend;
-- `inventory/core/` — `ApplicationContext`, routing и contracts;
+- `inventory/core/` — `ApplicationContext`, routing/contracts и
+  `web_runtime.py`, который до writes проверяет DB contour/marker/sidecars и
+  собирает application runtime;
 - `inventory/warehouse/` — Warehouse facade/services, включая
   `equipment_composition.py`;
 - `inventory/reports/`, `monitoring/`, `knowledge/`, `vacations/`,
   `administration/` — отдельные bounded contexts с публичными facade;
-- `inventory/shared/` — общие SQLite/CSV/validation adapters;
+- `inventory/shared/` — общие SQLite/CSV/validation adapters и единая
+  fail-closed проверка disposable/runtime database paths;
 - `inventory/db.py` — legacy-compatible schema bootstrap/migrations.
 
 ## Installation-owned runtime data
@@ -27,7 +30,8 @@ Authoritative checkout: `/Users/lokolis/Documents/prak_mai`. Другие коп
 - `data/vacations.db` — отдельный общий календарь двух площадок;
 - `data/README.md` — clone/setup/data separation policy.
 
-Все DB ignored. В Git после clone находится только документация. Backup
+Все DB ignored. В `data/` после clone находится только `README.md`; код,
+тесты и остальная документация находятся в своих каталогах репозитория. Backup
 создаётся во внешнем системном каталоге или `ODE_BACKUP_DIR`; restore UI
 отключён.
 

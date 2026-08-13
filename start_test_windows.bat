@@ -23,6 +23,15 @@ if %errorlevel%==0 (
     set PY=python
 )
 
+%PY% -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo Для ODE требуется Python 3.10 или новее.
+    pause
+    endlocal
+    exit /b 1
+)
+
 echo Пересоздаю чистую тестовую базу (profile=demo)...
 %PY% scripts\create_clean_test_db.py --profile demo --overwrite
 if errorlevel 1 (
@@ -32,7 +41,7 @@ if errorlevel 1 (
     endlocal
     exit /b 1
 )
-%PY% scripts\create_clean_test_db.py --source data\warehouse_solar.db --output data\warehouse_solar_test_clean.db --profile empty --overwrite
+%PY% scripts\create_clean_test_db.py --source data\warehouse_solar.db --output data\warehouse_solar_test_disposable_v1.db --profile empty --overwrite
 if errorlevel 1 (
     echo.
     echo Не удалось подготовить тестовую Solar DB. Текст ошибки указан выше.
@@ -51,7 +60,7 @@ if errorlevel 1 (
 
 set ODE_TEST_MODE=1
 echo Запуск ODE на тестовом контуре...
-%PY% app.py web --db data\warehouse_test_clean.db --solar-db data\warehouse_solar_test_clean.db --vacations-db data\vacations_test_clean.db --warehouse-contour demo
+%PY% app.py web --db data\warehouse_test_disposable_v1.db --solar-db data\warehouse_solar_test_disposable_v1.db --vacations-db data\vacations_test_disposable_v1.db --warehouse-contour demo
 if errorlevel 1 (
     echo.
     echo ODE завершилась с ошибкой. Текст ошибки указан выше.

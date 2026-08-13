@@ -1,4 +1,4 @@
-# BACKEND_ARCHITECTURE — ODE 0.21.0
+# BACKEND_ARCHITECTURE — ODE 0.21.1
 
 ## FULL Inventory 0.14
 
@@ -11,7 +11,8 @@ append-only и применяются при новом deterministic Preview ru
 rehearsal создаёт отдельную target DB; реального publish endpoint нет.
 
 Раздел выше фиксирует origin FULL Inventory slice 0.14. Текущий source/runtime:
-`0.21.0`, дата общей актуализации — 2026-08-02.
+`0.21.1`, дата общей актуализации — 2026-08-13. Patch не меняет backend API,
+DDL или бизнес-контракты; он укрепляет runtime path guards и Windows package.
 
 ## Цель refactoring
 
@@ -106,8 +107,9 @@ Warehouse-owned с отдельно отмеченными legacy-операци
 assignment в карточке и bulk Preview/Confirm с Stage 0.13.1/0.13.2 идут через
 receipt boundary `WarehouseFacade`; старое физическое inventory compare,
 прочие legacy inventory operations остаются переходными compatibility flows.
-Administration write, authentication, actor context и backup/restore с ODE
-0.16.0 идут через отдельный `AdministrationService`.
+Administration write, authentication, actor context, diagnostics и создание
+backup идут через отдельный `AdministrationService`. Restore не является
+активным flow и остаётся fail-closed до ADR-013.
 
 С ODE 0.16.0 Stage 4 доменные HTTP-ветви находятся в
 `inventory/routes/`, а не в `inventory/webapp.py`. `webapp.py` остаётся общей
@@ -129,8 +131,9 @@ only 130 preserved primaries directly to the existing transaction-aware
 does not duplicate repository/audit/card infrastructure. The resulting DB is a
 separate marker-guarded disposable artifact; review GET routes and card reads go
 through `ApplicationContext -> WarehouseFacade`. Operational POST routes are
-denied in pilot mode. After the marker/integrity guard, the web entry point
-constructs `WarehouseService(..., initialize_database=False)` so ordinary
+denied in pilot mode. After the marker/integrity guard,
+`inventory/core/web_runtime.py` constructs
+`WarehouseService(..., initialize_database=False)` so ordinary
 startup schema initialization cannot rewrite the pilot; the default remains
 `True` for every production/test call site.
 
@@ -260,23 +263,29 @@ receipt repository transaction contract, существующий S/N тольк
 из Administration и Warehouse-owned `WarehouseEventReader`. Исторический
 `inventory/services/report_service.py` удалён.
 
-### `MonitoringService`
+### `WarehouseMonitoringService` (legacy internal name)
 
 Отвечает за:
 
 - SQLite integrity;
 - data-quality problems.
 
-### `InventoryService`
+Это Warehouse data-quality service из `inventory/warehouse/monitoring.py`, а
+не продуктовый `inventory.monitoring.MonitoringFacade`. Hostname/DCIM flow
+изолирован и не читает Warehouse tables.
+
+### `LegacyInventoryService`
 
 Отвечает за:
 
-- backup/restore;
-- replace production DB;
 - legacy equipment cards;
 - inventory compare;
 - legacy imports;
 - CSV export.
+
+Backup и production replacement не принадлежат этому сервису. Текущий create
+snapshot выполняет Administration `MultiDatabaseBackupService`; restore и
+production upload недоступны.
 
 Эта compatibility-зона не включает новый Inventory Number write-flow: несмотря
 на историческое имя `InventoryService`, назначение вторичного реквизита
@@ -309,17 +318,17 @@ receipt repository transaction contract, существующий S/N тольк
   менялись;
 - бизнес-семантика и ownership таблиц не менялись.
 
-**IMPLEMENTED:** отдельный offline-контур формализует 16 reference domains,
-безопасные aliases, canonical naming и точное извлечение S/N. Девять таблиц
-`migration_*`/`*_v2` создаются только в disposable candidate DB. Candidate
-может содержать security snapshot (`users`, роли, password hashes без вывода),
-но production operational tables остаются пустыми; исторические приходы и
-расходы не импортируются.
+**HISTORICAL STAGE 0.13.3A:** отдельный offline-контур формализовал 16
+reference domains, безопасные aliases, canonical naming и точное извлечение
+S/N. Его `migration_*` staging и initial candidate были disposable и не
+являлись production replacement.
 
-**PROPOSED/FUTURE STAGE:** перенос утверждённых справочников в runtime,
-исторических операций и замена рабочей БД требуют отдельного решения,
-backup/reset gate и явного подтверждения. Candidate DB Stage 0.13.3A не
-является production replacement.
+**CURRENT LOCAL FACT:** позднее полный historical candidate был отдельно
+проверен и атомарно promoted в `data/warehouse.db`: runtime содержит 50 000
+карточек/receipt states, 18 798 issues и 18 798 allocations, а Warehouse читает
+утверждённые `reference_*_v2`. Offline raw/workspace/candidate и 200-row pilot
+по-прежнему остаются local-only review artifacts и никогда не входят в release
+как runtime DB.
 
 Удаление самого compatibility API откладывается до отдельного deprecation
 решения. Stage 3 architecture contracts запрещают возвращать SQL или
@@ -333,12 +342,14 @@ webapp.py / routes / tests
         v
   ApplicationContext
         |
-        +--> WarehouseFacade --> warehouse services/repositories --+
-        +--> ReportsFacade -----------------------------------------+--> SQLite
-        +--> AdministrationFacade ---------------------------------+
-        +--> MonitoringFacade
+        +--> WarehouseFacade --> IXcellerate/Solar Warehouse SQLite
+        +--> ReportsFacade --> primary Reports tables
+        +--> AdministrationFacade --> primary users/audit + 3-DB registry
+        +--> KnowledgeFacade --> primary knowledge_* + private uploads
+        +--> MonitoringFacade --> local JSON/browser history/optional DCIM
+        +--> VacationFacade --> standalone vacations.db
         |
-        +--> compat WarehouseService --> shared Warehouse services
+        +--> compat WarehouseService --> shared Warehouse services only
 
 cli.py --> compatibility WarehouseService --> SQLite
 
@@ -375,9 +386,12 @@ python3 scripts/audit_frontend_contracts.py
 python3 -W error::ResourceWarning -m unittest discover -s tests -v
 python3 scripts/create_clean_test_db.py --dry-run
 python3 scripts/smoke_ui.py
-sqlite3 -readonly data/warehouse.db 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
 git diff --check
 ```
+
+Три рабочие DB проверяются по SHA/integrity/FK/sidecars до и после по
+`LOCAL_WORKING_DATABASE_RUNBOOK.md`; их нельзя открывать mutation/smoke
+командами как fixtures.
 
 3. Не менять рабочую БД при backend-refactoring.
 

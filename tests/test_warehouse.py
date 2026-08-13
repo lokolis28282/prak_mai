@@ -4,6 +4,8 @@ import csv
 import io
 import shutil
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 import re
@@ -16,7 +18,7 @@ from inventory.seed import seed_database
 from inventory.db import verify_password
 from inventory.importing import parse_csv_bytes
 from inventory.service import WarehouseError, WarehouseService
-from build_windows_package import build_windows_package
+from build_windows_package import RC_DIR_NAME, build_windows_package
 from inventory.webapp import HTML, USER_CSV_TEMPLATES, csv_download_bytes
 
 
@@ -118,20 +120,108 @@ class WarehouseServiceTest(unittest.TestCase):
     def test_windows_zip_contains_only_portable_runtime_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             archive_path = build_windows_package(Path(directory) / "ODE_windows_ready.zip")
+            prefix = f"{RC_DIR_NAME}/"
             with zipfile.ZipFile(archive_path) as archive:
                 names = set(archive.namelist())
-            self.assertIn("ODE/WINDOWS_RELEASE.md", names)
-            self.assertIn("ODE/docs/history/QA_STAGE_0_12_17.md", names)
-            self.assertIn("ODE/docs/history/PRODUCT_REVIEW.md", names)
-            self.assertIn("ODE/docs/README.md", names)
-            self.assertIn("ODE/start_windows.bat", names)
-            self.assertIn("ODE/start_test_windows.bat", names)
-            self.assertIn("ODE/start_test_macos.command", names)
-            self.assertIn("ODE/scripts/create_clean_test_db.py", names)
-            self.assertIn("ODE/data/README.md", names)
-            self.assertNotIn("ODE/data/warehouse.db", names)
+                launchers = {
+                    name: archive.read(name)
+                    for name in (
+                        f"{prefix}start_windows.bat",
+                        f"{prefix}start_test_windows.bat",
+                    )
+                }
+            self.assertIn(f"{prefix}WINDOWS_RELEASE.md", names)
+            self.assertIn(f"{prefix}docs/history/QA_STAGE_0_12_17.md", names)
+            self.assertIn(f"{prefix}docs/history/PRODUCT_REVIEW.md", names)
+            self.assertIn(f"{prefix}docs/README.md", names)
+            self.assertIn(f"{prefix}start_windows.bat", names)
+            self.assertIn(f"{prefix}start_test_windows.bat", names)
+            self.assertIn(f"{prefix}start_test_macos.command", names)
+            self.assertNotIn(f"{prefix}start_lan_windows.bat", names)
+            self.assertNotIn(f"{prefix}setup_lan_access_windows.bat", names)
+            self.assertFalse(
+                any("PRIVATE_WINDOWS_TRANSFER_" in name for name in names)
+            )
+            self.assertIn(f"{prefix}scripts/create_clean_test_db.py", names)
+            self.assertIn(f"{prefix}scripts/create_clean_vacations_test_db.py", names)
+            self.assertIn(f"{prefix}data/README.md", names)
+            self.assertIn(f"{prefix}baseline_rehearsal/__init__.py", names)
+            self.assertIn(f"{prefix}baseline_rehearsal/candidate.py", names)
+            self.assertIn(f"{prefix}ode/schema_manifest.json", names)
+            self.assertIn(f"{prefix}ode/infrastructure/migrations.py", names)
+            self.assertIn(
+                f"{prefix}docs/architecture/ddl/V008__audit_and_operations.sql", names
+            )
+            self.assertIn(
+                f"{prefix}docs/architecture/ddl/verify_schema.sql", names
+            )
+            self.assertIn(
+                f"{prefix}docs/architecture/ddl/verify_domain_invariants.sql", names
+            )
+            self.assertIn(
+                f"{prefix}inventory/warehouse/baseline/workspace_schema.sql", names
+            )
+            self.assertIn(
+                f"{prefix}inventory/warehouse/baseline/workspace_v1_to_v2.sql", names
+            )
+            self.assertNotIn(f"{prefix}data/warehouse.db", names)
             self.assertFalse(any("backups" in name.casefold() for name in names))
             self.assertFalse(any("__pycache__" in name or name.endswith(".pyc") for name in names))
+            for name, content in launchers.items():
+                self.assertFalse(content.startswith(b"\xef\xbb\xbf"), name)
+                self.assertTrue(content.endswith(b"\r\n"), name)
+                self.assertIsNone(re.search(rb"(?<!\r)\n", content), name)
+
+            unpacked = Path(directory) / "unpacked"
+            with zipfile.ZipFile(archive_path) as archive:
+                archive.extractall(unpacked)
+            package_root = unpacked / RC_DIR_NAME
+            cold_import = subprocess.run(
+                [
+                    sys.executable,
+                    "-I",
+                    "-B",
+                    "-c",
+                    (
+                        "import sys,tempfile;"
+                        "from pathlib import Path;"
+                        "sys.path.insert(0,str(Path.cwd()));"
+                        "import inventory.webapp;"
+                        "from inventory.warehouse.baseline.workspace import create_workspace;"
+                        "from ode.application.config import DatabaseConfig,Environment;"
+                        "from ode.infrastructure.migrations import MigrationRunner;"
+                        "d=tempfile.TemporaryDirectory();"
+                        "root=Path(d.name);"
+                        "create_workspace(root/'workspace.db');"
+                        "config=DatabaseConfig.create(root/'target.db',environment=Environment.TEST,"
+                        "read_only=False,expected_schema_version=8,expected_application_id=0x4F444531);"
+                        "created=MigrationRunner(config).create();"
+                        "assert created.verification.integrity_result=='ok';"
+                        "from scripts.audit_documentation import audit_local_links;"
+                        "links=audit_local_links(list(Path.cwd().rglob('*.md')),Path.cwd());"
+                        "assert not links,links[:20];"
+                        "d.cleanup()"
+                    ),
+                ],
+                cwd=package_root,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(cold_import.returncode, 0, cold_import.stderr)
+
+    def test_all_windows_launchers_use_crlf(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        launchers = sorted(root.glob("*.bat"))
+        self.assertTrue(launchers)
+        for launcher in launchers:
+            content = launcher.read_bytes()
+            with self.subTest(launcher=launcher.name):
+                self.assertFalse(content.startswith(b"\xef\xbb\xbf"))
+                self.assertTrue(content.endswith(b"\r\n"))
+                self.assertIsNone(re.search(rb"(?<!\r)\n", content))
+                content.decode("utf-8")
+                self.assertIn(b"sys.version_info >= (3,10)", content)
 
     def test_current_receipt_export_contains_only_last_preview_file(self) -> None:
         first = self.new_receipt(serial_number="PREVIEW-1", inventory_number="PREVIEW-INV-1")

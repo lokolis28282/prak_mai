@@ -42,6 +42,8 @@ data/backups/
 /data/warehouse_test_clean.db
 /data/warehouse_test_clean.db-*
 /data/.warehouse_test_clean.db.*.tmp
+/data/.warehouse_test_disposable_v1.db.*.tmp
+/data/.*.db.*.tmp
 backups/
 acceptance_backups/
 release_backups/

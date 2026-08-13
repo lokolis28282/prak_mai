@@ -1,11 +1,30 @@
 # Current State
 
-Дата проверки: 2026-08-11. Authoritative repository:
+Дата проверки: 2026-08-13. Authoritative repository:
 `~/Documents/prak_mai`.
 
-Текущий общий release gate ODE 0.21.0 — 703 теста (`skipped=8`), code graph
-252/512. Более низкие version-specific counts в разделах ниже являются
+Текущий source/runtime — ODE 0.21.1 release candidate. Подтверждённый
+automated gate: 754 теста (`skipped=8` на macOS), code graph — 254 узла /
+527 связей. SHA release-артефактов фиксируются внешними `.zip.sha256` после
+сборки. Более низкие version-specific counts в разделах ниже являются
 историческим evidence соответствующего среза, а не текущим итогом проекта.
+
+### Patch prerelease 0.21.1 — 2026-08-13
+
+- исправлены CRLF launcher и полный runtime closure Windows source package;
+- `inventory/core/web_runtime.py` до schema writers проверяет три выбранные DB,
+  pairwise identity/role, production aliases, test marker и SQLite sidecars;
+- test/review auxiliary state (Full Inventory, Knowledge uploads, Monitoring
+  rules, Vacations и backup roots) изолирован во временном owned runtime;
+- clean builders публикуют только exact-role marker DB после повторной
+  target identity/sidecar проверки;
+- HTTP API, аутентификация, DDL и бизнес-контракты не менялись;
+- архивы 0.21.0 отозваны для повторного переноса; новый код распаковывается в
+  отдельную папку без ручного ремонта BAT/Python и без изменения `.db`;
+- физический Windows double-click sign-off остаётся **PENDING** по
+  [`../MANUAL_TESTING_0_21_1_WINDOWS.md`](../MANUAL_TESTING_0_21_1_WINDOWS.md).
+
+Текущие release notes: [`../../RELEASE_REPORT_ODE_0_21_1.md`](../../RELEASE_REPORT_ODE_0_21_1.md).
 
 ## Два разных Stage-трека
 
@@ -14,12 +33,13 @@
 
 ### Warehouse source/runtime track
 
-- Current source/runtime metadata: `0.21.0`.
-- Текущий source-ZIP: `ODE_0.21.0_windows_source.zip`; физическая Windows-
+- Current source/runtime metadata: `0.21.1`.
+- Текущий source-ZIP: `ODE_0.21.1_windows_source.zip`; физическая Windows-
   приёмка остаётся обязательной до рабочего rollout.
-- Рабочий runtime: `app.py` → общий application context + выбранный Warehouse
-  site → `data/warehouse.db` (IXcellerate) или
-  `data/warehouse_solar.db` (Solar).
+- Рабочий runtime: `app.py` → pre-write `web_runtime` gate → primary
+  application context + выбранный Warehouse site → `data/warehouse.db`
+  (IXcellerate) или `data/warehouse_solar.db` (Solar), а общий Vacations
+  module всегда использует отдельную `data/vacations.db`.
 - Главный продуктовый модуль: Warehouse.
 - Reports предоставляет УВР, сменный и недельный отчёты; Monitoring — ручной
   hostname/DCIM flow и безопасную подготовку сообщения; Knowledge — статьи,
@@ -461,7 +481,8 @@ Administration, Reports, Warehouse, Monitoring и Knowledge вынесены в
 `inventory/webapp.py` сокращён до общего HTTP/auth/session/security shell.
 Полный upstream gate: 593 теста (`skipped=8`), Python/JS syntax,
 module/frontend/data audits, clean-DB dry-run и headless Chrome smoke — PASS.
-Текущий проверенный ODE 0.21.0 — 703 теста; актуальные значения code graph и
+Финальные значения автоматического gate ODE 0.21.1 зафиксированы в release
+report; актуальные значения code graph и
 интерактивная карта находятся в
 `docs/CODEBASE_GRAPH.md`, внешний Codebase Memory —
 из `docs/CODEBASE_MEMORY_MCP.md`. Рабочая БД осталась byte-identical, SHA-256

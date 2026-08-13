@@ -1,6 +1,6 @@
 # Administration API Migration ODE 0.12.9
 
-Статус: историческая карта извлечения Stage 0.12.9. Текущий ODE 0.21.0 уже
+Статус: историческая карта извлечения Stage 0.12.9. Текущий ODE 0.21.1 уже
 использует `AdministrationFacade`, `RuntimeDatabaseRegistry` и
 `MultiDatabaseBackupService`; живой контракт —
 [backup/restore](operations/backup-restore.md).
@@ -67,3 +67,18 @@ URL, JSON, роли, авторизация, БД и пользовательс�
 Эта таблица фиксирует состояние именно 0.12.9. В текущем runtime legacy upload
 не отображается в UI, restore заблокирован, а создание snapshot принимает
 только allowlisted `database_id` одной из трёх runtime-БД.
+
+## Текущий статус ODE 0.21.1
+
+- login, actor context, users, profile, audit и diagnostics обслуживаются
+  `AdministrationFacade → AdministrationService`, а не Warehouse business
+  service;
+- активный backup UI/API использует `RuntimeDatabaseRegistry` и
+  `MultiDatabaseBackupService` для allowlisted IXcellerate, Solar и Vacations;
+- snapshot создаётся через SQLite Backup API во внешнем каталоге, проверяется
+  по integrity/FK/schema/SHA и фиксируется в Administration audit;
+- `RESTORE_BACKUP` и production DB upload не отображаются как доступные
+  действия; restore остаётся fail-closed до полного ADR-013.
+
+Перечень «Оставлены legacy» выше является историческим состоянием Stage
+0.12.9 и не описывает routing текущего runtime.

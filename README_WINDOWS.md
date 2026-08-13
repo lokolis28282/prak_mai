@@ -1,10 +1,19 @@
-# Запуск ODE 0.21.0 на Windows
+# Запуск ODE 0.21.1 на Windows
 
-Это инструкция для текущего исходного кода ODE 0.21.0. Собран проверенный
-source-ZIP `ODE_0.21.0_windows_source.zip`; его внешний SHA-256 публикуется
-рядом с конкретным артефактом. Физическая Windows-приёмка ещё не выполнена: не
+Это инструкция для текущего исходного кода ODE 0.21.1. Source-ZIP
+`ODE_0.21.1_windows_source.zip` собирается с полным runtime closure и CRLF-
+launcher; его внешний SHA-256 публикуется рядом с конкретным артефактом.
+Физическая Windows-приёмка ещё не выполнена: не
 выдавайте source-пакет за утверждённый рабочий rollout и всегда проверяйте
 версию и внешний SHA перед распаковкой.
+
+> **Архивы 0.21.0 отозваны для повторного переноса.** Если `cmd.exe` пишет
+> `'3'`, `'cho'` или `'DE' is not recognized`, либо Python сообщает
+> `ModuleNotFoundError: No module named 'baseline_rehearsal'`, остановитесь.
+> Не правьте BAT/Python вручную, не переименовывайте и не заменяйте `.db`.
+> Оставьте неудачную папку как read-only evidence; если в ней есть данные, не
+> удаляйте её. Распакуйте 0.21.1 в **новую** папку и переносите данные только
+> по проверенному checklist ниже.
 
 Для обычного пользователя начните с красивой автономной инструкции
 [`ODE_USER_GUIDE.html`](ODE_USER_GUIDE.html): она открывается двойным щелчком
@@ -29,24 +38,48 @@ ODE откроется на `http://127.0.0.1:8765`. Обычный `python app.
 
 | Модуль | Рабочая БД |
 |---|---|
-| Warehouse IXcellerate, Reports, Monitoring, Knowledge, Administration | `data\warehouse.db` |
+| Warehouse IXcellerate, Reports, Knowledge, Administration | `data\warehouse.db` |
 | Warehouse Solar | `data\warehouse_solar.db` |
 | Общий план отпусков | `data\vacations.db` |
+| Monitoring | таблиц не имеет; локальные ignored JSON и browser history |
+
+Физический double-click gate выполняется по
+[`docs/MANUAL_TESTING_0_21_1_WINDOWS.md`](docs/MANUAL_TESTING_0_21_1_WINDOWS.md).
+Пока все обязательные пункты не отмечены PASS, статус остаётся **PENDING**.
 
 Не редактируйте, не заменяйте и не копируйте эти файлы при запущенном ODE.
 
 ## Безопасный тестовый контур
 
-Для ручных экспериментов запускайте `start_test_windows.bat`. Launcher каждый
-раз создаёт три отдельные одноразовые БД:
+Для ручных экспериментов запускайте `start_test_windows.bat`. Launcher создаёт
+или безопасно заменяет три отдельные одноразовые БД:
 
-- `data\warehouse_test_clean.db` — демо-контур IXcellerate;
-- `data\warehouse_solar_test_clean.db` — пустой Solar;
-- `data\vacations_test_clean.db` — отдельный тестовый календарь.
+- `data\warehouse_test_disposable_v1.db` — демо-контур IXcellerate;
+- `data\warehouse_solar_test_disposable_v1.db` — пустой Solar;
+- `data\vacations_test_disposable_v1.db` — отдельный тестовый календарь.
 
 Рабочие Warehouse-БД используются только как read-only источник согласованного
-SQLite snapshot, рабочая Vacations DB не читается. В интерфейсе постоянно
-показывается баннер `ТЕСТОВЫЙ КОНТУР`.
+SQLite Backup API snapshot, включая committed WAL; idle source без sidecar
+открывается immutable и не получает новый `-wal`/`-shm`. Рабочая Vacations DB
+не читается. В интерфейсе постоянно показывается баннер `ТЕСТОВЫЙ КОНТУР`.
+
+Каждая disposable DB содержит marker `ODE_DISPOSABLE_TEST_DB_V1`: роли
+IXcellerate/Solar — `warehouse`, Vacations — `vacations`. `--overwrite`
+разрешён только для уже отмеченного файла той же роли. Обычный launcher
+отвергает marked test DB, а test launcher требует все три явных пути и
+правильные роли. Любой `-wal`, `-shm` или `-journal` рядом с выбранной БД
+блокирует startup до любой записи: сначала остановите другой процесс и
+разберитесь с согласованным состоянием SQLite.
+
+Тестовый процесс также изолирует вложения Knowledge, состояние инвентаризации,
+правила Monitoring и резервные копии во временной папке. Обращение к рабочему
+DCIM отключено; временная папка удаляется после остановки ODE.
+
+Старые unmarked имена `warehouse_test_clean.db`,
+`warehouse_solar_test_clean.db` и `vacations_test_clean.db` launcher 0.21.1 не
+перезаписывает и не использует. Не переименовывайте их в новые `*_disposable_v1`
+файлы: новые имена выбраны специально, чтобы legacy test DB не блокировали
+безопасный запуск.
 
 ## Вход и права
 

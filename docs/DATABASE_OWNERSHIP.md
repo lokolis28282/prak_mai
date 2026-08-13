@@ -1,4 +1,4 @@
-# DATABASE_OWNERSHIP
+# DATABASE_OWNERSHIP — ODE 0.21.1
 
 ## Warehouse stabilization ownership
 
@@ -85,7 +85,7 @@ mechanism.
 
 Knowledge stores article metadata and tags in SQLite. Attachment bytes are
 stored below the configured `ODE_KNOWLEDGE_UPLOAD_DIR` (the local fallback is
-`data/uploads/knowledge`) and are never committed to Git. Knowledge may append
+`data/uploads`, derived from the primary DB parent) and are never committed to Git. Knowledge may append
 article and attachment actions to shared `audit_log`, but does not write
 Warehouse or Reports tables.
 
@@ -145,8 +145,8 @@ runtime path required for operator verification; backup-list rows expose only
 database id/label, basename, size, timestamp, SHA availability and verification
 state.
 
-`MultiDatabaseBackupService` is the only active web backup implementation in
-0.18.1. It serializes with the application write-lock, uses SQLite Backup API,
+`MultiDatabaseBackupService` is the only active multi-database web backup
+implementation in current ODE 0.21.1. It serializes with the application write-lock, uses SQLite Backup API,
 checks integrity/FK/required tables, writes a SHA-256 manifest and audits the
 operation in primary Administration `audit_log`. Warehouse/Vacations facades
 do not copy or replace database files. Restore remains disabled pending ADR-013.

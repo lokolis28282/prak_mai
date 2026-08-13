@@ -1,6 +1,7 @@
-# Monitoring and Knowledge Base
+# Monitoring and Knowledge Base — ODE 0.21.1
 
-Status: implemented on integration branch, 2026-07-17.
+Status: implemented in the current main runtime; original integration slice
+was prepared 2026-07-17 and Monitoring routing was extended in ODE 0.21.0.
 
 ## Architecture
 

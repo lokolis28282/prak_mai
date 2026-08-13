@@ -73,6 +73,7 @@ class AdministrationService:
     ) -> None:
         """Configure runtime file topology at the application composition root."""
         self.runtime_database_registry = registry
+        self.backup_service.configure(backup_root)
         self.multi_database_backup_service.configure(
             registry, backup_root=backup_root
         )

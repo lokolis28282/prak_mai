@@ -1,4 +1,13 @@
-# ApplicationContext — ODE 0.21.0 current wiring and extraction history
+# ApplicationContext — ODE 0.21.1 current wiring and extraction history
+
+Patch 0.21.1 сохраняет wiring и публичные facade-контракты; изменения касаются
+fail-closed проверки runtime-путей и Windows packaging.
+
+Текущая startup composition вынесена в `inventory/core/web_runtime.py`. До
+создания `ApplicationContext` модуль проверяет три выбранные DB, test
+marker/role, production aliases и SQLite sidecars; после успешного gate он
+создаёт compatibility service, конфигурацию и context. `inventory/webapp.py`
+остаётся HTTP/session shell и не дублирует эту pre-write композицию.
 
 `ApplicationContext` is the root object for product modules.
 
@@ -7,12 +16,15 @@ It contains:
 - `warehouse`;
 - `reports`;
 - `monitoring`;
+- `knowledge`;
 - `administration`;
+- `vacations`;
 - `current_actor`;
 - `db_path`;
 - `configuration`;
 - `feature_flags`;
-- `compat_service`.
+- `compat_service`;
+- `full_inventory`.
 
 ## Stage 0.12.6
 
@@ -37,10 +49,11 @@ HTTP shell retains authentication, request actor scoping, locks, validation and
 response security headers. HTML assembly is provided by
 `inventory/templates/webapp.py`.
 
-Authentication, Reports, Monitoring, Knowledge and Administration remain
-primary/shared. The selected session site changes only `WarehouseFacade`,
-compatibility service, posting policy, Full Inventory state root, DB lock and
-database fingerprint. Solar authorisation uses
+Authentication, Reports, Knowledge and Administration remain in the primary
+application contour. Monitoring owns no business DB, and Vacations stays on
+its standalone DB independently of the selected Warehouse site. The selected
+session site changes only `WarehouseFacade`, compatibility service, posting
+policy, Full Inventory state root, DB lock and database fingerprint. Solar authorisation uses
 `AdministrationService.delegated_user_context()` with the already
 authenticated public user; no credential or password hash is copied as an
 authentication source. Normative details:
@@ -56,8 +69,10 @@ Administration read APIs use `context.administration` as the source for:
 - backup list;
 - light database status and diagnostics.
 
-The compatibility service is still used for authentication, sessions and
-write/admin actions until those flows receive separate contract tests.
+The preceding paragraph records Stage 0.12.9. In the current runtime,
+authentication and write/admin actions use the dedicated
+`AdministrationFacade → AdministrationService`; HTTP session creation/logout
+remain shell operations.
 
 ## ODE 0.16.0 Stage 1 Administration extraction
 
@@ -70,7 +85,9 @@ Administration owns:
 - user/profile reads and writes;
 - audit writes and audit queries;
 - database integrity diagnostics;
-- backup, restore and confirmed production database replacement.
+- verified backup and database diagnostics;
+- legacy restore/replacement control boundary, которая остаётся fail-closed до
+  полного ADR-013 protocol и не является доступной UI-функцией.
 
 The HTTP layer routes login, request actor context, administration actions and
 startup database checks through `context.administration`. `compat_service`
@@ -145,15 +162,17 @@ HTTP GET
 receipt ID and delegates the ordinary card read through the actor provider.
 Only plain allowlisted data returns to Web/API.
 
-Before `ApplicationContext` is created, `inventory/webapp.py` validates the
-explicit `ODE_MIGRATION_PILOT=1` request, exact DB marker/name/stage/status,
-required tables, integrity/FK and no-sidecar condition. This prevents a
-partially initialized runtime from opening an arbitrary or production DB as a
-pilot. The validated pilot then constructs the compatibility service with
-`initialize_database=False`, preventing normal schema initialization from
-touching the review artifact. This override is not accepted from HTTP and the
-constructor default remains `True`; without pilot mode, existing composition
-and behavior are unchanged.
+Before `ApplicationContext` or any schema writer is created,
+`inventory/core/web_runtime.py` validates the explicit review request, exact
+pilot/full marker/name/stage/status, required tables, integrity/FK,
+production aliases and no-sidecar condition. This prevents a partially
+initialized runtime from opening an arbitrary or production DB as review.
+The validated review then constructs the compatibility service with database
+initialization disabled where required. This override is not accepted from
+HTTP and the constructor default remains `True`; without review mode, existing
+composition and behavior are unchanged. Review/test auxiliary state
+(Vacations, Full Inventory state, Knowledge uploads, Monitoring rules and
+backup roots) is owned by a temporary runtime directory and removed on close.
 
 `inventory/migration` remains offline and is never imported by
 `ApplicationContext`. The dedicated build script is the only orchestration

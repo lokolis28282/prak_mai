@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820" role="img" aria-labelledby="title desc">
-  <title id="title">ODE 0.21.0 — карта связей модулей</title>
+  <title id="title">ODE 0.21.1 — карта связей модулей</title>
   <desc id="desc">Тонкий Web shell с routes/templates входит в ApplicationContext. WarehouseSiteRegistry выбирает изолированный IXcellerate/Solar, Vacations использует третью БД, а Administration создаёт проверенные snapshots трёх runtime-БД во внешнем backup root.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#071521"/><stop offset="1" stop-color="#10152a"/></linearGradient>
@@ -12,8 +12,8 @@
   <rect width="1400" height="820" rx="24" fill="url(#bg)"/>
   <circle cx="700" cy="420" r="265" fill="none" stroke="#2dd4bf" stroke-opacity=".08" stroke-width="85"/>
   <circle cx="700" cy="420" r="330" fill="none" stroke="#8b5cf6" stroke-opacity=".06" stroke-width="2"/>
-  <text x="56" y="62" class="title">ODE 0.21.0 · архитектурный граф</text>
-  <text x="56" y="88" class="meta">Committed code graph · 252 files/modules · 512 import/serve edges</text>
+  <text x="56" y="62" class="title">ODE 0.21.1 · архитектурный граф</text>
+  <text x="56" y="88" class="meta">Committed code graph · 254 files/modules · 527 import/serve edges</text>
 
   <path class="edge" d="M215 178C365 178 446 285 570 366"/><path class="edge" d="M215 265C365 265 460 330 570 386"/>
   <path class="edge" d="M830 385C936 310 1004 206 1110 188"/><path class="edge" d="M830 405C970 365 1040 322 1110 315"/>

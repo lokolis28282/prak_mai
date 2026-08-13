@@ -1,4 +1,4 @@
-# ITOG — главная техническая документация ODE 0.21.0
+# ITOG — главная техническая документация ODE 0.21.1
 
 Основной технический документ проекта. При будущих патчах начинать отсюда:
 здесь описано, как работает код, где входы и выходы, какие инварианты нельзя
@@ -10,7 +10,8 @@ ODE («Отдел дежурных инженеров») — локальный 
 ЦОД: складской учёт (S/N-first) по двум площадкам, приход/расход со сканером,
 поставки, инвентаризация, контроль качества данных, УВР и отчёты, общий план
 отпусков, база знаний, ручной мониторинг. Python 3.10+ (только стандартная
-библиотека) + SQLite; UI в браузере; 703 автоматических теста.
+библиотека) + SQLite; UI в браузере. Финальный automated gate patch-кандидата:
+754 теста (`skipped=8` в подтверждённом macOS-прогоне).
 
 Приложение работает с тремя независимыми SQLite-файлами:
 
@@ -28,8 +29,9 @@ ODE («Отдел дежурных инженеров») — локальный 
 
 Единственная точка запуска — **`app.py`**:
 
-- `python3 app.py` (или `gui`/`web`) → `inventory/webapp.py::main()`:
-  валидация test-mode БД → `PostingPolicy` (production/demo) →
+- `python3 app.py` (или `gui`/`web`) → `inventory/webapp.py::main()` →
+  `inventory/core/web_runtime.py`: валидация трёх DB/marker/sidecars →
+  `PostingPolicy` (production/demo) →
   marker-проверки миграционных БД (до любого касания файла) →
   `WarehouseService` → `create_application_context()` → печать
   контура/версии/integrity → `ThreadingHTTPServer` на `127.0.0.1:8765`.
@@ -117,7 +119,7 @@ python3 scripts/audit_module_boundaries.py
 python3 scripts/audit_frontend_contracts.py
 python3 scripts/audit_repository_data.py
 python3 scripts/generate_code_graph.py --check
-python3 -W error::ResourceWarning -m unittest discover -s tests -v   # 703 OK
+python3 -W error::ResourceWarning -m unittest discover -s tests -v
 git diff --check
 python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 ```
@@ -143,8 +145,8 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
 - **`docs/RUNTIME_CONFIGURATION.md`** — CLI/env, Monitoring, paths и
   test/review flags;
 - **`docs/assets/code_graph.html`** — интерактивный граф связей кодовой базы
-  (252 узла / 512 связей: Python-импорты + webapp→static; фильтры по модулям,
-  поиск, зум). Открывается в браузере офлайн; перегенерация после патча:
+  (Python-импорты + webapp→static; фильтры по модулям, поиск, зум): 254 узла и
+  527 связей. Открывается в браузере офлайн; перегенерация после патча:
   `python3 scripts/generate_code_graph.py`; проверка актуальности без записи:
   `python3 scripts/generate_code_graph.py --check`;
 - `ARCHITECTURE.md` — целевая архитектура и фасады;
@@ -167,7 +169,7 @@ python3 scripts/smoke_ui.py        # E2E, нужны Node + Chrome (macOS)
   — Monitoring/Knowledge;
 - `CLAUDE.md` / `AGENTS.md` — правила работы с кодовой базой (люди и
   AI-агенты); `TECH_DEBT.md` — актуальный долг;
-- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_21_0.md` — изменения и текущий
+- `CHANGELOG.md`, `RELEASE_REPORT_ODE_0_21_1.md` — изменения и текущий
   релизный отчёт; предыдущие release reports — датированные исторические
   снимки;
 - `docs/STAGES_HISTORY.md`, `docs/history/` — история этапов и датированные
@@ -204,7 +206,7 @@ transport и их credentials отсутствуют. Реальные паро�
 целевой контракт — ADR-014); restore резервной копии из UI отключён до
 реализации ADR-013, расписания и ротации копий нет; SQLite —
 однопользовательская запись; webapp auth/session shell и compatibility-слой
-`WarehouseService`/`WarehouseCore` разбираются постепенно; source-ZIP 0.21.0
+`WarehouseService`/`WarehouseCore` разбираются постепенно; source-ZIP 0.21.1
 собран, но Windows sign-off ещё не выполнен; 291 историческая карточка
 `item_name='#N/A'` ждёт
 отдельного data-correction этапа. Полные списки: `README.md` («Ограничения»)

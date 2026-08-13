@@ -71,7 +71,10 @@ def _same_file(left: Path, right: Path) -> bool:
 
 
 def _readonly(path: Path) -> sqlite3.Connection:
-    connection = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    # Review validation is immutable and must never create WAL/SHM sidecars.
+    connection = sqlite3.connect(
+        f"{path.resolve().as_uri()}?mode=ro&immutable=1", uri=True
+    )
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA query_only=ON")
     connection.execute("PRAGMA foreign_keys=ON")

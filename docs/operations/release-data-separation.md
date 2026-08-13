@@ -1,4 +1,4 @@
-# Разделение release и данных
+# Разделение release и данных — ODE 0.21.1
 
 Статус: **APPROVED; Stage 0.13.1 controls REVIEW_READY**
 
@@ -19,7 +19,8 @@ Release contains:
 
 ## Absolute denylist
 
-- data/warehouse.db и любые .db/.sqlite with user data;
+- `data/warehouse.db`, `data/warehouse_solar.db`, `data/vacations.db` и любые
+  `.db`/`.sqlite` with user data;
 - WAL/SHM/journal;
 - Preview workspace/candidate;
 - source/legacy Excel;
@@ -61,6 +62,8 @@ python3 scripts/audit_repository_data.py
 Он запрещает runtime-базы и SQLite sidecars, monitoring JSON, локальные
 backup/release/export/migration artifacts, Excel/CSV/ZIP с данными и
 SQLite-содержимое под замаскированным расширением. В репозитории остаются
-только `data/README.md` и `migration_inputs/README.md`; отсутствующая
-`data/warehouse.db` создаётся локально при первом запуске с пустыми
-операционными таблицами.
+только `data/README.md` и `migration_inputs/README.md`; отсутствующие
+`data/warehouse.db`, `data/warehouse_solar.db` и `data/vacations.db` создаются
+локально обычным startup. Solar получает только одноразовый snapshot
+справочников и ноль operational rows, Vacations — пустой roster в собственной
+схеме.

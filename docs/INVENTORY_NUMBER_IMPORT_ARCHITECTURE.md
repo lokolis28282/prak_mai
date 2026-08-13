@@ -3,10 +3,13 @@
 Дата актуализации: 2026-07-14.
 
 Документ является нормативным контрактом массового назначения Inventory Number
-в текущем исходном коде ODE 0.21.0. Номер Stage 0.13.2 сохраняет provenance
+в текущем исходном коде ODE 0.21.1. Номер Stage 0.13.2 сохраняет provenance
 первоначальной реализации и не является текущей версией продукта. Актуальный
 source package и release gate определяются living index и
-`RELEASE_REPORT_ODE_0_21_0.md`; исторические ZIP Stage 0.13.2 не создавались.
+`RELEASE_REPORT_ODE_0_21_1.md`; исторические ZIP Stage 0.13.2 не создавались.
+
+Patch 0.21.1 не меняет Preview/Confirm, S/N lookup, transaction или audit
+contract этого workflow.
 
 ## Назначение и границы
 

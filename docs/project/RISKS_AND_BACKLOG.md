@@ -1,6 +1,6 @@
-# Risks and Backlog — ODE 0.21.0
+# Risks and Backlog — ODE 0.21.1
 
-Актуализировано: 2026-08-11.
+Актуализировано: 2026-08-13.
 
 ## P0 — всегда блокирует выпуск
 
@@ -40,7 +40,8 @@
 - backup schedule/rotation/retention/encryption и restore acceptance;
 - deployment/update/rollback и network filesystem rejection;
 - concurrent operator acceptance;
-- Windows package metadata/build/sign-off;
+- физический Windows double-click/install/update sign-off 0.21.1; архивы
+  0.21.0 отозваны и не являются допустимым fallback;
 - explicit empty-install bootstrap без runtime DB в code release;
 - optional coordinated Git history cleanup старых data blobs — только в
   maintenance window, без force rewrite в обычной разработке.

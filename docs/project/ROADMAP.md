@@ -1,4 +1,4 @@
-# Roadmap после ODE 0.21.0
+# Roadmap после ODE 0.21.1
 
 ## Что уже в рабочем runtime
 
@@ -42,7 +42,8 @@
   затем отдельное решение о message transports;
 - Reports/Knowledge/Vacations: retention, backup drill и operator acceptance
   внутри собственных boundaries;
-- Windows: source package 0.21.0 собран; остаются install/update/sign-off на
-  целевом ноутбуке и фиксация его среды;
+- Windows: package closure и CRLF launcher исправлены в 0.21.1; остаются
+  install/update/double-click sign-off на целевом ноутбуке и фиксация его
+  среды. Архивы 0.21.0 для повторного переноса отозваны;
 - target Platform/DDL: продолжать side-by-side и публиковать только после
   отдельного rehearsal/cutover решения, не поверх рабочего Warehouse.

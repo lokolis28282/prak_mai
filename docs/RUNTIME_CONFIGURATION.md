@@ -1,4 +1,7 @@
-# ODE 0.21.0 — runtime-конфигурация
+# ODE 0.21.1 — runtime-конфигурация
+
+Patch сохраняет CLI/env defaults и добавляет fail-closed защиту от выбора
+production runtime-файла для test/disposable DB.
 
 Статус: **CURRENT RUNTIME CONTRACT**. Этот документ перечисляет поддержанные
 аргументы процесса и env-переменные. Он не является инструкцией сетевого
@@ -33,7 +36,13 @@ python3 app.py
 | `--inventory-state-root` | системный внешний state root | Workspace FULL Inventory; не размещать в Git/release. |
 
 `start_windows.bat` и `start_macos.command` используют безопасные defaults.
-`start_test_*` создают отдельные disposable DB и включают `ODE_TEST_MODE=1`.
+`start_test_*` создают отдельные disposable DB, явно передают все три пути и
+включают `ODE_TEST_MODE=1` только для дочернего процесса.
+
+В test и marker-guarded pilot/full review значения production auxiliary env не
+используются: state FULL Inventory, Knowledge uploads, Monitoring rules и
+backup roots принудительно направляются во временный owned-каталог. Live DCIM
+отключён; временный каталог очищается при завершении runtime.
 
 ## Рабочие env-переменные
 
@@ -67,12 +76,43 @@ email/Rooms и не принимает transport API keys.
 
 | Переменная | Где допустима | Защита |
 |---|---|---|
-| `ODE_TEST_MODE=1` | `start_test_*`, disposable DB | Startup отклоняет рабочую `data/warehouse.db` и её hardlink. |
+| `ODE_TEST_MODE=1` | `start_test_*`, три явные disposable DB | Обязательны `--db`, `--solar-db`, `--vacations-db`; marker `ODE_DISPOSABLE_TEST_DB_V1` и роли `warehouse`/`warehouse`/`vacations`. Production aliases, неверная роль, отсутствие marker и любой SQLite sidecar отклоняются до writes. |
 | `ODE_MIGRATION_PILOT=1` | marker-guarded pilot DB | Требует точное имя/marker/stage/status, integrity/FK и отсутствие sidecars. |
 | `ODE_FULL_MIGRATION_CANDIDATE=1` | full migration review DB | Только read-only review; не обычный launcher и не production DB. |
 
 Не сохраняйте эти flags глобально в профиле пользователя. Обычный запуск с
 review flag и рабочей БД обязан завершиться fail-closed.
+
+`scripts/create_clean_test_db.py` и
+`scripts/create_clean_vacations_test_db.py` применяют ту же allowlist boundary:
+ни один disposable output не может указывать на любую из трёх runtime-БД или
+быть её filesystem alias. Existing output перезаписывается только с
+`--overwrite`, exact marker `ODE_DISPOSABLE_TEST_DB_V1` и той же ролью;
+unmarked/foreign DB и target с `-wal`/`-shm`/`-journal` остаются нетронутыми.
+Непосредственно перед атомарной заменой builders повторно проверяют marker,
+роль, inode/content metadata и sidecars; target, появившийся или изменившийся
+за время сборки, не заменяется.
+
+Штатные пути 0.21.1:
+
+- `data/warehouse_test_disposable_v1.db` — IXcellerate, роль `warehouse`;
+- `data/warehouse_solar_test_disposable_v1.db` — Solar, роль `warehouse`;
+- `data/vacations_test_disposable_v1.db` — Vacations, роль `vacations`.
+
+Legacy unmarked `*_test_clean.db` launcher не использует и не переименовывает.
+Обычный production startup отвергает marked test DB независимо от её имени.
+Три выбранных runtime-path должны быть попарно различны (включая hardlink и
+совпадение имени по регистру), а installation-owned IX/Solar/Vacations path
+может использоваться только в своей роли.
+Кроме test mode, любой обычный/review startup fail-closed, если рядом с любой
+выбранной DB уже существует `-wal`, `-shm` или `-journal`; проверка завершается
+до schema initialization.
+
+Warehouse clean builder сохраняет источник неизменным: без фактического
+sidecar idle persistent-WAL DB читается `mode=ro&immutable=1`; при существующем
+committed WAL используется обычное read-only соединение и SQLite Backup API,
+чтобы snapshot включал committed WAL rows. SHA-256 main DB/WAL/journal
+сравниваются до и после.
 
 ## Чего нет
 

@@ -1,6 +1,6 @@
 # FRONTEND_CONTRACTS
 
-Текущий runtime: ODE 0.21.0.
+Текущий runtime: ODE 0.21.1. Patch не меняет DOM/API business contracts.
 
 ## Warehouse stabilization contract
 

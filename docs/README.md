@@ -14,7 +14,7 @@ repository, включая рабочий Warehouse source/runtime track, нах
 [Monitoring and Knowledge Base](MONITORING_KNOWLEDGE_GUIDE.md). Этот документ
 не меняет нормативный статус target ODE 0.13 architecture track.
 
-Актуальные операционные документы версии 0.21.0 (главный вход —
+Актуальные операционные документы версии 0.21.1 (главный вход —
 [`README.md`](../README.md) в корне):
 [границы модулей](MODULE_ARCHITECTURE.md),
 [Multi-Warehouse IXcellerate/Solar](MULTI_WAREHOUSE_ARCHITECTURE.md),
@@ -28,9 +28,9 @@ repository, включая рабочий Warehouse source/runtime track, нах
 [операции контроля качества данных](DATA_QUALITY_OPERATIONS.md),
 [история реализованных этапов](STAGES_HISTORY.md),
 [runbook рабочей БД](LOCAL_WORKING_DATABASE_RUNBOOK.md) и
-[ручная приёмка 0.18.1](MANUAL_TESTING_0_18_1.md),
+[ручная Windows-приёмка 0.21.1](MANUAL_TESTING_0_21_1_WINDOWS.md),
 [датированный multi-DB backup review](project/reviews/2026-07-27_ODE_0_18_1_MULTI_DB_BACKUP.md)
-и [release gate 0.21.0](../RELEASE_REPORT_ODE_0_21_0.md).
+и [release-candidate gate 0.21.1](../RELEASE_REPORT_ODE_0_21_1.md).
 Полная опись 0.15.0 сохранена как исторический снимок и не выдаётся за
 текущую топологию.
 

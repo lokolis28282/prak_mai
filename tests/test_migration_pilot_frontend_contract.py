@@ -17,6 +17,9 @@ class MigrationPilotFrontendContractTest(unittest.TestCase):
         )
         cls.product_js = (ROOT / "static/js/product.js").read_text(encoding="utf-8")
         cls.webapp = (ROOT / "inventory/webapp.py").read_text(encoding="utf-8")
+        cls.web_runtime = (
+            ROOT / "inventory/core/web_runtime.py"
+        ).read_text(encoding="utf-8")
         cls.warehouse_routes = (
             ROOT / "inventory/routes/warehouse.py"
         ).read_text(encoding="utf-8")
@@ -77,17 +80,17 @@ class MigrationPilotFrontendContractTest(unittest.TestCase):
             self.warehouse_routes,
         )
         self.assertIn("migration_pilot_status.get(\"enabled\") and path != \"/api/logout\"", self.webapp)
-        self.assertIn("validate_migration_pilot_database(args.db)", self.webapp)
+        self.assertIn("validate_migration_pilot_database(db_path)", self.web_runtime)
         self.assertLess(
-            self.webapp.index("validate_migration_pilot_database(args.db)"),
-            self.webapp.index("app_context = create_application_context("),
+            self.web_runtime.index("validate_migration_pilot_database(db_path)"),
+            self.web_runtime.index("app_context = create_application_context("),
         )
         self.assertIn(
             'initialize_database=not migration_pilot_status.get("enabled")',
-            self.webapp,
+            self.web_runtime,
         )
         self.assertIn(
-            'and not migration_full_status.get("read_only")', self.webapp
+            'and not migration_full_status.get("read_only")', self.web_runtime
         )
         self.assertIn("МИГРАЦИОННЫЙ ПИЛОТ", self.template)
         self.assertIn("migration-pilot-banner", self.css)

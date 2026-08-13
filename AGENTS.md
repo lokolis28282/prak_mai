@@ -37,12 +37,13 @@
 0.13 architecture index — в `docs/README.md`, пользовательская инструкция —
 в `README.md`.
 
-Current source: ODE `0.21.0` с Multi-Warehouse IXcellerate/Solar, отдельным
+Current source: ODE `0.21.1` с Multi-Warehouse IXcellerate/Solar, отдельным
 Vacations bounded context, multi-database backup профилем Administration и
 физически выделенными Web routes/templates, Warehouse, Reports и
 Administration boundaries. FULL Inventory Preview / resolutions и disposable
-baseline rehearsal сохранены. Последний фактический ZIP остаётся
-`ODE_0.21.0_windows_source.zip`; физический Windows sign-off ещё не выполнен.
+baseline rehearsal сохранены. Windows package closure и CRLF launcher
+исправлены в patch-релизе; текущий ZIP —
+`ODE_0.21.1_windows_source.zip`. Физический Windows sign-off ещё не выполнен.
 
 ## Текущий локальный контур (2026-07-27)
 
@@ -359,9 +360,9 @@ python3 scripts/migration_pilot.py validate
 Pilot gate also verifies raw/normalized/production hashes, marker/counts,
 identifier text round-trip, pilot integrity/FK/no sidecars, role/mutation
 boundaries, unchanged runtime-copy SHA and a separate headless pilot scenario.
-Current full discover result is 703 tests under
-`-W error::ResourceWarning` (`skipped=8` на Linux/macOS, `skipped=15` на
-Windows — платформенные и отсутствующие ignored migration-артефакты).
+Current full discover result is 754 tests under
+`-W error::ResourceWarning` (`skipped=8` в подтверждённом macOS gate;
+физическая Windows-приёмка остаётся pending).
 Never run a 51,003-row operational import as a performance test.
 
 ## Codebase memory (только developer tooling)
@@ -422,7 +423,7 @@ Stage создаётся датированный report/appendix.
 5. Актуальные release-заметки хранить в `RELEASE_REPORT_ODE_*.md`; release-
    архивы находятся в `release/` и не коммитятся.
 
-## Известные ограничения (source/runtime 0.21.0; source-ZIP 0.21.0)
+## Известные ограничения (source/runtime 0.21.1; source-ZIP 0.21.1)
 
 - SQLite не рассчитана на активную многопользовательскую запись — актуально
   для этапов «несколько инженеров» и «сервер», требует отдельного решения.

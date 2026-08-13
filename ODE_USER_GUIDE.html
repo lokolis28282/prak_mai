@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ODE 0.21.0 — инструкция пользователя</title>
+  <title>ODE 0.21.1 — инструкция пользователя</title>
   <style>
     :root {
       color-scheme: light;
@@ -170,7 +170,7 @@
 <body>
   <header class="hero">
     <div class="hero-inner">
-      <span class="badge">ODE 0.21.0 · рабочая инструкция</span>
+      <span class="badge">ODE 0.21.1 RC · рабочая инструкция</span>
       <h1>Спокойная работа без случайных ошибок</h1>
       <p>Запуск, склад, мониторинг, отчёты и резервные копии — понятными шагами для инженера.</p>
     </div>
@@ -194,14 +194,22 @@
     <main>
       <section id="start">
         <h2>Быстрый запуск за 3 минуты</h2>
+        <div class="callout warn">
+          <strong>Статус Windows-приёмки — PENDING</strong>
+          0.21.1 RC является кандидатом для проверки на рабочем Windows-ноутбуке, а не утверждённым rollout. Итог фиксируется только по <code>docs/MANUAL_TESTING_0_21_1_WINDOWS.md</code>.
+        </div>
         <ol class="steps">
-          <li>Полностью распакуйте ZIP в отдельную папку, например <code>C:\ODE_0.21.0</code>.</li>
+          <li>Полностью распакуйте ZIP 0.21.1 в новую папку, например <code>C:\ODE_0.21.1</code>. Архивы 0.21.0 для повторного переноса отозваны.</li>
           <li>Убедитесь, что установлен Python 3.10 или новее.</li>
           <li>Дважды щёлкните <code>start_windows.bat</code>.</li>
           <li>Если браузер не открылся, откройте <code>http://127.0.0.1:8765</code>.</li>
           <li>Нажмите <b>Начать работу</b> и укажите настоящее ФИО.</li>
           <li>Откройте <b>Склад</b> и выберите <b>IXcellerate</b> или <b>Solar</b>.</li>
         </ol>
+        <div class="callout warn">
+          <strong>Ошибки <code>'3'</code>, <code>'cho'</code>, <code>'DE' is not recognized</code> или <code>ModuleNotFoundError: baseline_rehearsal</code>?</strong>
+          Остановитесь: не исправляйте файлы вручную и не трогайте базы <code>.db</code>. Распакуйте 0.21.1 в новую папку по <code>README_WINDOWS.md</code>.
+        </div>
         <div class="callout warn">
           <strong>Видите надпись «ТЕСТОВЫЙ КОНТУР»?</strong>
           Это учебная база. В ней можно проверять интерфейс, но её операции не являются рабочими.

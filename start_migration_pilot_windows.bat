@@ -25,6 +25,13 @@ if %errorlevel%==0 (
     set "PY=python"
 )
 
+%PY% -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul
+if errorlevel 1 (
+    echo Для ODE требуется Python 3.10 или новее.
+    pause
+    exit /b 1
+)
+
 echo МИГРАЦИОННЫЙ ПИЛОТ
 echo Фактический путь DB: %CD%\%PILOT_DB%
 echo Проверяю marker, integrity, foreign keys и SQLite sidecars...

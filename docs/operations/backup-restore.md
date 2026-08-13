@@ -1,9 +1,13 @@
 # Backup and restore
 
 Статус: **PARTIALLY IMPLEMENTED** — create/status реализованы с ODE 0.18.1 и
-поддерживаются в текущем ODE 0.21.0; restore остаётся **PROPOSED** по ADR-013.
+поддерживаются в текущем ODE 0.21.1; restore остаётся **PROPOSED** по ADR-013.
 
-## Current ODE 0.21.0 runtime slice
+## Current ODE 0.21.1 runtime slice
+
+Patch 0.21.1 не меняет backup/restore API или manifest contract. Усилены
+общие pre-write проверки трёх runtime-путей, production aliases, marker/role и
+SQLite sidecars; test/review backup roots изолируются во временном runtime.
 
 Administration регистрирует три независимых файла:
 

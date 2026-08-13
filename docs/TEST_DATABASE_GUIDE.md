@@ -9,9 +9,10 @@ DB и не принимает путь к `data/warehouse.db`.
 рабочие БД: `data/warehouse.db`, `data/warehouse_solar.db` и
 `data/vacations.db`.
 
-**FACT (source Stage 0.13.3A; runtime metadata `0.12.17.1 RC2`):** этот UI test
-contour и migration candidate — разные артефакты. Команды Warehouse ниже
-создают `data/warehouse_test_clean.db` / `data/warehouse_solar_test_clean.db`;
+**ORIGIN FACT (source Stage 0.13.3A; current runtime ODE 0.21.1):** этот UI
+test contour и migration candidate — разные артефакты. Команды Warehouse ниже
+создают `data/warehouse_test_disposable_v1.db` /
+`data/warehouse_solar_test_disposable_v1.db`;
 они не строят reference staging. Vacations получает отдельную пустую БД.
 
 ## Скрипт
@@ -22,7 +23,7 @@ python3 scripts/create_clean_test_db.py --profile empty
 python3 scripts/create_clean_test_db.py --profile demo --overwrite
 python3 scripts/create_clean_test_db.py \
   --source data/warehouse_solar.db \
-  --output data/warehouse_solar_test_clean.db \
+  --output data/warehouse_solar_test_disposable_v1.db \
   --profile empty --overwrite
 python3 scripts/create_clean_vacations_test_db.py --overwrite
 ```
@@ -34,7 +35,7 @@ python3 scripts/create_clean_vacations_test_db.py --overwrite
   согласованный Backup API snapshot (включая committed WAL) и никогда не
   пишет в источник.
 - `--output` — путь к создаваемой тестовой базе (по умолчанию
-  `data/warehouse_test_clean.db`).
+  `data/warehouse_test_disposable_v1.db`).
 - `--profile empty` — очистить операционные данные, ничего не добавлять.
 - `--profile demo` — очистить операционные данные и добавить небольшой
   демонстрационный набор (2 сервера, 1 SSD, 1 кабель, одно списание, один
@@ -42,13 +43,15 @@ python3 scripts/create_clean_vacations_test_db.py --overwrite
   (`stock_receipts`/`stock_issues`), что использует само приложение.
 - `--dry-run` — ничего не создавать и не изменять, только показать, что было
   бы сделано (количество строк по таблицам, путь вывода).
-- `--overwrite` — обязателен, если `--output` уже существует.
+- `--overwrite` — обязателен, если `--output` уже существует, и разрешает
+  замену только штатной disposable DB с marker той же роли. Неизвестный,
+  legacy unmarked или production-файл остаётся нетронутым.
 
 `create_clean_vacations_test_db.py` не копирует персональные данные из
 рабочей Vacations DB. Он устанавливает актуальную пустую Vacations-схему в
-`data/vacations_test_clean.db`, проверяет integrity/FK и публикует файл
-атомарно. Рабочий путь, symbolic/hardlink рабочей БД и target с SQLite
-sidecar-файлами отклоняются fail-closed.
+`data/vacations_test_disposable_v1.db`, проверяет integrity/FK и публикует файл
+атомарно. Рабочий путь, symbolic/hardlink рабочей БД, unmarked existing target
+и target с SQLite sidecar-файлами отклоняются fail-closed.
 
 Гарантии:
 
@@ -57,6 +60,11 @@ sidecar-файлами отклоняются fail-closed.
 - SHA-256 main DB, WAL и rollback journal источника печатаются до и после
   запуска и должны совпадать (`-shm` не сравнивается: это transient
   coordination state SQLite);
+- idle source в persistent WAL mode без фактического sidecar открывается через
+  SQLite `mode=ro&immutable=1`, поэтому marker/read probe не создаёт пустые
+  `-wal`/`-shm`; если committed `-wal` существует, источник открывается обычным
+  read-only SQLite connection и Backup API включает committed WAL-строки в
+  согласованный snapshot, не изменяя main DB/WAL/journal;
 - после сборки тестовой базы выполняются `PRAGMA integrity_check` и
   `PRAGMA foreign_key_check`; при ошибке скрипт завершается кодом 1 и не
   оставляет `--output` в частично записанном состоянии;
@@ -69,7 +77,40 @@ sidecar-файлами отклоняются fail-closed.
   повторно сверяется по SHA-256 и публикуется атомарным `os.replace`;
 - существующий output сохраняется при любой ошибке до атомарной замены;
   overwrite блокируется, если рядом есть `.db-wal`, `.db-shm` или
-  `.db-journal`, а source/output hardlink запрещен.
+  `.db-journal`, а source/output hardlink запрещен;
+- overwrite существующего target разрешён только при marker
+  `ODE_DISPOSABLE_TEST_DB_V1` и совпадающей роли: `warehouse` для обоих
+  складов, `vacations` для календаря.
+
+## Marker и startup boundary
+
+Штатные builders создают таблицу `ode_test_contour_marker` с точным marker
+`ODE_DISPOSABLE_TEST_DB_V1`. IXcellerate и Solar получают роль `warehouse`,
+Vacations — `vacations`.
+
+- `ODE_TEST_MODE=1` принимает только три явно выбранных пути `--db`,
+  `--solar-db`, `--vacations-db` с marker ожидаемой роли;
+- ordinary startup отвергает любую выбранную marked test DB, даже если путь не
+  совпадает со стандартным test-именем;
+- production/default DB и их symlink/hardlink запрещены в test/demo contour;
+- любой `-wal`, `-shm` или `-journal` рядом с любой выбранной runtime DB
+  блокирует startup до инициализации схемы и других writes;
+- marker читается immutable и fail-closed: probe не создаёт sidecar, а
+  появившийся/существующий sidecar делает роль недействительной.
+- IXcellerate, Solar и Vacations обязаны указывать на три разные физические БД;
+  hardlink, совпадающее без учёта регистра имя и перестановка штатных путей
+  между ролями отклоняются до любой записи;
+- directory/FIFO/device и malformed marker считаются invalid, а не новым
+  отсутствующим target;
+- builders повторно сверяют marker, inode, size/timestamps и sidecars сразу
+  перед `os.replace`; target, изменившийся во время долгой сборки, сохраняется.
+
+Новые имена 0.21.1 — `warehouse_test_disposable_v1.db`,
+`warehouse_solar_test_disposable_v1.db`, `vacations_test_disposable_v1.db`.
+Legacy unmarked файлы `warehouse_test_clean.db`,
+`warehouse_solar_test_clean.db`, `vacations_test_clean.db` не удаляются, не
+переименовываются и не перезаписываются launcher'ом; благодаря новым именам они
+не блокируют создание безопасного контура.
 
 ## Что очищается (операционные данные)
 
@@ -95,11 +136,11 @@ start_test_windows.bat          # Windows
 
 Оба launcher'а перед запуском пересобирают три disposable target:
 
-- `data/warehouse_test_clean.db` — IXcellerate с demo-операциями;
-- `data/warehouse_solar_test_clean.db` — Solar без operational rows;
-- `data/vacations_test_clean.db` — пустая актуальная Vacations-схема.
+- `data/warehouse_test_disposable_v1.db` — IXcellerate с demo-операциями;
+- `data/warehouse_solar_test_disposable_v1.db` — Solar без operational rows;
+- `data/vacations_test_disposable_v1.db` — пустая актуальная Vacations-схема.
 
-Затем launcher явно передаёт все три пути в `app.py web` вместе с
+Затем launcher явно передаёт все три marker-validated пути в `app.py web` вместе с
 `--warehouse-contour demo` и переменной окружения `ODE_TEST_MODE=1`. При этом
 флаге сервер добавляет в HTML баннер
 «ТЕСТОВЫЙ КОНТУР — изменения не влияют на рабочую базу» (виден на экране
@@ -107,9 +148,14 @@ start_test_windows.bat          # Windows
 `start_windows.bat` эту переменную не устанавливают и всегда открывают
 `data/warehouse.db`. Флаг изолирован внутри процесса launcher'а (`setlocal`
 на Windows, inline environment на macOS), а сервер fail-fast отказывается
-стартовать, если `ODE_TEST_MODE=1` совмещён с рабочей БД или её hardlink.
+стартовать при отсутствующем пути/marker, неверной роли, production alias или
+SQLite sidecar. Обычный startup, наоборот, отказывается открывать marked test
+DB.
 Solar наследует `demo` posting policy основного runtime, поэтому после
 переключения площадки остаются видны и общий тестовый, и `DEMO`-баннеры.
+FULL Inventory state, Knowledge uploads, Monitoring rules и backup-каталоги
+test runtime живут только во временном owned root. Live DCIM принудительно
+отключён, а временный auxiliary state удаляется после остановки процесса.
 
 Кнопки полной очистки рабочей БД в обычном интерфейсе нет и не планируется —
 только этот отдельный CLI-скрипт и его launcher'ы.
@@ -143,16 +189,25 @@ Candidate нельзя:
 - коммитить вместе с raw или другими generated artifacts;
 - считать утверждённым импортом справочников, приходов или расходов.
 
-**FUTURE STAGE:** замена тестовой operational DB реальными данными потребует
-двух проверенных backup, отдельной clean DB, manual approval candidate,
-integrity/FK/reconciliation gate и явного подтверждения установки. Полный план
-описан в [MIGRATION_DATABASE_RESET_PLAN.md](MIGRATION_DATABASE_RESET_PLAN.md).
+**HISTORICAL STAGE 0.13.3A DECISION:** на момент создания initial candidate
+его promotion был будущим этапом и требовал двух backup, manual approval,
+integrity/FK/reconciliation gate и явного подтверждения установки. Позднее
+полный historical candidate прошёл отдельную контролируемую promotion в
+IXcellerate `data/warehouse.db`; это не превращает initial Stage A candidate,
+pilot или clean-test DB в разрешённый replacement. Фактическая процедура и
+evidence отделены от тестового контура в
+[MIGRATION_DATABASE_RESET_PLAN.md](MIGRATION_DATABASE_RESET_PLAN.md) и
+[LOCAL_WORKING_DATABASE_RUNBOOK.md](LOCAL_WORKING_DATABASE_RUNBOOK.md).
+
+**CURRENT LOCAL FACT:** штатный runtime уже использует promoted historical
+IXcellerate DB; clean-test builder по-прежнему создаёт только disposable
+marker contour и никогда не выполняет production promotion.
 
 ## Preservation-aware pilot DB Stage 0.13.3A.5
 
 **PILOT ONLY:** `warehouse_pilot_candidate.db` is a third, distinct contour:
 
-- it is not `data/warehouse_test_clean.db`;
+- it is not `data/warehouse_test_disposable_v1.db`;
 - it is not the Stage A `warehouse_migration_candidate.db`;
 - it is never `data/warehouse.db`;
 - it contains exactly the selected pilot operations/provenance and an exact

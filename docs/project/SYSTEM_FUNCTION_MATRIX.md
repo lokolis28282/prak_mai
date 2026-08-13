@@ -1,6 +1,6 @@
-# Матрица функций ODE 0.21.0
+# Матрица функций ODE 0.21.1
 
-Актуализировано: 2026-08-11. Это living-карта текущего runtime: где находится
+Актуализировано: 2026-08-13. Это living-карта текущего runtime: где находится
 функция, через какую границу она работает, чем хранится и как проверяется.
 
 Обозначения: **write** — меняет только принадлежащую модулю БД; **read** — не
@@ -11,7 +11,7 @@
 | Функция | Runtime-граница | Данные/эффект | Проверка |
 |---|---|---|---|
 | `python app.py` | `app.py → inventory.webapp` | Подключает IXcellerate, Solar и Vacations | startup/unit/headless smoke |
-| Вход инженера и credentialed/admin | `/api/login` → in-memory session + backend permission | `ode_session`; login audit в primary DB | auth/security tests; API-key/Bearer отсутствуют |
+| Вход инженера и credentialed/admin | `/api/login` → in-memory session + backend permission | `ode_session`; успешный credentialed admin login пишет `LOGIN` в primary audit, вход инженера по ФИО не пишет login audit | auth/security tests; API-key/Bearer отсутствуют |
 | Главная и карточки модулей | внешний HTML + `static/js` | Только навигация | frontend audit + Chrome |
 | Выбор IXcellerate/Solar | `ApplicationContext → WarehouseFacade` | Site хранится в session, DB физически раздельны | multi-warehouse tests + Chrome |
 | Глобальный поиск | `/api/global-search` | read по оборудованию, поставкам и инженерам | API/unit/headless |
@@ -82,6 +82,6 @@
 - корректировка/сторно проведённой складской операции;
 - точная slot/rack topology установленного компонента;
 - серверный многопользовательский deployment;
-- физически подтверждённый Windows rollout 0.21.0;
+- физически подтверждённый Windows rollout 0.21.1 (manual QA пока PENDING);
 - transport-интеграции email/Rooms/Kaiten.
 - API-key/Bearer/OAuth machine authentication и опубликованный внешний API.

@@ -1,6 +1,7 @@
 # ODE Project Hub
 
-Дата актуализации: 2026-08-11. Текущий source/runtime: ODE 0.21.0.
+Дата актуализации: 2026-08-13. Текущий source/runtime: ODE 0.21.1 release
+candidate; физический Windows sign-off остаётся PENDING.
 
 Это главная точка входа в текущее состояние проекта. Hub не копирует ADR,
 DDL или stage evidence, а связывает их и явно разделяет два параллельных
@@ -33,7 +34,13 @@ DDL или stage evidence, а связывает их и явно разделя
 17. [Multi-DB backup/restore](../decisions/ADR-013-multi-database-backup-restore.md)
     — реализованный status/create-backup slice и обязательный контракт будущего
     restore.
-18. [Reports architecture](../REPORTS_ARCHITECTURE.md) — УВР, PNR, передача по
+18. [Windows manual QA 0.21.1](../MANUAL_TESTING_0_21_1_WINDOWS.md) —
+    обязательный double-click checklist и честный PENDING до физической
+    приёмки.
+19. [История версий](VERSION_HISTORY.md) и root
+    [`CONTRIBUTORS.md`](../../CONTRIBUTORS.md) — lineage и нейтральное
+    распределение направлений.
+20. [Reports architecture](../REPORTS_ARCHITECTURE.md) — УВР, PNR, передача по
     смене, XLSX/CSV contracts и граница Warehouse events.
 
 ## Иерархия источников

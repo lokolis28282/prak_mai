@@ -25,6 +25,13 @@ if not defined ODE_PYTHON_EXE (
     exit /b 1
 )
 
+"%ODE_PYTHON_EXE%" -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul
+if errorlevel 1 (
+    echo Для ODE требуется Python 3.10 или новее.
+    pause
+    exit /b 1
+)
+
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$name='ODE LAN 8765'; Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue ^| Remove-NetFirewallRule; New-NetFirewallRule -DisplayName $name -Description 'ODE: доступ только из локальных подсетей' -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8765 -Program $env:ODE_PYTHON_EXE -RemoteAddress LocalSubnet -Profile Any ^| Out-Null"
 if errorlevel 1 (
     echo Не удалось создать правило брандмауэра.

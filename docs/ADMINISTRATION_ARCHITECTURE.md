@@ -1,4 +1,4 @@
-# Administration Architecture
+# Administration Architecture — ODE 0.21.1
 
 Administration владеет административным контуром ODE:
 
@@ -6,14 +6,16 @@ Administration владеет административным контуром 
 - пользователи и роли;
 - единый audit log;
 - список резервных копий;
-- легкий статус БД и диагностика;
+- topology, status и диагностика трёх runtime-БД;
+- создание проверенного snapshot выбранной allowlisted DB через SQLite Backup
+  API во внешний каталог;
 - административные read-only данные для UI.
 
 ## Stage 0.12.9
 
 В 0.12.9 web/API слой получает read-only административные данные через:
 
-`inventory/routes/administration.py -> ApplicationContext -> AdministrationFacade -> compatibility service`
+`inventory/routes/administration.py -> ApplicationContext -> AdministrationFacade -> AdministrationService`
 
 С ODE 0.16.0 Stage 3 `WarehouseCore` остается только deprecated compatibility
 adapter без business SQL. Administration по-прежнему является отдельной
@@ -33,7 +35,7 @@ auth/session/security и dispatch; административные HTTP-вет�
 - `email`;
 - `role`;
 - `must_change_password`;
-- engineer-session override для обычного входа по ФИО.
+- делегированный engineer session context для обычного входа по ФИО.
 
 Административная информация:
 
@@ -66,12 +68,13 @@ auth/session/security и dispatch; административные HTTP-вет�
 - абсолютные пути backup не возвращаются в read API;
 - audit read доступен только admin;
 - users read доступен только admin;
-- backup list доступен только admin;
-- write/admin actions остаются compatibility-layer до отдельного этапа.
+- backup list/create и database diagnostics доступны только admin;
+- restore и production DB upload не отображаются как доступные действия и
+  остаются fail-closed.
 
-## Legacy
+## Историческая граница Stage 0.12.9
 
-Остаются legacy:
+В Stage 0.12.9 оставались legacy:
 
 - login/logout;
 - create user;
@@ -80,3 +83,8 @@ auth/session/security и dispatch; административные HTTP-вет�
 - create/restore backup;
 - production DB upload;
 - explicit integrity check action.
+
+В текущем ODE 0.21.1 login/users/profile/diagnostics и создание multi-DB
+snapshot уже принадлежат `AdministrationService`. Из перечисленного опасные
+restore/upload остаются недоступными, а logout является только операцией
+in-memory HTTP session.

@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
+from unittest import mock
 
 from inventory.vacations import VacationError, VacationFacade
 from inventory.vacations.schema import (
@@ -78,6 +79,38 @@ class VacationPlanningTest(unittest.TestCase):
         os.link(warehouse, hardlink)
         with self.assertRaisesRegex(RuntimeError, "hardlink"):
             prepare_vacations_database(warehouse, hardlink)
+
+    def test_installation_warehouse_databases_are_always_forbidden_for_vacations(self) -> None:
+        from inventory.shared import runtime_paths
+
+        custom_primary = Path(self.tmp.name) / "custom-primary.db"
+        with closing(sqlite3.connect(custom_primary)) as db:
+            db.execute("CREATE TABLE custom_marker(id INTEGER PRIMARY KEY)")
+        protected_paths = {
+            "IXcellerate": Path(self.tmp.name) / "installation-warehouse.db",
+            "Solar": Path(self.tmp.name) / "installation-solar.db",
+            "Vacations": Path(self.tmp.name) / "installation-vacations.db",
+        }
+        for protected in protected_paths.values():
+            with closing(sqlite3.connect(protected)) as db:
+                db.execute("CREATE TABLE protected_marker(id INTEGER PRIMARY KEY)")
+        with mock.patch.dict(
+            runtime_paths.RUNTIME_DATABASE_PATHS, protected_paths, clear=True
+        ):
+            for label in ("IXcellerate", "Solar"):
+                protected = protected_paths[label]
+                before = protected.read_bytes()
+                with self.subTest(protected=label), self.assertRaisesRegex(
+                    RuntimeError, "отдельна"
+                ):
+                    prepare_vacations_database(custom_primary, protected)
+                self.assertEqual(protected.read_bytes(), before)
+
+                hardlink = Path(self.tmp.name) / f"{protected.stem}-hardlink.db"
+                os.link(protected, hardlink)
+                with self.assertRaisesRegex(RuntimeError, "hardlink"):
+                    prepare_vacations_database(custom_primary, hardlink)
+                self.assertEqual(protected.read_bytes(), before)
 
     def test_fictional_roster_and_one_three_cycle_match_schedule(self) -> None:
         self.assertEqual(len(self.bootstrap["employees"]), 8)

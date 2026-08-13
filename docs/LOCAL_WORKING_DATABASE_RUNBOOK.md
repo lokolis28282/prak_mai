@@ -1,4 +1,4 @@
-# Local Working Database Runbook
+# Local Working Database Runbook — ODE 0.21.1
 
 ## Reference changes and proven test-data correction
 
@@ -18,28 +18,34 @@ correction повторите SHA/counts/distinct/leading-zero samples/integrity
 browser. Полная ручная проверка описана в
 `MANUAL_TESTING_WAREHOUSE_STABILIZATION.md`.
 
-Дата: 2026-07-14. Область действия: один локальный экземпляр ODE.
+Дата исходной promotion: 2026-07-14. Текущая актуализация runtime boundary:
+2026-08-13. Область действия: один локальный экземпляр ODE.
 
-## Два изолированных складских контура
+## Три runtime-БД: два склада и отдельные отпуска
 
-Из корня репозитория обычный запуск всегда использует один путь:
+Из корня репозитория обычный запуск одновременно компонует три
+installation-owned пути:
 
 ```bash
 cd ~/Documents/prak_mai
 python3 app.py
 ```
 
-Основная БД IXcellerate: `data/warehouse.db`. В консоли должны появиться `WORKING
-DATABASE`, её абсолютный путь, версия ODE, число карточек и integrity status.
+Основная БД IXcellerate — `data/warehouse.db`, Solar —
+`data/warehouse_solar.db`, Vacations — `data/vacations.db`. В консоли должны
+появиться `WORKING DATABASE`, абсолютные runtime paths, версия ODE, число
+карточек и integrity status.
 Интерфейс доступен на `http://127.0.0.1:8765` и открывается на обычной главной
 странице. Migration env/launchers для рабочей смены не нужны.
 
 При входе в `Склад` выберите `IXcellerate` или `Solar`. Solar использует
 `data/warehouse_solar.db`. Если файла ещё нет, обычный startup атомарно создаёт
 его с нулевыми operational rows и одноразовым снимком справочников IXcellerate.
-Существующий Solar-файл startup не перезаписывает. Перед переносом или
-восстановлением сохраняйте и проверяйте обе БД отдельно. Полная граница:
-[`MULTI_WAREHOUSE_ARCHITECTURE.md`](MULTI_WAREHOUSE_ARCHITECTURE.md).
+Существующий Solar-файл startup не перезаписывает. Vacations создаётся с пустым
+roster и собственной схемой; `vacation_*` не устанавливаются в Warehouse DB.
+Перед переносом сохраняйте и проверяйте все три БД отдельно. Полные границы —
+в [`MULTI_WAREHOUSE_ARCHITECTURE.md`](MULTI_WAREHOUSE_ARCHITECTURE.md) и
+[`VACATIONS_ARCHITECTURE.md`](VACATIONS_ARCHITECTURE.md).
 
 `migration_inputs/workspace/warehouse_full_candidate.db` — immutable build
 artifact, из которого была получена рабочая БД. Pilot и остальные candidate DB
@@ -99,29 +105,37 @@ security hashes/roles и migration provenance при startup не изменил
 
 ## Backup перед будущим изменением
 
-1. Остановить ODE и проверить отсутствие процессов, открывших рабочую БД на
-   запись, а также `warehouse.db-wal`, `warehouse.db-shm` и
-   `warehouse.db-journal`.
+Сначала выпишите exact target и профиль (`warehouse_ix`, `warehouse_solar` или
+`vacations`). Для переноса/обновления кода фиксируйте состояние всех трёх DB;
+для точечной data correction снимайте обе независимые копии именно меняемого
+target и не подменяйте его файлом другой роли.
+
+1. Остановить ODE и проверить отсутствие процессов, открывших любую runtime DB
+   на запись, а также `-wal`, `-shm` и `-journal` рядом с каждым из трёх
+   файлов.
 2. Создать каталог `~/ODE_Backups/<timestamp>/` вне Git.
-3. Снять точную byte-copy остановленного файла и независимый snapshot через
-   SQLite Backup API/CLI `.backup`.
+3. Снять точную byte-copy остановленного exact target и независимый snapshot
+   через SQLite Backup API/CLI `.backup`.
 4. Сохранить `SHA256SUMS` и manifest: время, HEAD, исходный путь, размер, SHA,
    integrity/FK, security/user count, ключевые row counts и причину.
 5. Открыть обе копии read-only и независимо проверить SHA,
    `PRAGMA integrity_check`, `PRAGMA foreign_key_check` и counts.
 
 Не удалять и не перезаписывать исходную БД, пока обе копии не подтверждены. Не
-класть backup в репозиторий и не выполнять обычный `cp` поверх открытой
-SQLite-БД.
+класть backup в репозиторий, не менять target role и не выполнять обычный
+`cp` поверх открытой SQLite-БД. Restore из UI/API отключён до ADR-013.
 
 ## Проверка изменений
 
-- Для unit/integration/browser smoke сначала сделать byte-copy рабочей БД во
-  временный каталог и передать её через `--db`.
+- Для unit/integration/browser mutation-smoke использовать штатные
+  `start_test_macos.command` / `start_test_windows.bat`. Они строят и явно
+  подключают три разные marker-validated disposable DB; произвольная byte-copy
+  с одиночным `--db` не является test contour.
 - Любые тесты прихода, расхода, пользователя, пароля или другого mutation
-  выполнять только на этой копии.
-- После теста проверить копию на integrity/FK, завершить сервер/Chrome и удалить
-  временные sidecars. Финальную `data/warehouse.db` не использовать как fixture.
+  выполнять только при видимом баннере `ТЕСТОВЫЙ КОНТУР`.
+- После теста проверить disposable-копии на integrity/FK, завершить
+  сервер/Chrome и удалить временные sidecars. Ни одну из трёх runtime DB не
+  использовать как fixture; их SHA до/после должен совпасть.
 - Exact S/N проверять как минимум на leading-zero и long identifiers; отдельно
   проверять Equipment Card, receipt/issue history, opening state и баланс.
 
@@ -130,17 +144,22 @@ Gate выполненной promotion: Python/JavaScript syntax, module/frontend
 smoke. Оба browser smoke завершились с нулём console/window/unhandled/resource/
 HTTP/API500 errors; исходный candidate сохранил SHA и не получил sidecars.
 
-## Rollback рабочей БД
+## Остановленный rollback exact target
+
+Ниже описан maintenance fallback, а не доступная функция ODE. Для каждого
+target используются его собственные manifest/schema profile и sibling
+`<exact-name>.next`; нельзя восстанавливать Warehouse backup в Vacations или
+наоборот.
 
 1. Остановить ODE. Не продолжать rollback при активном writer или sidecar.
 2. Выбрать byte-copy либо SQLite snapshot из конкретного backup-каталога;
-   сверить его с `SHA256SUMS` и manifest, затем проверить integrity/FK/users и
-   ожидаемые counts.
+   сверить его с `SHA256SUMS` и manifest, затем проверить integrity/FK,
+   target-specific required tables и ожидаемые counts.
 3. Сохранить текущее проблемное состояние отдельно для расследования.
-4. Поместить проверенную rollback-копию как sibling
-   `data/warehouse.db.next`, ещё раз открыть read-only и проверить.
-5. Выполнить атомарный `os.replace(data/warehouse.db.next,
-   data/warehouse.db)` на том же файловом разделе.
+4. Поместить проверенную rollback-копию как sibling `<exact-target>.next`, ещё
+   раз открыть read-only и проверить target-specific required tables.
+5. Выполнить атомарный `os.replace(<exact-target>.next, <exact-target>)` на том
+   же файловом разделе.
 6. Запустить `python3 app.py`, сверить консольный contour, авторизацию,
    карточки/баланс и отсутствие HTTP/browser errors.
 

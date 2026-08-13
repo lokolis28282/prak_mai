@@ -1,6 +1,6 @@
-# Руководство разработчика и ревьюера ODE 0.21.0
+# Руководство разработчика и ревьюера ODE 0.21.1
 
-Актуализировано: 2026-08-11. Это короткая точка входа для человека, который
+Актуализировано: 2026-08-13. Это короткая точка входа для человека, который
 читает, проверяет или изменяет код. Нормативные ограничения репозитория остаются
 в корневом [`AGENTS.md`](../AGENTS.md).
 
@@ -50,6 +50,12 @@ Runtime data разделены физически:
 Эти файлы, backup, raw migration input, exports, screenshots и release ZIP не
 коммитятся.
 
+Windows source package 0.21.1 собирается только через
+`build_windows_package.py`: изолированный staging, полный runtime closure и
+CRLF без BOM для BAT. Архивы 0.21.0 отозваны; не чините их вручную и не
+смешивайте их содержимое с 0.21.1. Физический double-click verdict остаётся
+PENDING до `MANUAL_TESTING_0_21_1_WINDOWS.md`.
+
 ## 3. Архитектурные правила ревью
 
 - Новый Web/API код идёт через `ApplicationContext → public facade`; прямой
@@ -95,7 +101,9 @@ machine-auth требует отдельного principal/scopes/hash/expiry/re
 
 1. Выполните `git status --short --branch` и отделите чужой dirty diff.
 2. Для DB-related работы зафиксируйте абсолютные пути, SHA-256 и отсутствие
-   `-wal/-shm/-journal`; mutation tests запускайте только на временной копии.
+   `-wal/-shm/-journal` всех трёх runtime-БД; mutation tests запускайте только
+   штатным трёхфайловым marker-validated test launcher. Точечная disposable
+   копия допустима лишь в unit-тесте, который не стартует application runtime.
 3. Найдите реальный call path через `rg`, затем прочитайте route, facade,
    service/repository и существующие тесты.
 4. Исправьте первопричину минимальным связным изменением и добавьте regression

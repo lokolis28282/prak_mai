@@ -1,6 +1,7 @@
 # Отпуска — архитектура и рабочий процесс
 
-Статус: реализовано в ODE `0.18.0`, стабилизировано в `0.18.1`, 2026-07-27.
+Статус: реализовано в ODE `0.18.0`, используется в текущем ODE `0.21.1`;
+runtime-path/test-contour guards актуализированы 2026-08-13.
 
 ## Назначение
 
@@ -133,12 +134,16 @@ Monitoring или Knowledge tables.
 нет, и идемпотентно проверяет её схему. Для отдельного контура можно передать
 `--vacations-db /absolute/path/vacations.db`.
 
-Путь отпусков валидируется: он не может совпадать с IXcellerate/Solar DB или
-быть symbolic link. `scripts/migrate_runtime_modules.py` работает только с
+Путь отпусков валидируется до schema writes: он должен быть обычным файлом или
+отсутствующим target, не может совпадать с IXcellerate/Solar DB, быть
+symbolic/hardlink alias, иметь case-colliding имя или SQLite sidecar. В
+`ODE_TEST_MODE=1` одиночный `--vacations-db` недостаточен: launcher обязан
+передать все три разные marker-validated DB, а Vacations marker должен иметь
+роль `vacations`. `scripts/migrate_runtime_modules.py` работает только с
 Reports/Knowledge в primary DB и не устанавливает Vacations.
 
-ODE 0.18.1 умеет создать отдельный проверенный backup `vacations.db` из
-Administration. Runtime restore пока отключён; ручной rollback допустим только
+Текущий Administration умеет создать отдельный проверенный backup
+`vacations.db` через SQLite Backup API. Runtime restore пока отключён; ручной rollback допустим только
 при остановленном приложении по внешнему проверенному backup/runbook и не
 должен затрагивать складские БД. Автоматизированный restore подчиняется
 ADR-013.

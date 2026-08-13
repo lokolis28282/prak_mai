@@ -1,9 +1,9 @@
-# Индекс документации ODE 0.21.0
+# Индекс документации ODE 0.21.1
 
-Актуализировано: 2026-08-11.
+Актуализировано: 2026-08-13.
 
 Документы разделены по статусу. Только раздел «Текущий продукт» описывает
-поведение установленного source/runtime ODE 0.21.0 целиком. Версионные release-
+поведение установленного source/runtime ODE 0.21.1 целиком. Версионные release-
 отчёты и датированные reviews остаются неизменяемыми доказательствами своего
 этапа и не должны восприниматься как текущая инструкция.
 
@@ -12,6 +12,7 @@
 | Что нужно узнать | Основной документ |
 |---|---|
 | Понятная инструкция для инженера | [`ODE_USER_GUIDE.md`](../../ODE_USER_GUIDE.md), offline [`HTML`](../../ODE_USER_GUIDE.html) |
+| Текущая презентация для руководителя | [`ODE_PRESENTATION.html`](../../ODE_PRESENTATION.html) — автономный обзор возможностей и планов |
 | Установка, запуск, функции пользователя | [`README.md`](../../README.md) |
 | Пошаговая рабочая инструкция оператора | [`USER_GUIDE.md`](../USER_GUIDE.md) |
 | Вход для разработчика и code reviewer | [`DEVELOPER_GUIDE.md`](../DEVELOPER_GUIDE.md) |
@@ -25,7 +26,9 @@
 | Рабочие IXcellerate/Solar/Vacations DB | [`LOCAL_WORKING_DATABASE_RUNBOOK.md`](../LOCAL_WORKING_DATABASE_RUNBOOK.md) |
 | Windows source/runtime | [`README_WINDOWS.md`](../../README_WINDOWS.md) |
 | Windows release procedure | [`WINDOWS_RELEASE.md`](../../WINDOWS_RELEASE.md) |
-| Текущий release gate | [`RELEASE_REPORT_ODE_0_21_0.md`](../../RELEASE_REPORT_ODE_0_21_0.md) |
+| Windows double-click QA | [`MANUAL_TESTING_0_21_1_WINDOWS.md`](../MANUAL_TESTING_0_21_1_WINDOWS.md) — PENDING до физической проверки |
+| Текущий release gate | [`RELEASE_REPORT_ODE_0_21_1.md`](../../RELEASE_REPORT_ODE_0_21_1.md) |
+| Версии и участники | [`VERSION_HISTORY.md`](VERSION_HISTORY.md), [`CONTRIBUTORS.md`](../../CONTRIBUTORS.md) |
 | Риски и открытый технический долг | [`RISKS_AND_BACKLOG.md`](RISKS_AND_BACKLOG.md), [`TECH_DEBT.md`](../../TECH_DEBT.md) |
 
 Дополнительные living-контракты:
@@ -58,6 +61,11 @@
   [`assets/code_graph.html`](../assets/code_graph.html) — текущая карта кода.
 
 Текущий release evidence:
+
+- [`RELEASE_REPORT_ODE_0_21_1.md`](../../RELEASE_REPORT_ODE_0_21_1.md) —
+  patch prerelease исправления Windows package/launcher и runtime path guards;
+- [`MANUAL_TESTING_0_21_1_WINDOWS.md`](../MANUAL_TESTING_0_21_1_WINDOWS.md) —
+  физический Windows checklist со статусом PENDING до исполнения;
 
 - [`RELEASE_REPORT_ODE_0_20_0.md`](../../RELEASE_REPORT_ODE_0_20_0.md) —
   выпуск поиска по целевой железке и состава оборудования;
@@ -120,7 +128,7 @@
    контракты и тесты.
 2. Release получает новый датированный report; старый report не редактируется.
 3. `python3 scripts/audit_documentation.py` проверяет локальные ссылки,
-   обязательную версию 0.21.0 в текущих документах, текущий release report и
+   обязательную версию 0.21.1 в текущих документах, текущий release report и
    запрет устаревших Windows backup/restore инструкций.
 4. Prompts не являются архитектурным решением или evidence реализации; у них
    должен быть явный статус `ACTIVE` либо `SUPERSEDED`.

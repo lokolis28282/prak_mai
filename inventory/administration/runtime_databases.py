@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+from inventory.shared.runtime_paths import same_path_or_file
+
 
 DATABASE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
 
@@ -51,14 +53,17 @@ class RuntimeDatabaseRegistry:
         if not entries:
             raise ValueError("Registry runtime-баз не может быть пустым")
         by_id: dict[str, RuntimeDatabase] = {}
-        by_path: dict[Path, str] = {}
+        registered_paths: list[Path] = []
         for database in entries:
             if database.database_id in by_id:
                 raise ValueError("Идентификаторы runtime-баз должны быть уникальны")
-            if database.path in by_path:
+            if any(
+                same_path_or_file(database.path, existing)
+                for existing in registered_paths
+            ):
                 raise ValueError("Runtime-базы должны использовать разные пути")
             by_id[database.database_id] = database
-            by_path[database.path] = database.database_id
+            registered_paths.append(database.path)
         self._databases = entries
         self._by_id = by_id
 

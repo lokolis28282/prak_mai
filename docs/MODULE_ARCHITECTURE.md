@@ -12,7 +12,7 @@ legacy `service`, `webapp`, Reports, Monitoring или offline migration package
 Stage 0.12.6 introduced product module boundaries without removing the legacy
 UI. ODE 0.16.0 physically extracts Administration, Reports and Warehouse.
 `WarehouseCore` now exists only as a deprecated compatibility adapter without
-business SQL. Current source package is `ODE_0.21.0_windows_source.zip`;
+business SQL. Current source package is `ODE_0.21.1_windows_source.zip`;
 physical Windows sign-off remains pending.
 
 ## Modules
@@ -86,7 +86,7 @@ Administration:
   Solar and Vacations; the registry never owns their business tables;
 - delegates snapshot creation to `MultiDatabaseBackupService`, which uses
   SQLite Backup API, external storage, verification, manifest and audit;
-- does not expose restore in ODE 0.18.1; ADR-013 is the required contract for
+- does not expose restore in current ODE 0.21.1; ADR-013 is the required contract for
   preview/confirm/atomic publish;
 - owns authentication, actor context, role policy and administration writes;
 - is composed as a dedicated `AdministrationService` behind
@@ -131,20 +131,24 @@ Warehouse pilot adapter:
 `WarehouseCore` is a thin compatibility adapter. It owns no business SQL and
 contains only construction/attribute routing plus deprecated Administration
 and Reports delegates. `WarehouseDomainService` is a small composition root for
-focused history, legacy inventory, balance, monitoring and reference services.
+focused history, legacy inventory, balance, Warehouse data-quality diagnostics
+(`WarehouseMonitoringService`) and reference services; that legacy class is
+not the product `MonitoringFacade`.
 Receipt, issue, cable and delivery compatibility names reuse the same service
 instances as `WarehouseFacade`.
 
-`ApplicationContext` wires
-`AdministrationFacade -> AdministrationService`, one `ReportsFacade` with a
-Warehouse-owned `WarehouseEventReader`, and one `WarehouseFacade` over the
-shared Warehouse composition. No module keeps a second implementation for old
-Python method names.
+`ApplicationContext` wires `AdministrationFacade -> AdministrationService`,
+one `ReportsFacade` with a Warehouse-owned `WarehouseEventReader`, primary
+`MonitoringFacade` and `KnowledgeFacade`, standalone `VacationFacade`, and one
+primary `WarehouseFacade`. The HTTP site registry adds the independent Solar
+Warehouse runtime. No module keeps a second implementation for old Python
+method names.
 
 Web/API receives `ApplicationContext` via `make_handler()`. Administration
 HTTP paths use `context.administration`; Reports paths use `context.reports`.
-The handler still exposes a compatibility service slot for old endpoint names,
-but the implementation is Warehouse-owned and already extracted.
+The handler still exposes a compatibility service slot for old Warehouse/Python
+names, but every product route uses its owning facade; the slot is not a second
+cross-module implementation.
 
 Stage 0.12.7 routes read-only Warehouse GET/CSV paths through:
 
@@ -167,10 +171,11 @@ ODE 0.16.0 Stage 1 completes the Administration route:
 `web/API -> ApplicationContext -> AdministrationFacade -> AdministrationService`
 
 This includes authentication, actor context, user/profile writes and integrity
-checks. Historical single-DB backup/restore/upload remains compatibility code.
+checks. Historical single-DB backup/restore/upload was compatibility code;
 ODE 0.18.1 routes the active backup UI through
 `AdministrationFacade -> AdministrationService -> MultiDatabaseBackupService`
-and disables HTTP restore until ADR-013 is implemented. Logout remains an
+for all three runtime targets and disables HTTP restore until ADR-013 is
+implemented. Logout remains an
 in-memory HTTP session operation and does not bypass the Administration
 business boundary.
 
@@ -322,6 +327,9 @@ method may be added to the compatibility adapter.
 
 - `inventory/webapp.py` owns only the local HTTP server, session/security
   middleware, request validation and response helpers.
+- `inventory/core/web_runtime.py` owns pre-write database contour validation
+  and startup composition: three DB paths, test marker/roles, sidecars,
+  review guards and `ApplicationContext` construction.
 - `inventory/routes/` owns domain HTTP branches; every route receives one
   immutable `RouteRuntime` and calls the matching facade from
   `ApplicationContext`.
@@ -336,6 +344,8 @@ method may be added to the compatibility adapter.
 - `ReportsFacade`
 - `MonitoringFacade`
 - `AdministrationFacade`
+- `KnowledgeFacade`
+- `VacationFacade`
 
 The web layer must not call `WarehouseCore` directly. Stage 3 has completed the
 backend extraction; later compatibility removal requires a separately approved

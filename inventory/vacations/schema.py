@@ -7,6 +7,7 @@ from contextlib import closing
 from pathlib import Path
 
 from inventory.shared.db import connect
+from inventory.shared.runtime_paths import RUNTIME_DATABASE_PATHS, same_path_or_file
 
 
 DEFAULT_VACATIONS_DB_PATH = (
@@ -157,15 +158,23 @@ def prepare_vacations_database(
     if candidate.is_symlink():
         raise RuntimeError("БД отпусков не может быть symbolic link")
     target = candidate.resolve()
-    forbidden = {warehouse}
+    forbidden = {"selected IXcellerate": warehouse}
     if solar_db_path:
-        forbidden.add(Path(solar_db_path).expanduser().resolve())
-    if target in forbidden:
-        raise RuntimeError("БД отпусков должна быть отдельна от складских БД")
-    if target.exists() and any(
-        path.exists() and target.samefile(path) for path in forbidden
-    ):
-        raise RuntimeError("БД отпусков не может быть hardlink складской БД")
+        forbidden["selected Solar"] = Path(solar_db_path).expanduser().resolve()
+    forbidden.update(
+        {
+            label: path
+            for label, path in RUNTIME_DATABASE_PATHS.items()
+            if label in {"IXcellerate", "Solar"}
+        }
+    )
+    for label, path in forbidden.items():
+        if same_path_or_file(target, path):
+            alias_kind = "hardlink " if target != Path(path).expanduser().resolve() else ""
+            raise RuntimeError(
+                f"БД отпусков должна быть отдельна от складских БД; "
+                f"обнаружен {alias_kind}{label}"
+            )
     try:
         install_vacations_schema(target)
     except (OSError, sqlite3.Error) as error:

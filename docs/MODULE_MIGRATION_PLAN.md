@@ -1,6 +1,6 @@
 # MODULE_MIGRATION_PLAN
 
-Статус: **HISTORICAL EXTRACTION PLAN**. Текущий ODE 0.21.0 уже смонтировал
+Статус: **HISTORICAL EXTRACTION PLAN**. Текущий ODE 0.21.1 уже смонтировал
 Monitoring UI/manual DCIM flow за `MonitoringFacade`; сохранённый legacy
 `FEATURE_MONITORING=false` не является runtime activation gate. Актуальная
 топология находится в `MODULE_ARCHITECTURE.md` и

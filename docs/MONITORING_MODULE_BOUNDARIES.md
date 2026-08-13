@@ -1,4 +1,6 @@
-# Monitoring module boundaries — ODE 0.21.0
+# Monitoring module boundaries — ODE 0.21.1
+
+Patch 0.21.1 не меняет Monitoring flow или storage boundary.
 
 Monitoring is an isolated product module. Hostname routing and an explicit
 manual DCIM enrichment workflow are implemented. Automatic alert ingestion,

@@ -15,9 +15,10 @@ echo.
 
 start "" /b powershell.exe -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 2; Start-Process 'http://127.0.0.1:%ODE_PORT%'"
 
+set "PY="
 where py >nul 2>nul
 if %errorlevel%==0 (
-    py -3 app.py web --host 0.0.0.0 --port %ODE_PORT% --no-browser
+    set "PY=py -3"
 ) else (
     where python >nul 2>nul
     if errorlevel 1 (
@@ -25,8 +26,16 @@ if %errorlevel%==0 (
         pause
         exit /b 1
     )
-    python app.py web --host 0.0.0.0 --port %ODE_PORT% --no-browser
+    set "PY=python"
 )
+%PY% -c "import sys; raise SystemExit(0 if sys.version_info >= (3,10) else 1)" >nul 2>nul
+if errorlevel 1 (
+    echo.
+    echo Для ODE требуется Python 3.10 или новее.
+    pause
+    exit /b 1
+)
+%PY% app.py web --host 0.0.0.0 --port %ODE_PORT% --no-browser
 
 if errorlevel 1 (
     echo.

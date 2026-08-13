@@ -1,7 +1,8 @@
 # Monitoring: маршрутизация по hostname
 
-Статус: **IMPLEMENTED CURRENT RUNTIME — ODE 0.21.0**. Operator UI, manual
-hostname search и optional DCIM collector реализованы. Zabbix ingestion,
+Статус: **IMPLEMENTED CURRENT RUNTIME — ODE 0.21.1**. Patch не меняет routing
+rules или payload contract. Operator UI, manual hostname search и optional
+DCIM collector реализованы. Zabbix ingestion,
 Kaiten/ITSM transport и автоматическая отправка email/Rooms отсутствуют.
 
 `MonitoringFacade.resolve_hostname()` определяет проект и подготовленные поля

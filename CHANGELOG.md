@@ -1,5 +1,58 @@
 # Changelog ODE
 
+## ODE 0.21.1 — patch prerelease переноса на Windows (2026-08-13)
+
+Patch-релиз закрывает ошибки, обнаруженные после переноса исходников на рабочий
+Windows-ноутбук. Архивы ODE 0.21.0 отозваны для повторного переноса: они могли
+содержать launcher с неверными окончаниями строк и неполный runtime-набор,
+из-за чего `cmd.exe` выводил ошибки `'3'`, `'cho'`, `'DE' is not recognized`, а
+Python завершался с `ModuleNotFoundError: baseline_rehearsal`.
+
+- Windows launcher публикуются в CRLF без BOM;
+- source package включает полный runtime closure, SQL migrations, проверки
+  схемы, скрипты чистых тестовых БД и автономную пользовательскую презентацию;
+- сборка выполняется через изолированный staging и не может удалить каталог
+  проекта из-за небезопасного пути output/release;
+- test mode требует три явных marker-validated DB: exact
+  `ODE_DISPOSABLE_TEST_DB_V1`, роли `warehouse`/`warehouse`/`vacations`;
+  ordinary startup отвергает marked test DB, а builders с `--overwrite`
+  заменяют только marked target той же роли;
+- любой SQLite `-wal`/`-shm`/`-journal` рядом с выбранной runtime DB блокирует
+  startup до writes; idle persistent-WAL source без sidecar читается immutable,
+  а существующий committed WAL включается в snapshot через SQLite Backup API
+  при неизменных main DB/WAL/journal;
+- test mode и builders fail-closed при попытке связать любой из трёх production
+  runtime-файлов, включая symlink/hardlink;
+- три выбранные runtime-БД проверяются как разные физические файлы, включая
+  hardlink и конфликт имён по регистру на Windows/macOS; installation-owned
+  пути нельзя переставить между ролями IXcellerate, Solar и Vacations;
+- clean-test builders непосредственно перед атомарной публикацией повторно
+  проверяют marker, inode/размер/время и отсутствие SQLite sidecar, поэтому
+  появившийся writer или подмена target во время сборки не приводят к замене;
+- test launcher использует новые имена
+  `warehouse_test_disposable_v1.db`, `warehouse_solar_test_disposable_v1.db`,
+  `vacations_test_disposable_v1.db`, не трогая legacy unmarked test-файлы;
+- Vacations не может bootstrap-схему в IXcellerate или Solar DB, в том числе
+  при стандартном пути Solar;
+- pre-write contour validation и application composition вынесены из HTTP shell
+  в `inventory/core/web_runtime.py` без изменения facade/API contracts;
+- test и migration-review runtime изолируют FULL Inventory state, Knowledge
+  uploads, Monitoring rules/DCIM и backup-каталоги во временном owned root,
+  который удаляется при завершении процесса;
+- HTTP API, cookie-аутентификация, схема и бизнес-контракты не менялись.
+
+Физическая проверка двойным щелчком на Windows остаётся **PENDING** и должна
+быть закрыта по [`docs/MANUAL_TESTING_0_21_1_WINDOWS.md`](docs/MANUAL_TESTING_0_21_1_WINDOWS.md).
+Результаты автоматического gate записаны в
+[`RELEASE_REPORT_ODE_0_21_1.md`](RELEASE_REPORT_ODE_0_21_1.md). Статус версии
+остаётся release candidate, а не утверждённым rollout, только из-за ещё не
+выполненной физической Windows-приёмки.
+
+Распределение направлений зафиксировано нейтрально в
+[`CONTRIBUTORS.md`](CONTRIBUTORS.md): Monitoring — Юра Устинов, Reports —
+Никита Боронев, остальные модули ODE, интеграция и сопровождение проекта —
+Александр Мерненко.
+
 ## ODE 0.21.0 — интеграция и стабилизация Monitoring (2026-08-11)
 
 Проверенный Monitoring-срез коллеги перенесён поверх `release/0.20.0` без

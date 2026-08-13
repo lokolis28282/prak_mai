@@ -14,7 +14,7 @@ committed WAL.
     python3 scripts/create_clean_test_db.py --profile empty
     python3 scripts/create_clean_test_db.py --profile demo --overwrite
     python3 scripts/create_clean_test_db.py --source data/warehouse.db \\
-        --output data/warehouse_test_clean.db --profile demo --overwrite
+        --output data/warehouse_test_disposable_v1.db --profile demo --overwrite
 
 Гарантии:
 
@@ -44,8 +44,15 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from inventory.db import DEFAULT_DB_PATH  # noqa: E402
+from inventory.shared.runtime_paths import (  # noqa: E402
+    DisposableDatabaseTargetState,
+    capture_disposable_database_target_state,
+    disposable_database_target,
+    install_test_contour_marker,
+    revalidate_disposable_database_target_state,
+)
 
-DEFAULT_OUTPUT_PATH = ROOT / "data" / "warehouse_test_clean.db"
+DEFAULT_OUTPUT_PATH = ROOT / "data" / "warehouse_test_disposable_v1.db"
 
 # Миграционный provenance связан FK с promoted receipts/issues. В чистом
 # контуре он не может пережить удаление operational rows и сам не должен
@@ -95,7 +102,6 @@ TEST_CIRCUIT_LABEL = "ТЕСТОВЫЙ КОНТУР"
 # and can change when a read-only connection obtains/releases a read mark.  The
 # main database, WAL and rollback journal must remain byte-for-byte unchanged.
 SOURCE_CONTENT_SUFFIXES = ("", "-wal", "-journal")
-OUTPUT_SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 
 
 def sha256_of(path: Path) -> str:
@@ -135,8 +141,20 @@ def print_source_content_state(label: str, state: dict[str, dict[str, Any] | Non
 
 
 def connect_source_readonly(db_path: Path) -> sqlite3.Connection:
-    """Open the source with SQLite-enforced read-only/query-only protection."""
-    connection = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    """Open source read-only without creating sidecars for an idle WAL DB.
+
+    A present WAL may contain committed rows, so SQLite must process it through
+    an ordinary read-only connection.  With no WAL/rollback journal, immutable
+    mode is safe and prevents persistent-WAL databases from creating an empty
+    ``-wal``/``-shm`` pair merely because the snapshot reader connected.
+    """
+    durable_sidecar_present = any(
+        Path(str(db_path) + suffix).exists() for suffix in ("-wal", "-journal")
+    )
+    immutable = "" if durable_sidecar_present else "&immutable=1"
+    connection = sqlite3.connect(
+        f"{db_path.resolve().as_uri()}?mode=ro{immutable}", uri=True
+    )
     connection.execute("PRAGMA query_only = ON")
     return connection
 
@@ -314,22 +332,12 @@ def ensure_admin_password_known(connection: sqlite3.Connection) -> None:
         )
 
 
-def ensure_output_has_no_sidecars(output: Path) -> None:
-    """Never replace a database while journals from another instance exist."""
-    sidecars = [Path(str(output) + suffix) for suffix in OUTPUT_SIDECAR_SUFFIXES]
-    present = [path for path in sidecars if path.exists()]
-    if present:
-        joined = ", ".join(str(path) for path in present)
-        raise RuntimeError(
-            "рядом с выходной базой найдены SQLite sidecar-файлы; "
-            "убедитесь, что тестовый ODE остановлен, и проверьте stale-файлы: "
-            + joined
-        )
-
-
-def atomic_install_verified_database(source: Path, output: Path) -> None:
+def atomic_install_verified_database(
+    source: Path,
+    output: Path,
+    initial_target_state: DisposableDatabaseTargetState,
+) -> None:
     """Copy a verified DB beside ``output`` and atomically replace the target."""
-    ensure_output_has_no_sidecars(output)
     fd, staging_name = tempfile.mkstemp(
         prefix=f".{output.name}.", suffix=".tmp", dir=output.parent
     )
@@ -341,6 +349,7 @@ def atomic_install_verified_database(source: Path, output: Path) -> None:
             os.fsync(handle.fileno())
         if sha256_of(staging) != sha256_of(source):
             raise RuntimeError("проверка SHA-256 временной копии перед установкой не прошла")
+        revalidate_disposable_database_target_state(output, initial_target_state)
         os.replace(staging, output)
     finally:
         if staging.exists():
@@ -350,7 +359,7 @@ def atomic_install_verified_database(source: Path, output: Path) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", type=Path, default=DEFAULT_DB_PATH, help="Рабочая база-источник (по умолчанию data/warehouse.db). Никогда не изменяется.")
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH, help="Путь к создаваемой тестовой базе (по умолчанию data/warehouse_test_clean.db).")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH, help="Путь к создаваемой тестовой базе (по умолчанию data/warehouse_test_disposable_v1.db).")
     parser.add_argument("--profile", choices=["empty", "demo"], default="empty", help="empty — только очистка операционных данных; demo — очистка и небольшой демонстрационный набор.")
     parser.add_argument("--dry-run", action="store_true", help="Ничего не создавать и не изменять; только показать, что было бы сделано.")
     parser.add_argument("--overwrite", action="store_true", help="Разрешить перезапись существующего --output.")
@@ -360,7 +369,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     source = args.source.resolve()
-    output = args.output.resolve()
+    try:
+        output = disposable_database_target(args.output)
+    except RuntimeError as error:
+        print(f"ошибка: {error}", file=sys.stderr)
+        return 1
 
     if not source.exists():
         print(f"ошибка: источник не найден: {source}", file=sys.stderr)
@@ -421,6 +434,14 @@ def main(argv: list[str] | None = None) -> int:
         print("источник main DB/WAL/journal: без изменений")
         return 0
 
+    try:
+        initial_target_state = capture_disposable_database_target_state(
+            output, "warehouse"
+        )
+    except (OSError, sqlite3.Error, RuntimeError) as error:
+        print(f"ошибка: {error}", file=sys.stderr)
+        return 1
+
     output.parent.mkdir(parents=True, exist_ok=True)
     # The working copy is built in the system temp directory (not next to
     # --output) because SQLite needs normal journal/fsync support while it
@@ -445,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
                     if args.profile == "demo":
                         seed_demo_data(connection)
                     ensure_admin_password_known(connection)
+                    install_test_contour_marker(connection, "warehouse")
             finally:
                 connection.close()
             connection = sqlite3.connect(tmp_path)
@@ -474,7 +496,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 return 1
 
-            atomic_install_verified_database(tmp_path, output)
+            atomic_install_verified_database(tmp_path, output, initial_target_state)
         except (OSError, sqlite3.Error, RuntimeError) as error:
             print(f"ошибка: не удалось создать тестовую базу: {error}", file=sys.stderr)
             return 1

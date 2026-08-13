@@ -1,3 +1,6 @@
 # Approved migration checksums are byte-exact on every operating system.
 docs/architecture/ddl/*.sql text eol=lf
 ode/schema_manifest.json text eol=lf
+
+# cmd.exe launchers must keep Windows line endings even when authored on macOS.
+*.bat text eol=crlf

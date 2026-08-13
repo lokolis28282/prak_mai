@@ -17,6 +17,9 @@ class FullMigrationFrontendContractTest(unittest.TestCase):
         )
         cls.product_js = (ROOT / "static/js/product.js").read_text(encoding="utf-8")
         cls.webapp = (ROOT / "inventory/webapp.py").read_text(encoding="utf-8")
+        cls.web_runtime = (
+            ROOT / "inventory/core/web_runtime.py"
+        ).read_text(encoding="utf-8")
         cls.warehouse_routes = (
             ROOT / "inventory/routes/warehouse.py"
         ).read_text(encoding="utf-8")
@@ -56,7 +59,11 @@ class FullMigrationFrontendContractTest(unittest.TestCase):
         self.assertIn("state.migration_full?.read_only", self.product_js)
         self.assertIn("/api/migration-full", self.warehouse_routes)
         self.assertIn("get_migration_full_card", self.warehouse_routes)
-        self.assertIn("validate_full_migration_database(args.db)", self.webapp)
+        self.assertIn("validate_full_migration_database(db_path)", self.web_runtime)
+        self.assertLess(
+            self.web_runtime.index("validate_full_migration_database(db_path)"),
+            self.web_runtime.index("service = WarehouseService("),
+        )
         self.assertIn("full_migration_requested()", self.webapp)
         self.assertIn("ПОЛНАЯ КАНДИДАТНАЯ БАЗА СКЛАДА", self.template)
         self.assertIn("migration-full-banner", self.css)

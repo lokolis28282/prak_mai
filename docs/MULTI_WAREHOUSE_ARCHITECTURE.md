@@ -1,4 +1,4 @@
-# Multi-Warehouse: IXcellerate и Solar
+# Multi-Warehouse: IXcellerate и Solar — ODE 0.21.1
 
 Дата решения: 2026-07-26. Статус: implemented in ODE 0.17.0.
 
@@ -21,7 +21,9 @@
 
 ```text
 HTTP session
-  ├─ shared: Administration / Reports / Monitoring / Knowledge
+  ├─ primary DB: Administration / Reports / Knowledge
+  ├─ no business DB: Monitoring
+  ├─ standalone DB: Vacations → data/vacations.db
   └─ selected WarehouseSite
        ├─ ixcellerate → WarehouseFacade → data/warehouse.db
        └─ solar       → WarehouseFacade → data/warehouse_solar.db
@@ -33,10 +35,12 @@ HTTP session
 actor context; пароль и password hash туда не передаются. Складской audit
 записывается в БД того склада, где выполнена операция.
 
-Reports, Monitoring и Knowledge не переключают хранилище вместе со складом.
-Это отдельные продуктовые модули. Administration backup/restore также остаётся
-операцией основного application contour; отдельный production-grade backup UI
-для Solar требует следующего этапа.
+Reports и Knowledge используют primary application DB независимо от выбранного
+склада. Monitoring не владеет таблицами, а Vacations всегда использует
+самостоятельную `data/vacations.db`. Administration показывает topology всех
+трёх runtime-БД и умеет создать проверенный snapshot IXcellerate, Solar или
+Vacations через `MultiDatabaseBackupService`. Restore для любого target
+остаётся fail-closed до ADR-013.
 
 ## Bootstrap Solar
 

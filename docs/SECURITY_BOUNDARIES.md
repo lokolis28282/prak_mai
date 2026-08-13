@@ -1,4 +1,4 @@
-# Security Boundaries — ODE 0.21.0
+# Security Boundaries — ODE 0.21.1
 
 ## Current local authentication boundary
 
@@ -24,6 +24,48 @@ login по ФИО — доверенный локальный режим общ�
 sessions не persistent. Поэтому runtime нельзя публиковать в LAN/Internet как
 production service. Полный текущий контракт и требования к будущему machine
 auth: [AUTHENTICATION_AND_API_ACCESS.md](AUTHENTICATION_AND_API_ACCESS.md).
+
+## Runtime database path boundary
+
+В test mode обязательны три явных файла: IXcellerate, Solar и Vacations. Каждый
+должен содержать exact marker `ODE_DISPOSABLE_TEST_DB_V1`; роли складов —
+`warehouse`, Vacations — `vacations`. Прямой production path, symlink,
+hardlink, отсутствующий/чужой marker или несовпадающая роль отклоняются до
+инициализации application context. Ordinary startup симметрично отвергает
+любую выбранную marked test DB, независимо от имени файла.
+
+Все выбранные IXcellerate/Solar/Vacations пути должны быть попарно различны:
+проверяются canonical path, существующий hardlink и совпадение имени без учёта
+регистра в одном каталоге для переносимости на Windows/case-insensitive macOS.
+Installation-owned IX/Solar/Vacations path разрешён только в своей роли;
+перестановка физических БД между названиями площадок отклоняется. Каталог,
+FIFO/device, symlink и malformed marker считаются invalid state, а не
+отсутствующей БД.
+
+Любой обнаруженный `-wal`, `-shm` или `-journal` рядом с любой выбранной
+runtime DB блокирует ordinary/test/review startup до schema writes. Marker
+probe выполняется immutable, не создаёт SQLite sidecars и fail-closed, если
+sidecar существовал или появился во время чтения.
+
+Clean-test builders используют ту же границу и не могут выбрать production DB
+как disposable output. `--overwrite` разрешён только для существующей marked
+DB той же роли; unmarked/foreign target и target с sidecar не меняются. Для
+Warehouse source без sidecar используется immutable read-only режим; при
+committed WAL применяется обычный read-only SQLite connection и Backup API,
+сохраняющий committed rows при byte-identical main DB/WAL/journal до/после.
+Перед `os.replace` builder повторно сверяет исходное состояние target:
+marker/role, inode, size, timestamps и sidecars. Если writer или другой процесс
+изменил файл во время подготовки, новый target не публикуется.
+
+Test и pilot/full-review runtime не наследуют production auxiliary state.
+FULL Inventory state, Knowledge uploads, Monitoring rules и оба backup root
+располагаются во временном owned-каталоге; live DCIM отключён, Monitoring
+работает только как явно маркированный development mock. Owned-каталог
+удаляется при штатном или ошибочном завершении composition.
+
+Vacations bootstrap отдельно запрещает обе Warehouse DB, включая стандартный
+путь Solar. Эти проверки не меняют владельцев таблиц или DDL; они предотвращают
+запись схемы не в тот файл.
 
 ## FULL Inventory 0.14
 
@@ -59,7 +101,7 @@ Production correction exact S/N требует validated external backups, immut
 evidence manifest, exact predicate, transaction, post-commit integrity/FK и
 append-only correction audit. Массовое изменение S/N запрещено.
 
-Документ фиксирует минимальные границы безопасности текущего ODE 0.21.0 и
+Документ фиксирует минимальные границы безопасности текущего ODE 0.21.1 и
 сохраняет scoped-контракты прежних Stage ниже как provenance решений.
 
 **CURRENT LOCAL FACT:** builder/reference/staging logic remains offline, while
@@ -112,7 +154,7 @@ Admin-only:
   multi-DB restore).
 
 Restore через Administration UI/`RESTORE_BACKUP` отключён с ODE 0.18.1 и
-остаётся fail-closed в ODE 0.21.0.
+остаётся fail-closed в ODE 0.21.1.
 
 Доступны текущему пользователю:
 

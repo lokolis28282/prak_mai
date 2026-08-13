@@ -20,9 +20,17 @@ from inventory.vacations.schema import (  # noqa: E402
     VACATION_TABLES,
     install_vacations_schema,
 )
+from inventory.shared.runtime_paths import (  # noqa: E402
+    DisposableDatabaseTargetState,
+    capture_disposable_database_target_state,
+    disposable_database_target,
+    install_test_contour_marker,
+    revalidate_disposable_database_target_state,
+    test_contour_database_role,
+)
 
 
-DEFAULT_OUTPUT_PATH = ROOT / "data" / "vacations_test_clean.db"
+DEFAULT_OUTPUT_PATH = ROOT / "data" / "vacations_test_disposable_v1.db"
 SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")
 
 
@@ -30,14 +38,9 @@ def _sidecars(path: Path) -> list[Path]:
     return [Path(str(path) + suffix) for suffix in SIDECAR_SUFFIXES]
 
 
-def _validate_target(output: Path, *, overwrite: bool) -> None:
-    working = DEFAULT_VACATIONS_DB_PATH.resolve()
-    if output == working:
-        raise RuntimeError("тестовая Vacations DB не может быть рабочей data/vacations.db")
-    if output.is_symlink():
-        raise RuntimeError("тестовая Vacations DB не может быть symbolic link")
-    if output.exists() and working.exists() and output.samefile(working):
-        raise RuntimeError("тестовая Vacations DB не может быть hardlink рабочей базы")
+def _validate_target(
+    output: Path, *, overwrite: bool
+) -> DisposableDatabaseTargetState:
     present = [path for path in _sidecars(output) if path.exists()]
     if present:
         raise RuntimeError(
@@ -48,11 +51,17 @@ def _validate_target(output: Path, *, overwrite: bool) -> None:
         raise RuntimeError(
             f"выходной файл уже существует: {output}. Укажите --overwrite"
         )
+    if output.exists() and test_contour_database_role(output) != "vacations":
+        raise RuntimeError(
+            "существующий output не имеет marker одноразовой Vacations test DB; "
+            "перезапись неизвестной БД запрещена"
+        )
+    return capture_disposable_database_target_state(output, "vacations")
 
 
 def build(output: Path, *, overwrite: bool = False) -> Path:
-    target = output.expanduser().resolve()
-    _validate_target(target, overwrite=overwrite)
+    target = disposable_database_target(output)
+    initial_target_state = _validate_target(target, overwrite=overwrite)
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, staging_name = tempfile.mkstemp(
         prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
@@ -62,6 +71,8 @@ def build(output: Path, *, overwrite: bool = False) -> Path:
     try:
         install_vacations_schema(staging)
         with closing(sqlite3.connect(staging)) as connection:
+            with connection:
+                install_test_contour_marker(connection, "vacations")
             integrity = connection.execute("PRAGMA integrity_check").fetchone()
             foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
             tables = {
@@ -81,6 +92,7 @@ def build(output: Path, *, overwrite: bool = False) -> Path:
                     + ", ".join(missing)
                 )
         os.chmod(staging, 0o600)
+        revalidate_disposable_database_target_state(target, initial_target_state)
         os.replace(staging, target)
         return target
     finally:

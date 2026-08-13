@@ -1,8 +1,18 @@
-# Windows release procedure — ODE 0.21.0
+# Windows release procedure — ODE 0.21.1
 
-Статус на 2026-08-11: source-ZIP `ODE_0.21.0_windows_source.zip` собран и
-проверен; его внешний SHA-256 хранится рядом с конкретным артефактом. ZIP
-нельзя называть утверждённым рабочим rollout до физического Windows sign-off.
+Статус на 2026-08-13: patch source-ZIP
+`ODE_0.21.1_windows_source.zip` проходит финальный release gate; его внешний
+SHA-256 хранится рядом с конкретным артефактом. ZIP нельзя называть
+утверждённым рабочим rollout до физического Windows sign-off по
+`docs/MANUAL_TESTING_0_21_1_WINDOWS.md`.
+
+Архивы 0.21.0 отозваны для повторного переноса. Ошибки `'3' is not recognized`,
+`'cho' is not recognized` или `'DE' is not recognized` указывают на
+повреждённое для `cmd.exe` представление BAT,
+а `ModuleNotFoundError: baseline_rehearsal` — на неполный runtime closure.
+Такой каталог нельзя ремонтировать вручную или смешивать с новым кодом. Рабочие
+SQLite-файлы не менять; 0.21.1 распаковать в новую папку и переносить данные
+только после SHA/integrity/FK-проверок.
 
 ## Что входит и не входит в code release
 
@@ -49,9 +59,23 @@ release notes и подтверждённое число тестов. Нель�
 
 ## Test launcher
 
-`start_test_windows.bat` создаёт три disposable DB: IXcellerate demo, пустой
-Solar и чистый Vacations. Рабочие Warehouse-БД открываются только на чтение,
-рабочая Vacations DB не используется. Баннер `ТЕСТОВЫЙ КОНТУР` обязателен.
+`start_test_windows.bat` создаёт три новые disposable DB:
+`warehouse_test_disposable_v1.db`,
+`warehouse_solar_test_disposable_v1.db` и
+`vacations_test_disposable_v1.db`. Legacy unmarked `*_test_clean.db` не
+используются. Рабочие Warehouse-БД открываются только на чтение, committed WAL
+включается в Backup API snapshot; рабочая Vacations DB не используется.
+
+Все три target имеют marker `ODE_DISPOSABLE_TEST_DB_V1` с ролями
+`warehouse`/`warehouse`/`vacations`. Test startup требует три явных пути и
+правильные роли; ordinary startup marked test DB отвергает. Overwrite допустим
+только для ранее marked target той же роли. Любой selected SQLite sidecar
+(`-wal`, `-shm`, `-journal`) блокирует startup до writes. Баннер
+`ТЕСТОВЫЙ КОНТУР` обязателен.
+
+Auxiliary state test/review-контура (FULL Inventory, Knowledge, Monitoring и
+backup) принудительно размещается во временном owned root; production env/path
+не наследуются, live DCIM отключён, cleanup выполняется при завершении.
 
 ## Backup и restore
 
@@ -59,7 +83,7 @@ Administration создаёт allowlisted snapshot выбранной runtime-Б
 Backup API во внешний каталог. По умолчанию используется системный каталог;
 оператор может задать `ODE_BACKUP_DIR`. Каталог внутри source/package запрещён.
 
-Restore UI остаётся fail-closed в ODE 0.21.0. В package не должно быть рабочей
+Restore UI остаётся fail-closed в ODE 0.21.1. В package не должно быть рабочей
 кнопки или инструкции «выбрать файл и восстановить». Полный restore требует
 остановки writers, allowlisted database id, manifest/provenance, страховочной
 копии, sibling `.next`, integrity/FK и атомарной публикации — см.
@@ -77,5 +101,7 @@ Restore UI остаётся fail-closed в ODE 0.21.0. В package не долж�
 - SHA-256 и integrity/FK всех трёх runtime-БД до/после;
 - датированный Windows manual QA verdict.
 
-До физического Windows sign-off актуальным считается source ODE 0.21.0 и его
-проверенный переносимый кандидат, а не утверждённый рабочий rollout.
+До физического Windows sign-off актуальным считается source ODE 0.21.1 и его
+release-candidate report, а не утверждённый рабочий rollout. Итог double-click
+приёмки должен быть записан в новый manual QA; отсутствие этой записи означает
+**PENDING**, а не PASS.

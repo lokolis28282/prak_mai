@@ -191,6 +191,29 @@ class MultiDatabaseBackupTest(unittest.TestCase):
                     "warehouse_ix"
                 )
 
+    def test_registry_rejects_two_runtime_ids_for_hardlink_aliases(self) -> None:
+        alias = self.primary.with_name("warehouse_registry_alias.db")
+        os.link(self.primary, alias)
+        with self.assertRaisesRegex(ValueError, "разные пути"):
+            RuntimeDatabaseRegistry(
+                (
+                    RuntimeDatabase(
+                        "warehouse_ix",
+                        "IXcellerate",
+                        self.primary,
+                        "warehouse",
+                        frozenset(self.service.KEY_TABLES),
+                    ),
+                    RuntimeDatabase(
+                        "warehouse_solar",
+                        "Solar",
+                        alias,
+                        "warehouse",
+                        frozenset(self.service.KEY_TABLES),
+                    ),
+                )
+            )
+
     def test_repository_backup_root_and_legacy_restore_action_are_blocked(
         self,
     ) -> None:

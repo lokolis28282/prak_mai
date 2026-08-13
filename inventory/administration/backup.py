@@ -39,12 +39,27 @@ class AdministrationContext(Protocol):
 
 
 class AdministrationBackupService:
-    def __init__(self, context: AdministrationContext):
+    def __init__(
+        self,
+        context: AdministrationContext,
+        *,
+        backup_dir: str | Path | None = None,
+    ):
         self.context = context
+        self._configured_backup_dir: Path | None = None
+        self.configure(backup_dir)
+
+    def configure(self, backup_dir: str | Path | None) -> None:
+        """Apply a composition-owned backup root without changing defaults."""
+        self._configured_backup_dir = (
+            Path(os.path.abspath(Path(backup_dir).expanduser()))
+            if backup_dir is not None
+            else None
+        )
 
     @property
     def backup_dir(self) -> Path:
-        return self.context.db_path.parent / "backups"
+        return self._configured_backup_dir or self.context.db_path.parent / "backups"
 
     def list_backups(self) -> list[dict[str, Any]]:
         self.context._require_role("admin")

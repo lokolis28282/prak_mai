@@ -10,8 +10,17 @@
 optional Monitoring collector обращается к корпоративному DCIM через локальный
 Microsoft Edge/Selenium; автоматических transport-интеграций нет.
 
-> **Версия 0.21.0** · Python 3.10+ · Windows /
+> **Версия 0.21.1 release candidate** · Python 3.10+ · Windows /
 > macOS / Linux · основной runtime без внешних зависимостей
+
+Patch 0.21.1 исправляет перенос на Windows: launcher теперь имеют CRLF, а
+source-ZIP содержит полный runtime closure. Архивы 0.21.0 нельзя использовать
+для повторной установки. Если после переноса видны ошибки `'3'`, `'cho'`,
+`'DE' is not recognized` или `ModuleNotFoundError: baseline_rehearsal`, ничего
+не исправляйте в распакованной папке и не трогайте `.db`: распакуйте
+`ODE_0.21.1_windows_source.zip` в новую папку по
+[Windows-инструкции](README_WINDOWS.md). Физический Windows sign-off пока
+**PENDING**.
 
 ## Возможности
 
@@ -72,9 +81,14 @@ python3 app.py
 жаргона: [`ODE_USER_GUIDE.html`](ODE_USER_GUIDE.html) открывается локально в
 браузере, а [`ODE_USER_GUIDE.md`](ODE_USER_GUIDE.md) удобно читать в GitHub.
 
+Для презентации руководителю используйте автономную
+[`ODE_PRESENTATION.html`](ODE_PRESENTATION.html): она рассказывает о текущих
+возможностях, пользе для смены и дальнейших планах без технических деталей и
+открывается локально в браузере без интернета.
+
 Обычная смена входит по ФИО в локальном режиме инженера; административные
 действия требуют отдельного credentialed-входа. API-ключи, Bearer/JWT и OAuth
-в 0.21.0 не реализованы: browser/API используют только `ode_session` cookie.
+в 0.21.1 не реализованы: browser/API используют только `ode_session` cookie.
 См. [аутентификацию и API-доступ](docs/AUTHENTICATION_AND_API_ACCESS.md).
 
 ## Политика данных (важно)
@@ -208,11 +222,11 @@ Rooms/email-текст, но не отправляет письмо автома
 
 ### Граф файлов и импортов
 
-[![ODE 0.21.0 — граф файлов и импортов](docs/assets/ode-code-graph-0.21.0.png)](docs/assets/code_graph.html)
+[![ODE 0.21.1 — граф файлов и импортов](docs/assets/ode-code-graph-0.21.1.png)](docs/assets/code_graph.html)
 
-Статичный PNG и интерактивная карта соответствуют ODE 0.21.0 и текущему
-дереву: 252 узла / 512 связей. PNG отображается прямо на GitHub:
-[`docs/assets/ode-code-graph-0.21.0.png`](docs/assets/ode-code-graph-0.21.0.png),
+Статичный PNG и интерактивная карта соответствуют ODE 0.21.1 и текущему
+дереву: 254 узла и 527 связей. PNG отображается прямо на GitHub:
+[`docs/assets/ode-code-graph-0.21.1.png`](docs/assets/ode-code-graph-0.21.1.png),
 интерактивная версия доступна по ссылке:
 [`docs/assets/code_graph.html`](docs/assets/code_graph.html).
 
@@ -243,7 +257,8 @@ flowchart LR
 
 Подробная схема и границы интерактивного локального графа:
 [docs/CODEBASE_GRAPH.md](docs/CODEBASE_GRAPH.md). Интерактивный офлайн-граф
-всех связей кодовой базы (252 узла, 512 связей, фильтры по модулям, поиск, зум) —
+всех связей кодовой базы (фильтры по модулям, поиск, зум; 254 узла и
+527 связей) —
 [docs/assets/code_graph.html](docs/assets/code_graph.html); перегенерация:
 `python3 scripts/generate_code_graph.py`. Release-проверка актуальности без
 перезаписи: `python3 scripts/generate_code_graph.py --check`.
@@ -256,7 +271,8 @@ flowchart LR
 app.py
   ├─ inventory/webapp.py       HTTP-сервер, сессии и общая защита
   │    ├─ inventory/routes/    HTTP-логика по доменам
-  │    └─ inventory/templates/ HTML-сборка
+  │    ├─ inventory/templates/ HTML-сборка
+  │    └─ inventory/core/web_runtime.py pre-write DB guards и composition
   └─ inventory/cli.py          совместимый CLI
              │
              ▼
@@ -392,13 +408,12 @@ py app.py
 5. Перед первой реальной загрузкой создайте резервную копию во вкладке «Администрирование».
 6. Проверяйте файл до подтверждения и просматривайте проблемные списания после загрузки.
 
-Не запускайте `seed --reset` на перенесенной рабочей базе.
-
-Другая база или порт:
-
-```bash
-python3 app.py gui --db data/warehouse_test.db --port 8876
-```
+Не запускайте `seed --reset` на перенесенной рабочей базе. Для экспериментов
+используйте только штатные `start_test_macos.command` /
+`start_test_windows.bat`: они создают и подключают три marker-validated
+disposable-БД. Одиночный произвольный `--db data/warehouse_test.db` не является
+тестовым контуром и не должен использоваться как его замена. Другой порт можно
+задать штатному запуску через `--port`, не меняя пути рабочих БД.
 
 Консольный режим:
 
@@ -427,16 +442,16 @@ status и последняя копия. Кнопка конкретной ба�
 - сохраняет manifest с database id, размером и SHA-256;
 - пишет событие `RUNTIME_DATABASE_BACKUP_CREATE` без содержимого БД.
 
-Восстановление из UI в 0.19.1 по-прежнему намеренно отключено. Частично
+Восстановление из UI в текущем ODE 0.21.1 намеренно отключено. Частично
 безопасной кнопки
 нет: следующий этап должен реализовать read-only preview, одноразовый token,
 защиту от cross-database restore, safety backup и атомарный `os.replace` по
 [ADR multi-DB restore](docs/decisions/ADR-013-multi-database-backup-restore.md).
 
 Перед файловыми операциями остановите ODE и убедитесь, что нет writer-процесса
-и SQLite sidecar-файлов. Не выполняйте обычный `cp`/`copy` поверх открытой
-`data/warehouse.db`. Для внешней страхующей копии сохраняйте одновременно
-byte-copy остановленной БД и независимый SQLite `.backup`, проверяйте обе
+и SQLite sidecar-файлов. Не выполняйте обычный `cp`/`copy` поверх ни одной
+открытой runtime-БД. Для внешней страхующей копии exact target сохраняйте
+одновременно byte-copy остановленной БД и независимый SQLite `.backup`, проверяйте обе
 через SHA-256, `integrity_check`, `foreign_key_check` и row counts. Точная
 процедура — в
 [docs/LOCAL_WORKING_DATABASE_RUNBOOK.md](docs/LOCAL_WORKING_DATABASE_RUNBOOK.md).
@@ -446,17 +461,14 @@ byte-copy остановленной БД и независимый SQLite `.bac
 - backup перед обновлением, миграцией и массовым импортом;
 - ежедневный backup в рабочие дни;
 - хранение нескольких поколений копий вне каталога приложения;
-- периодическая проверка копии запуском ODE с параметром `--db`;
+- периодическая проверка копии отдельной остановленной maintenance-процедурой
+  с read-only integrity/FK/schema checks;
 - восстановление сначала проверять на отдельном пути.
 
-Проверка копии без замены рабочей базы выполняется только на отдельном порту и
-с отдельными путями Solar/Vacations:
-
-```bash
-python3 app.py web --no-browser --db /external/backup.db \
-  --solar-db /external/disposable-solar.db \
-  --vacations-db /external/disposable-vacations.db --port 8876
-```
+Не запускайте произвольную backup-копию через обычный `app.py web`: startup
+может инициализировать отсутствующую схему и вспомогательные пути. Проверка
+restore-кандидата должна оставаться отдельной read-only процедурой до
+реализации ADR-013.
 
 Для восстановления остановите приложение, проверьте backup, подготовьте
 `data/warehouse.db.next` на том же файловом разделе и опубликуйте его атомарным
@@ -539,8 +551,9 @@ ODE при импорте принимает оба разделителя: `,` 
 python3 -m unittest discover -s tests -v
 ```
 
-Текущий discover-набор версии 0.21.0 содержит 703 автоматических теста
-Warehouse, Vacations, Monitoring, Knowledge, УВР и CLI-контура. Исторические
+Финальный automated gate версии 0.21.1: 754 теста, `skipped=8` в
+подтверждённом macOS-прогоне. Набор покрывает Warehouse, Vacations,
+Monitoring, Knowledge, УВР и CLI-контур. Исторические
 составы gate по отдельным Stage сохранены в датированных CHANGELOG/manual QA и
 не используются как текущий счётчик. Набор включает CSV и шаблоны,
 сканирование, поставки, карточки, глобальный поиск, массовое назначение
@@ -549,6 +562,16 @@ Inventory Number, УВР и XLSX-импорт, атомарный rollback, от
 S/N-preservation, disposable migration candidates, selector, exact pilot
 writer, marker/security/API/UI/launcher contracts, pilot/full Timeline,
 clean-contour и full XLSX checks.
+
+Штатный test launcher использует три новые marker-validated DB
+`*_test_disposable_v1.db`; legacy unmarked `*_test_clean.db` не
+перезаписываются. Ordinary startup не принимает marked test DB, а любой SQLite
+sidecar рядом с выбранной runtime DB блокирует startup до writes. Три пути
+должны быть физически различны и соответствовать ролям IX/Solar/Vacations;
+вспомогательные state/uploads/Monitoring/backup test-контура изолируются во
+временном каталоге. Полный
+контракт — в
+[`docs/TEST_DATABASE_GUIDE.md`](docs/TEST_DATABASE_GUIDE.md).
 
 Полная проверка основного пользовательского маршрута в headless Chrome (macOS):
 
@@ -594,9 +617,10 @@ python3 scripts/smoke_migration_full_ui.py
   одного часа и после consume/restart/eviction требует повторной загрузки;
 - отдельного persisted batch ID, batch audit-event и фонового progress для
   Inventory Number CSV нет;
-- Stage 0.13.2/0.13.3A/0.13.3A.5/full candidate не собраны в Windows ZIP;
-  pilot и full DB остаются local-only review artifacts, а production
-  replacement требует отдельного решения после ручной проверки;
+- Windows source-ZIP содержит код и SQL-контракты offline migration/FULL
+  Inventory, необходимые runtime, но не содержит raw inputs, generated
+  workspace, pilot/full candidate DB или production data. Эти DB остаются
+  local-only review artifacts и не являются переносимым runtime payload;
 - текущий `COLLATE NOCASE` не поддерживает две case-distinct S/N identity;
   production schema migration для этого не входит в pilot;
 - numeric/unproven, `SOURCE_CORRUPTED`, quantity-like и unresolved reference
@@ -658,19 +682,27 @@ python3 -W error::ResourceWarning -m unittest discover -s tests -v
 git diff --check
 ```
 
-- мутации рабочей БД — только через приложение; перед любыми файловыми
-  операциями с `data/warehouse.db` фиксируются SHA-256 и создаётся внешний
-  backup; тестовые прогоны выполняются на временной копии
-  (`scripts/create_clean_test_db.py`).
+- мутации рабочих БД — только через приложение; перед любыми файловыми
+  операциями с `data/warehouse.db`, `data/warehouse_solar.db` и
+  `data/vacations.db` фиксируются SHA-256 и создаются внешние backup. Тестовые
+  прогоны выполняются только в штатном трёхфайловом disposable-контуре
+  (`scripts/create_clean_test_db.py` и
+  `scripts/create_clean_vacations_test_db.py`).
 
 ## История версий
 
 Продуктовая история всех этапов до 0.16.0 — в
 [docs/STAGES_HISTORY.md](docs/STAGES_HISTORY.md), детальный список изменений —
-в [CHANGELOG.md](CHANGELOG.md). Старые QA/review/release-файлы являются
+в [CHANGELOG.md](CHANGELOG.md), а проверяемая цепочка версий и Git-срезов — в
+[docs/project/VERSION_HISTORY.md](docs/project/VERSION_HISTORY.md). Вклад в
+текущий проект нейтрально зафиксирован в [CONTRIBUTORS.md](CONTRIBUTORS.md).
+Старые QA/review/release-файлы являются
 датированными историческими снимками своих версий и не переписываются.
-Текущий release gate 0.21.0 и ограничения зафиксированы в
-[RELEASE_REPORT_ODE_0_21_0.md](RELEASE_REPORT_ODE_0_21_0.md); отчёт
+Текущий patch release candidate и ограничения зафиксированы в
+[RELEASE_REPORT_ODE_0_21_1.md](RELEASE_REPORT_ODE_0_21_1.md), а физический
+Windows-checklist — в
+[docs/MANUAL_TESTING_0_21_1_WINDOWS.md](docs/MANUAL_TESTING_0_21_1_WINDOWS.md).
+Отчёт
 runtime stabilization 0.19.1 сохранён в
 [RELEASE_REPORT_ODE_0_19_1.md](RELEASE_REPORT_ODE_0_19_1.md), отчёт
 documentation alignment 0.19.0 сохранён в
